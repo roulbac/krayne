@@ -8,19 +8,16 @@ import pytest
 
 def _resolve_docker_host() -> str | None:
     """Read the Docker socket URI from the active ``docker`` CLI context."""
-    try:
-        raw = subprocess.run(
-            ["docker", "context", "inspect"],
-            capture_output=True, text=True, check=True,
-        )
-        ctx = json.loads(raw.stdout)
-        return ctx[0]["Endpoints"]["docker"]["Host"] or None
-    except (subprocess.CalledProcessError, KeyError, IndexError, json.JSONDecodeError):
-        return None
+    raw = subprocess.run(
+        ["docker", "context", "inspect"],
+        capture_output=True, text=True, check=True,
+    )
+    ctx = json.loads(raw.stdout)
+    return ctx[0]["Endpoints"]["docker"]["Host"] or None
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _docker_env(tmp_path_factory: pytest.TempPathFactory) -> None:
+def _docker_env() -> None:
     """Expose the Docker socket to the Python Docker SDK and testcontainers.
 
     Many Docker distributions (Rancher Desktop, Colima, etc.) route through a
