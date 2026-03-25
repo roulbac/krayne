@@ -82,6 +82,7 @@ def mock_client():
     client.list_ray_clusters.return_value = [_SAMPLE_OBJ]
     client.patch_ray_cluster.return_value = _SAMPLE_OBJ
     client.delete_ray_cluster.return_value = None
+    client.list_pods.return_value = []
     return client
 
 
@@ -203,3 +204,114 @@ class TestKubeconfigPassthrough:
             mock_settings.return_value = PrismSettings(kubeconfig="/from/settings")
             list_clusters("default")
             self.mock_cls.assert_called_with(kubeconfig="/from/settings")
+
+
+class TestPodLevelStatus:
+    """Verify granular status is derived from pod phases when CRD state is empty."""
+
+    def _no_state_obj(self):
+        """Return a RayCluster object with no status.state."""
+        return {
+            **_SAMPLE_OBJ,
+            "status": {},  # no state field
+        }
+
+    def test_crd_state_takes_priority(self, mock_client):
+        """When CRD has a state, it's used regardless of pods."""
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "ready"
+
+    def test_no_pods_shows_creating(self, mock_client):
+        mock_client.get_ray_cluster.return_value = self._no_state_obj()
+        mock_client.list_pods.return_value = []
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "creating"
+
+    def test_pending_pods(self, mock_client):
+        mock_client.get_ray_cluster.return_value = self._no_state_obj()
+        mock_client.list_pods.return_value = [
+            {"status": {"phase": "Pending", "conditions": [], "container_statuses": None}},
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "pods-pending"
+
+    def test_container_creating(self, mock_client):
+        mock_client.get_ray_cluster.return_value = self._no_state_obj()
+        mock_client.list_pods.return_value = [
+            {
+                "status": {
+                    "phase": "Pending",
+                    "conditions": [],
+                    "container_statuses": [
+                        {"state": {"waiting": {"reason": "ContainerCreating"}}}
+                    ],
+                },
+            },
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "containers-creating"
+
+    def test_image_pull_error(self, mock_client):
+        mock_client.get_ray_cluster.return_value = self._no_state_obj()
+        mock_client.list_pods.return_value = [
+            {
+                "status": {
+                    "phase": "Pending",
+                    "conditions": [],
+                    "container_statuses": [
+                        {"state": {"waiting": {"reason": "ImagePullBackOff"}}}
+                    ],
+                },
+            },
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "image-pull-error"
+
+    def test_crash_loop(self, mock_client):
+        mock_client.get_ray_cluster.return_value = self._no_state_obj()
+        mock_client.list_pods.return_value = [
+            {
+                "status": {
+                    "phase": "Running",
+                    "conditions": [],
+                    "container_statuses": [
+                        {"state": {"waiting": {"reason": "CrashLoopBackOff"}}}
+                    ],
+                },
+            },
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "crash-loop"
+
+    def test_unschedulable(self, mock_client):
+        mock_client.get_ray_cluster.return_value = self._no_state_obj()
+        mock_client.list_pods.return_value = [
+            {
+                "status": {
+                    "phase": "Pending",
+                    "conditions": [
+                        {"type": "PodScheduled", "status": "False", "reason": "Unschedulable"}
+                    ],
+                    "container_statuses": None,
+                },
+            },
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "unschedulable"
+
+    def test_all_running(self, mock_client):
+        mock_client.get_ray_cluster.return_value = self._no_state_obj()
+        mock_client.list_pods.return_value = [
+            {"status": {"phase": "Running", "conditions": [], "container_statuses": []}},
+            {"status": {"phase": "Running", "conditions": [], "container_statuses": []}},
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "running"
+
+    def test_list_clusters_uses_pods(self, mock_client):
+        mock_client.list_ray_clusters.return_value = [self._no_state_obj()]
+        mock_client.list_pods.return_value = [
+            {"status": {"phase": "Pending", "conditions": [], "container_statuses": None}},
+        ]
+        clusters = list_clusters("default", client=mock_client)
+        assert clusters[0].status == "pods-pending"

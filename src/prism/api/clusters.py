@@ -64,7 +64,8 @@ def get_cluster(
     """Return summary info for a single cluster."""
     kube = _resolve_client(client, kubeconfig)
     obj = kube.get_ray_cluster(name, namespace)
-    return _obj_to_info(obj)
+    pods = kube.list_pods(name, namespace)
+    return _obj_to_info(obj, pods=pods)
 
 
 def list_clusters(
@@ -76,7 +77,12 @@ def list_clusters(
     """List all Ray clusters in *namespace*."""
     kube = _resolve_client(client, kubeconfig)
     items = kube.list_ray_clusters(namespace)
-    return [_obj_to_info(obj) for obj in items]
+    results: list[ClusterInfo] = []
+    for obj in items:
+        cluster_name = obj.get("metadata", {}).get("name", "")
+        pods = kube.list_pods(cluster_name, namespace)
+        results.append(_obj_to_info(obj, pods=pods))
+    return results
 
 
 def describe_cluster(
@@ -89,7 +95,8 @@ def describe_cluster(
     """Return extended details for a cluster."""
     kube = _resolve_client(client, kubeconfig)
     obj = kube.get_ray_cluster(name, namespace)
-    return _obj_to_details(obj)
+    pods = kube.list_pods(name, namespace)
+    return _obj_to_details(obj, pods=pods)
 
 
 def scale_cluster(
@@ -163,7 +170,7 @@ def wait_until_ready(
 # ---------------------------------------------------------------------------
 
 
-def _obj_to_info(obj: dict) -> ClusterInfo:
+def _obj_to_info(obj: dict, pods: list[dict] | None = None) -> ClusterInfo:
     metadata = obj.get("metadata", {})
     status_block = obj.get("status", {})
     spec = obj.get("spec", {})
@@ -183,7 +190,7 @@ def _obj_to_info(obj: dict) -> ClusterInfo:
     return ClusterInfo(
         name=metadata.get("name", ""),
         namespace=metadata.get("namespace", ""),
-        status=_extract_status(obj),
+        status=_extract_status(obj, pods=pods),
         head_ip=head_ip,
         dashboard_url=dashboard_url,
         notebook_url=None,
@@ -193,8 +200,8 @@ def _obj_to_info(obj: dict) -> ClusterInfo:
     )
 
 
-def _obj_to_details(obj: dict) -> ClusterDetails:
-    info = _obj_to_info(obj)
+def _obj_to_details(obj: dict, pods: list[dict] | None = None) -> ClusterDetails:
+    info = _obj_to_info(obj, pods=pods)
     spec = obj.get("spec", {})
 
     head_spec = spec.get("headGroupSpec", {})

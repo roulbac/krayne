@@ -31,6 +31,7 @@ class KubeClient(Protocol):
     def patch_ray_cluster(self, name: str, namespace: str, patch: dict) -> dict: ...
     def delete_ray_cluster(self, name: str, namespace: str) -> None: ...
     def get_cluster_status(self, name: str, namespace: str) -> str: ...
+    def list_pods(self, cluster_name: str, namespace: str) -> list[dict]: ...
 
 
 class DefaultKubeClient:
@@ -130,6 +131,16 @@ class DefaultKubeClient:
         obj = self.get_ray_cluster(name, namespace)
         return _extract_status(obj)
 
+    def list_pods(self, cluster_name: str, namespace: str) -> list[dict]:
+        try:
+            resp = self._core.list_namespaced_pod(
+                namespace=namespace,
+                label_selector=f"ray.io/cluster={cluster_name}",
+            )
+            return [pod.to_dict() for pod in resp.items]
+        except ApiException as exc:
+            raise KubeConnectionError(str(exc)) from exc
+
     # -- helpers --------------------------------------------------------------
 
     def _ensure_namespace(self, namespace: str) -> None:
@@ -141,8 +152,12 @@ class DefaultKubeClient:
             raise KubeConnectionError(str(exc)) from exc
 
 
-def _extract_status(obj: dict) -> str:
-    """Pull the high-level status string from a RayCluster object."""
+def _extract_status(obj: dict, pods: list[dict] | None = None) -> str:
+    """Pull the high-level status string from a RayCluster object.
+
+    When the CRD state is unavailable and *pods* are provided, a more
+    granular status is derived from pod phases and container states.
+    """
     status = obj.get("status", {})
     state = status.get("state", "")
     if state:
@@ -152,4 +167,49 @@ def _extract_status(obj: dict) -> str:
     for cond in conditions:
         if cond.get("type") == "Ready" and cond.get("status") == "True":
             return "ready"
+    # Derive status from pods when CRD state is missing
+    if pods is not None:
+        return _status_from_pods(pods)
+    return "unknown"
+
+
+def _status_from_pods(pods: list[dict]) -> str:
+    """Derive a human-readable status from pod phases and container states."""
+    if not pods:
+        return "creating"
+
+    for pod in pods:
+        phase = (pod.get("status") or {}).get("phase", "")
+
+        # Check for scheduling issues
+        if phase == "Pending":
+            for cond in (pod.get("status") or {}).get("conditions") or []:
+                if (
+                    cond.get("type") == "PodScheduled"
+                    and cond.get("status") == "False"
+                    and cond.get("reason") == "Unschedulable"
+                ):
+                    return "unschedulable"
+
+        # Check container-level waiting reasons
+        containers = (pod.get("status") or {}).get("container_statuses") or []
+        for cs in containers:
+            waiting = (cs.get("state") or {}).get("waiting") or {}
+            reason = waiting.get("reason", "")
+            if reason == "ContainerCreating":
+                return "containers-creating"
+            if reason in ("ImagePullBackOff", "ErrImagePull"):
+                return "image-pull-error"
+            if reason == "CrashLoopBackOff":
+                return "crash-loop"
+
+    # Check pod phases after container-level checks
+    phases = {(p.get("status") or {}).get("phase", "") for p in pods}
+    if phases == {"Running"}:
+        return "running"
+    if "Pending" in phases:
+        return "pods-pending"
+    if "Failed" in phases:
+        return "pods-failed"
+
     return "unknown"

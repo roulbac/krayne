@@ -14,6 +14,17 @@ from prism.api.types import ClusterDetails, ClusterInfo
 from prism.sandbox.manager import SandboxStatus
 
 
+def _style_status(status: str) -> str:
+    """Apply Rich markup to a cluster status string."""
+    if status in ("ready", "running"):
+        return f"[green]{status}[/green]"
+    if status in ("pods-pending", "containers-creating", "creating"):
+        return f"[yellow]{status}[/yellow]"
+    if status in ("image-pull-error", "crash-loop", "unschedulable", "pods-failed"):
+        return f"[red]{status}[/red]"
+    return f"[dim]{status}[/dim]"
+
+
 def format_cluster_created(info: ClusterInfo, console: Console) -> None:
     """Print a panel summarising the newly created cluster."""
     table = Table(show_header=False, box=None, padding=(0, 2))
@@ -21,7 +32,7 @@ def format_cluster_created(info: ClusterInfo, console: Console) -> None:
     table.add_column("Value")
     table.add_row("Name", info.name)
     table.add_row("Namespace", info.namespace)
-    table.add_row("Status", info.status)
+    table.add_row("Status", _style_status(info.status))
     table.add_row("Head IP", info.head_ip or "pending")
     table.add_row("Dashboard", info.dashboard_url or "pending")
     table.add_row("Workers", str(info.num_workers))
@@ -37,7 +48,7 @@ def format_cluster_list(clusters: list[ClusterInfo], console: Console) -> None:
     table.add_column("Workers", justify="right")
     table.add_column("Created")
     for c in clusters:
-        table.add_row(c.name, c.namespace, c.status, str(c.num_workers), c.created_at)
+        table.add_row(c.name, c.namespace, _style_status(c.status), str(c.num_workers), c.created_at)
     console.print(table)
 
 
@@ -51,7 +62,7 @@ def format_cluster_details(details: ClusterDetails, console: Console) -> None:
     header.add_column("Value")
     header.add_row("Name", info.name)
     header.add_row("Namespace", info.namespace)
-    header.add_row("Status", info.status)
+    header.add_row("Status", _style_status(info.status))
     header.add_row("Head IP", info.head_ip or "pending")
     header.add_row("Dashboard", info.dashboard_url or "pending")
     header.add_row("Ray Version", details.ray_version)
