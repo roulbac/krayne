@@ -25,6 +25,9 @@ dev = [
     "mkdocs-material>=9.5",
 ]
 
+[tool.uv]
+default-groups = "all"
+
 [build-system]
 requires = ["uv_build>=0.11.1,<0.12"]
 build-backend = "uv_build"

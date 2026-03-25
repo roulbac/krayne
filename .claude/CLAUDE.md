@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Development
 
 ```bash
-uv sync --group dev                # Install all dependencies (dev + runtime)
+uv sync               # Install all dependencies (dev + runtime)
 uv run prism <command>             # Run the CLI
 ```
 
@@ -48,6 +48,6 @@ CLI → Output (output/formatters.py)
 Documentation uses MkDocs with `mkdocs-material` theme. Design blueprint is at `docs/DESIGN.md`.
 
 ```bash
-uv sync --group docs
+uv sync
 uv run mkdocs serve   # Local preview
 ```
