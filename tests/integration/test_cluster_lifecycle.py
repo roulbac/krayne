@@ -19,6 +19,19 @@ from pathlib import Path
 from typing import Generator
 
 import pytest
+from testcontainers.k3s import K3SContainer
+
+from prism.api import (
+    create_cluster,
+    delete_cluster,
+    describe_cluster,
+    get_cluster,
+    list_clusters,
+    scale_cluster,
+)
+from prism.config import ClusterConfig, HeadNodeConfig, WorkerGroupConfig
+from prism.errors import ClusterNotFoundError
+from prism.kube.client import DefaultKubeClient
 
 pytestmark = pytest.mark.integration
 
@@ -99,8 +112,6 @@ def k3s_cluster() -> Generator[str, None, None]:
 
     Yields the path to a temporary kubeconfig file pointing at the K3S cluster.
     """
-    from testcontainers.k3s import K3SContainer
-
     with K3SContainer(image=K3S_IMAGE, enable_cgroup_mount=False) as k3s:
         container_id = k3s.get_wrapped_container().id
 
@@ -115,29 +126,26 @@ def k3s_cluster() -> Generator[str, None, None]:
         with open(internal_kubeconfig, "w") as f:
             f.write(raw.output.decode("utf-8"))
 
-        try:
-            _helm(
-                container_id, internal_kubeconfig,
-                "install", "kuberay-operator", "kuberay-operator",
-                "--repo", KUBERAY_HELM_REPO,
-                "--namespace", KUBERAY_NAMESPACE,
-            )
+        _helm(
+            container_id, internal_kubeconfig,
+            "install", "kuberay-operator", "kuberay-operator",
+            "--repo", KUBERAY_HELM_REPO,
+            "--namespace", KUBERAY_NAMESPACE,
+        )
 
-            _wait_for_crds(host_kubeconfig)
-            _wait_for_deployment("kuberay-operator", host_kubeconfig, KUBERAY_NAMESPACE, timeout=300)
+        _wait_for_crds(host_kubeconfig)
+        _wait_for_deployment("kuberay-operator", host_kubeconfig, KUBERAY_NAMESPACE, timeout=300)
 
-            yield host_kubeconfig
-        finally:
-            for p in Path(tmpdir).iterdir():
-                p.unlink()
-            Path(tmpdir).rmdir()
+        yield host_kubeconfig
+
+        for p in Path(tmpdir).iterdir():
+            p.unlink()
+        Path(tmpdir).rmdir()
 
 
 @pytest.fixture()
 def kube_client(k3s_cluster):
     """Return a DefaultKubeClient connected to the K3S cluster."""
-    from prism.kube.client import DefaultKubeClient
-
     return DefaultKubeClient(kubeconfig=k3s_cluster)
 
 
@@ -153,16 +161,6 @@ class TestClusterLifecycle:
     NAMESPACE = "default"
 
     def test_full_lifecycle(self, kube_client):
-        from prism.api import (
-            create_cluster,
-            delete_cluster,
-            describe_cluster,
-            get_cluster,
-            list_clusters,
-            scale_cluster,
-        )
-        from prism.config import ClusterConfig, HeadNodeConfig, WorkerGroupConfig
-
         config = ClusterConfig(
             name=self.CLUSTER_NAME,
             namespace=self.NAMESPACE,
@@ -172,49 +170,44 @@ class TestClusterLifecycle:
             ],
         )
 
-        try:
-            # CREATE
-            info = create_cluster(config, client=kube_client)
-            assert info.name == self.CLUSTER_NAME
-            assert info.namespace == self.NAMESPACE
+        # CREATE
+        info = create_cluster(config, client=kube_client)
+        assert info.name == self.CLUSTER_NAME
+        assert info.namespace == self.NAMESPACE
 
-            # GET
-            info = get_cluster(self.CLUSTER_NAME, self.NAMESPACE, client=kube_client)
-            assert info.name == self.CLUSTER_NAME
+        # GET
+        info = get_cluster(self.CLUSTER_NAME, self.NAMESPACE, client=kube_client)
+        assert info.name == self.CLUSTER_NAME
 
-            # LIST
-            clusters = list_clusters(self.NAMESPACE, client=kube_client)
-            names = [c.name for c in clusters]
-            assert self.CLUSTER_NAME in names
+        # LIST
+        clusters = list_clusters(self.NAMESPACE, client=kube_client)
+        names = [c.name for c in clusters]
+        assert self.CLUSTER_NAME in names
 
-            # DESCRIBE
-            details = describe_cluster(
-                self.CLUSTER_NAME, self.NAMESPACE, client=kube_client
-            )
-            assert details.info.name == self.CLUSTER_NAME
-            assert details.head.cpus == 1
-            assert len(details.worker_groups) == 1
+        # DESCRIBE
+        details = describe_cluster(
+            self.CLUSTER_NAME, self.NAMESPACE, client=kube_client
+        )
+        assert details.info.name == self.CLUSTER_NAME
+        assert details.head.cpus == 1
+        assert len(details.worker_groups) == 1
 
-            # SCALE
-            info = scale_cluster(
-                self.CLUSTER_NAME,
-                self.NAMESPACE,
-                "worker",
-                2,
-                client=kube_client,
-            )
-            assert info.name == self.CLUSTER_NAME
-            details = describe_cluster(
-                self.CLUSTER_NAME, self.NAMESPACE, client=kube_client
-            )
-            assert details.worker_groups[0].replicas == 2
+        # SCALE
+        info = scale_cluster(
+            self.CLUSTER_NAME,
+            self.NAMESPACE,
+            "worker",
+            2,
+            client=kube_client,
+        )
+        assert info.name == self.CLUSTER_NAME
+        details = describe_cluster(
+            self.CLUSTER_NAME, self.NAMESPACE, client=kube_client
+        )
+        assert details.worker_groups[0].replicas == 2
 
-        finally:
-            # DELETE (always clean up)
-            delete_cluster(self.CLUSTER_NAME, self.NAMESPACE, client=kube_client)
-
-        # Verify deletion
-        from prism.errors import ClusterNotFoundError
+        # DELETE
+        delete_cluster(self.CLUSTER_NAME, self.NAMESPACE, client=kube_client)
 
         with pytest.raises(ClusterNotFoundError):
             get_cluster(self.CLUSTER_NAME, self.NAMESPACE, client=kube_client)
