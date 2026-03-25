@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  <meta name="google-site-verification" content="u7jGB2IM029UH2kRn61AkOZbBzswPAPUWKbaUJtbewc" />
+
+  {% if page %}
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="{{ page.meta.title | default(page.title, true) }} — Krayne" />
+  <meta property="og:description" content="{{ page.meta.description | default(config.site_description, true) }}" />
+  <meta property="og:url" content="{{ page.canonical_url }}" />
+  <meta property="og:site_name" content="Krayne" />
+  <meta property="og:image" content="https://roulbac.github.io/krayne/assets/ikrayne-demo.gif" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{{ page.meta.title | default(page.title, true) }} — Krayne" />
+  <meta name="twitter:description" content="{{ page.meta.description | default(config.site_description, true) }}" />
+  <meta name="twitter:image" content="https://roulbac.github.io/krayne/assets/ikrayne-demo.gif" />
+  {% endif %}
+{% endblock %}

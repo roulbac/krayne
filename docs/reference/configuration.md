@@ -1,0 +1,173 @@
+# Configuration Models
+
+All cluster configuration is defined using [Pydantic v2](https://docs.pydantic.dev/) models. Models are importable from `krayne.config`.
+
+```python
+from krayne.config import (
+    ClusterConfig,
+    HeadNodeConfig,
+    WorkerGroupConfig,
+    ServicesConfig,
+    load_config_from_yaml,
+)
+```
+
+---
+
+## `ClusterConfig`
+
+Top-level configuration for a Ray cluster. Uses `extra = "forbid"` — unknown fields raise a validation error.
+
+```python
+config = ClusterConfig(
+    name="my-cluster",          # required
+    namespace="default",        # optional
+    head=HeadNodeConfig(...),   # optional — uses defaults
+    worker_groups=[...],        # optional — single default worker
+    services=ServicesConfig(...),  # optional — uses defaults
+)
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `name` | `str` | — | Cluster name (required) |
+| `namespace` | `str` | `"default"` | Kubernetes namespace |
+| `head` | `HeadNodeConfig` | See below | Head node configuration |
+| `worker_groups` | `list[WorkerGroupConfig]` | `[WorkerGroupConfig()]` | Worker group configurations |
+| `services` | `ServicesConfig` | See below | Enabled services |
+| `autoscaler` | `AutoscalerConfig` | See below | Autoscaler configuration |
+
+---
+
+## `HeadNodeConfig`
+
+Resource configuration for the Ray head node.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `cpus` | `str` | `"1"` | CPU count |
+| `memory` | `str` | `"2Gi"` | Memory allocation |
+| `gpus` | `int` | `0` | GPU count (head typically does not need GPUs) |
+| `image` | `str \| None` | `None` | Custom container image. Defaults to `rayproject/ray:latest` |
+
+---
+
+## `WorkerGroupConfig`
+
+Configuration for a worker group.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `name` | `str` | `"worker"` | Worker group name |
+| `replicas` | `int` | `0` | Desired number of worker replicas |
+| `min_replicas` | `int` | `0` | Minimum replicas (autoscaling lower bound) |
+| `max_replicas` | `int` | `1` | Maximum replicas (autoscaling upper bound) |
+| `cpus` | `str` | `"1"` | CPUs per worker |
+| `memory` | `str` | `"2Gi"` | Memory per worker |
+| `gpus` | `int` | `0` | GPUs per worker |
+| `gpu_type` | `str` | `"t4"` | GPU accelerator type (e.g. `t4`, `a100`, `v100`) |
+| `image` | `str \| None` | `None` | Custom container image |
+
+!!! note "Replica validation"
+    The constraint `min_replicas <= replicas <= max_replicas` is enforced. If `replicas` exceeds `max_replicas`, `max_replicas` is automatically adjusted upward for backward compatibility.
+
+---
+
+## `AutoscalerConfig`
+
+Configuration for the Ray v2 in-tree autoscaler. When enabled, the KubeRay operator injects an autoscaler sidecar into the head pod that dynamically adjusts worker group replica counts.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | `bool` | `True` | Enable Ray v2 in-tree autoscaling |
+| `idle_timeout_seconds` | `int` | `60` | Seconds before idle workers are scaled down |
+| `upscaling_mode` | `str` | `"Default"` | Upscaling strategy: `Default`, `Aggressive`, or `Conservative` |
+| `cpu` | `str` | `"500m"` | CPU request/limit for the autoscaler sidecar container |
+| `memory` | `str` | `"512Mi"` | Memory request/limit for the autoscaler sidecar container |
+
+---
+
+## `ServicesConfig`
+
+Services to enable on the cluster head node. Each enabled service adds its port to the head pod spec and populates the corresponding URL in `ClusterInfo`.
+
+| Field | Type | Default | Port | Description |
+|---|---|---|---|---|
+| `notebook` | `bool` | `True` | 8888 | Jupyter notebook server (runs on ray-head container) |
+| `code_server` | `bool` | `True` | 8443 | Code Server, installed from a [standalone pre-built binary](https://github.com/coder/code-server/releases) at container startup |
+| `ssh` | `bool` | `True` | 22 | SSH access to the head node |
+
+---
+
+## `load_config_from_yaml`
+
+Load a `ClusterConfig` from a YAML file with optional field overrides.
+
+```python
+def load_config_from_yaml(
+    path: str | Path,
+    overrides: dict[str, Any] | None = None,
+) -> ClusterConfig
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `path` | `str \| Path` | — | Path to YAML configuration file (required) |
+| `overrides` | `dict[str, Any] \| None` | `None` | Field values taking precedence over YAML. Supports dot-notation keys. |
+
+**Returns:** `ClusterConfig`
+
+**Raises:** `ConfigValidationError` on validation failure
+
+**Example:**
+
+```python
+from krayne.config import load_config_from_yaml
+
+# Basic load
+config = load_config_from_yaml("cluster.yaml")
+
+# With overrides (supports dot-notation for nested fields)
+config = load_config_from_yaml(
+    "cluster.yaml",
+    overrides={"namespace": "staging", "head.cpus": 32},
+)
+```
+
+---
+
+## Settings
+
+User-level settings are persisted in `~/.krayne/config.yaml` and managed via these functions:
+
+```python
+from krayne.config import (
+    KrayneSettings,
+    load_krayne_settings,
+    save_krayne_settings,
+    clear_krayne_settings,
+)
+```
+
+### `KrayneSettings`
+
+```python
+@dataclass
+class KrayneSettings:
+    kubeconfig: str | None = None
+    kube_context: str | None = None
+```
+
+### `load_krayne_settings() -> KrayneSettings`
+
+Load settings from `~/.krayne/config.yaml`, returning defaults if absent.
+
+### `save_krayne_settings(settings: KrayneSettings) -> None`
+
+Write settings to `~/.krayne/config.yaml`, creating the directory if needed.
+
+### `clear_krayne_settings() -> None`
+
+Remove the settings file if it exists.

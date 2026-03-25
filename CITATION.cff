@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+title: Krayne
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - name: Krayne Contributors
+repository-code: "https://github.com/roulbac/krayne"
+url: "https://roulbac.github.io/krayne/"
+license: Apache-2.0
+keywords:
+  - ray
+  - kubernetes
+  - kuberay
+  - distributed-computing
+  - machine-learning
+  - cluster-management
+  - python
+  - cli

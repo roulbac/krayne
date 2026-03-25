@@ -1,0 +1,93 @@
+site_name: Krayne
+site_description: CLI and SDK for creating, managing, and scaling Ray clusters on Kubernetes
+site_url: https://roulbac.github.io/krayne/
+repo_url: https://github.com/roulbac/krayne
+repo_name: roulbac/krayne
+
+theme:
+  name: material
+  custom_dir: docs/overrides
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - social
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/roulbac/krayne
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/krayne/
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets
+  - tables
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - User Guide:
+    - Overview: guide/overview.md
+    - Quickstart: guide/quickstart.md
+    - Core Concepts: guide/core-concepts.md
+    - Local Sandbox: guide/sandbox.md
+    - Creating Clusters: guide/creating-clusters.md
+    - Managing Clusters: guide/managing-clusters.md
+    - Interactive TUI: guide/interactive-tui.md
+    - Configuration: guide/configuration.md
+    - Error Handling: guide/error-handling.md
+  - API Reference:
+    - CLI Reference: reference/cli.md
+    - Python SDK: reference/sdk.md
+    - Configuration Models: reference/configuration.md
+    - Error Types: reference/errors.md
+  - Architecture: architecture.md

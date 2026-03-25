@@ -1,0 +1,489 @@
+/* ikrayne — global styles */
+
+Screen {
+    background: $surface;
+}
+
+/* ── Header bar ──────────────────────────────────── */
+
+HeaderBar {
+    dock: top;
+    height: 1;
+    background: $primary;
+    color: $text;
+    padding: 0 1;
+}
+
+/* ── Status bar ──────────────────────────────────── */
+
+StatusBar {
+    dock: bottom;
+    height: 1;
+    background: $primary;
+    color: $text;
+    padding: 0 1;
+}
+
+/* ── Explorer screen ─────────────────────────────── */
+
+#explorer-screen {
+    layout: vertical;
+}
+
+#explorer-body {
+    height: 1fr;
+}
+
+/* Wide mode: horizontal split for table + preview */
+.wide #explorer-body {
+    layout: horizontal;
+}
+
+.compact #explorer-body,
+.standard #explorer-body {
+    layout: vertical;
+}
+
+#scope-bar {
+    height: 1;
+    background: $primary-darken-2;
+    color: $text;
+    padding: 0 1;
+}
+
+#cluster-table {
+    height: 1fr;
+}
+
+/* Preview panel — hidden in compact, shown in standard/wide */
+#preview-panel {
+    display: none;
+    padding: 1 2;
+    overflow-y: auto;
+}
+
+.wide #preview-panel {
+    display: block;
+    border-left: tall $primary-darken-1;
+    width: 50;
+    min-width: 30;
+}
+
+.standard #preview-panel {
+    display: block;
+    border-top: tall $primary-darken-1;
+    width: 100%;
+    height: 12;
+}
+
+.compact #preview-panel {
+    display: none;
+}
+
+#preview-empty {
+    color: $text-muted;
+    text-style: italic;
+    padding: 1 0;
+}
+
+.preview-field {
+    margin-left: 0;
+}
+
+.preview-label {
+    color: $text-muted;
+    width: 12;
+}
+
+/* Filter bar */
+#filter-bar {
+    dock: bottom;
+    height: auto;
+    display: none;
+}
+
+#filter-bar.visible {
+    display: block;
+}
+
+#filter-input {
+    height: 1;
+}
+
+/* Empty state */
+#empty-state {
+    width: 100%;
+    height: 100%;
+    content-align: center middle;
+    padding: 3;
+}
+
+#empty-state Static {
+    text-align: center;
+}
+
+/* ── Detail screen (tabbed) ──────────────────────── */
+
+#detail-screen {
+    layout: vertical;
+}
+
+#detail-tabs {
+    height: 1fr;
+}
+
+TabbedContent {
+    height: 1fr;
+}
+
+TabPane {
+    padding: 1 2;
+    overflow-y: auto;
+}
+
+.section-title {
+    text-style: bold;
+    color: $accent;
+    margin-top: 1;
+    margin-bottom: 1;
+}
+
+.detail-label {
+    color: $text-muted;
+    width: 16;
+}
+
+.detail-value {
+    width: 1fr;
+}
+
+.detail-row {
+    layout: horizontal;
+    height: auto;
+    margin-left: 2;
+}
+
+/* Worker group card */
+.worker-group-card {
+    margin: 1 0;
+    padding: 1 2;
+    border: tall $primary-darken-1;
+    height: auto;
+}
+
+.worker-group-header {
+    layout: horizontal;
+    height: auto;
+}
+
+.worker-group-name {
+    text-style: bold;
+    width: 1fr;
+}
+
+/* Service row */
+.service-row {
+    layout: horizontal;
+    height: 3;
+    padding: 0 1;
+    margin: 0 0 1 0;
+}
+
+.service-name {
+    width: 16;
+    text-style: bold;
+}
+
+.service-status {
+    width: 14;
+}
+
+.service-endpoint {
+    width: 1fr;
+}
+
+.service-action {
+    width: auto;
+}
+
+/* Tunnel row */
+.tunnel-row {
+    layout: horizontal;
+    height: 3;
+    padding: 0 1;
+    margin: 0 0 1 0;
+}
+
+.tunnel-service {
+    width: 16;
+    text-style: bold;
+}
+
+.tunnel-local {
+    width: 1fr;
+}
+
+.tunnel-status {
+    width: 12;
+}
+
+.tunnel-action {
+    width: auto;
+}
+
+/* ── Create flow ─────────────────────────────────── */
+
+#create-flow-screen {
+    layout: vertical;
+    padding: 0;
+    overflow-y: hidden;
+}
+
+#create-tabs {
+    height: 1fr;
+}
+
+
+.form-section {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.form-section-title {
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 0;
+}
+
+.form-row {
+    layout: horizontal;
+    height: auto;
+    margin-bottom: 0;
+}
+
+.form-row Label {
+    width: 14;
+    height: 1;
+}
+
+.form-row Input {
+    width: 20;
+    height: 1;
+    border: none;
+    background: $surface-darken-1;
+    padding: 0 1;
+}
+
+.compact .form-row Input {
+    width: 16;
+}
+
+.form-row Switch {
+    width: auto;
+}
+
+.gpu-type-select {
+    width: 14;
+    height: auto;
+}
+
+.wg-columns {
+    layout: horizontal;
+    height: auto;
+}
+
+.wg-col {
+    width: 1fr;
+    height: auto;
+}
+
+.form-buttons {
+    dock: bottom;
+    layout: horizontal;
+    height: 3;
+    align-horizontal: center;
+}
+
+.form-buttons Button {
+    margin: 0 1;
+}
+
+#form-error {
+    color: $error;
+    margin: 1 0;
+    display: none;
+}
+
+#form-error.visible {
+    display: block;
+}
+
+/* Review section */
+#review-section {
+    padding: 1 2;
+    border: tall $primary-darken-1;
+    margin: 1 0;
+}
+
+/* Worker group list in create form */
+.wg-list-item {
+    layout: horizontal;
+    height: auto;
+    margin: 0 0 1 0;
+    padding: 1;
+    border: tall $primary-darken-2;
+}
+
+/* ── Scale flow ──────────────────────────────────── */
+
+#scale-dialog {
+    width: 70;
+    height: auto;
+    max-height: 80%;
+    border: thick $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+.scale-group-option {
+    height: auto;
+    padding: 1;
+}
+
+#scale-effect {
+    margin: 1 0;
+}
+
+.scale-up {
+    color: green;
+}
+
+.scale-down {
+    color: yellow;
+}
+
+.scale-same {
+    color: $text-muted;
+}
+
+/* ── Delete confirm ──────────────────────────────── */
+
+ModalScreen {
+    align: center middle;
+}
+
+#delete-dialog {
+    width: 65;
+    height: auto;
+    max-height: 80%;
+    border: thick $error;
+    background: $surface;
+    padding: 1 2;
+}
+
+.dialog-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+.dialog-buttons {
+    layout: horizontal;
+    height: auto;
+    margin-top: 1;
+    align-horizontal: center;
+}
+
+.dialog-buttons Button {
+    margin: 0 2;
+}
+
+.side-effect {
+    margin-left: 2;
+    color: $warning;
+}
+
+/* ── Namespace picker ────────────────────────────── */
+
+#namespace-dialog {
+    width: 60;
+    height: auto;
+    max-height: 80%;
+    border: thick $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+#ns-search-input {
+    margin: 1 0;
+    height: 1;
+}
+
+#ns-list {
+    height: auto;
+    max-height: 20;
+}
+
+#ns-manual-input {
+    margin: 1 0;
+    height: 1;
+}
+
+.ns-current {
+    text-style: bold;
+    color: $accent;
+}
+
+/* ── Help overlay ────────────────────────────────── */
+
+#help-dialog {
+    width: 75;
+    max-height: 90%;
+    overflow-y: auto;
+    border: thick $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+.help-category {
+    text-style: bold;
+    color: $accent;
+    margin-top: 1;
+    margin-bottom: 0;
+}
+
+.help-row {
+    layout: horizontal;
+    height: auto;
+}
+
+.help-key {
+    width: 14;
+    text-style: bold;
+    color: $accent;
+}
+
+.help-desc {
+    width: 1fr;
+}
+
+/* ── Status indicators ───────────────────────────── */
+
+.status-healthy {
+    color: green;
+}
+
+.status-provisioning {
+    color: yellow;
+}
+
+.status-degraded {
+    color: $warning;
+}
+
+.status-failed {
+    color: red;
+}
+
+.status-unknown {
+    color: $text-muted;
+}

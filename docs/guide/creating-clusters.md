@@ -1,0 +1,239 @@
+# Creating Clusters
+
+This guide covers all the ways to create Ray clusters with Krayne — from a single command to complex multi-worker GPU configurations.
+
+---
+
+## Basic creation
+
+The simplest way to create a cluster:
+
+```bash
+krayne create my-cluster
+```
+
+![krayne create output](../assets/cli-create.png)
+
+The default cluster includes:
+
+- **Head node**: 15 CPUs, 48 Gi memory, no GPUs
+- **1 worker group**: autoscaling 0–1 workers (0 initial), 15 CPUs, 48 Gi memory
+- **Autoscaling**: enabled (Ray v2 in-tree autoscaler)
+- **Services**: Jupyter notebook + SSH enabled
+
+---
+
+## Autoscaling clusters
+
+By default, clusters have autoscaling enabled. Control worker scaling bounds:
+
+```bash
+# Scale between 0 and 10 workers, start with 2
+krayne create my-cluster --min-workers 0 --max-workers 10 --workers 2
+
+# Disable autoscaling entirely (fixed replica count)
+krayne create my-cluster --no-autoscaling --workers 4
+```
+
+```python
+from krayne.config import ClusterConfig, WorkerGroupConfig, AutoscalerConfig
+
+# Autoscaling with custom bounds
+config = ClusterConfig(
+    name="auto-cluster",
+    worker_groups=[
+        WorkerGroupConfig(replicas=2, min_replicas=0, max_replicas=10),
+    ],
+)
+
+# Fixed replicas (no autoscaling)
+config = ClusterConfig(
+    name="static-cluster",
+    autoscaler=AutoscalerConfig(enabled=False),
+    worker_groups=[
+        WorkerGroupConfig(replicas=4, min_replicas=4, max_replicas=4),
+    ],
+)
+```
+
+---
+
+## GPU clusters
+
+Add GPUs to workers with CLI flags:
+
+```bash
+krayne create gpu-experiment \
+    --gpus-per-worker 1 \
+    --worker-gpu-type a100 \
+    --workers 2
+```
+
+This creates 2 workers, each with 1 NVIDIA A100 GPU. Krayne sets the appropriate Kubernetes node selectors and resource limits automatically.
+
+!!! note "GPU types"
+    Common GPU types: `t4`, `a100`, `v100`, `l4`, `h100`. The value maps to the `cloud.google.com/gke-accelerator` node selector.
+
+---
+
+## Custom resources
+
+Override head and worker resources:
+
+```bash
+krayne create my-cluster \
+    --cpus-in-head 8 \
+    --memory-in-head 32Gi \
+    --workers 4
+```
+
+---
+
+## Using a YAML config file
+
+For complex configurations — multiple worker groups, custom images, specific services — use a YAML file:
+
+```yaml title="cluster.yaml"
+name: my-experiment
+namespace: ml-team
+head:
+  cpus: 8
+  memory: 32Gi
+worker_groups:
+  - name: cpu-workers
+    replicas: 4
+    cpus: 15
+    memory: 48Gi
+  - name: gpu-workers
+    replicas: 2
+    gpus: 1
+    gpu_type: a100
+    image: rayproject/ray:2.41.0-gpu
+services:
+  notebook: true
+  code_server: true
+```
+
+```bash
+krayne create my-experiment --file cluster.yaml
+```
+
+!!! tip "CLI flags override YAML"
+    When both a YAML file and CLI flags are provided, CLI flags take precedence:
+
+    ```bash
+    # YAML sets workers to 4, but this creates 8
+    krayne create my-experiment --file cluster.yaml --workers 8
+    ```
+
+---
+
+## Using the Python SDK
+
+The SDK provides the same functionality for use in scripts, notebooks, and pipelines:
+
+```python
+from krayne.api import create_cluster
+from krayne.config import ClusterConfig, WorkerGroupConfig
+
+# Simple cluster
+config = ClusterConfig(name="sdk-cluster")
+info = create_cluster(config, wait=True)
+print(f"Dashboard: {info.dashboard_url}")
+
+# GPU cluster with multiple worker groups
+config = ClusterConfig(
+    name="training-run",
+    namespace="ml-team",
+    worker_groups=[
+        WorkerGroupConfig(name="cpu-workers", replicas=4),
+        WorkerGroupConfig(
+            name="gpu-workers",
+            replicas=2,
+            gpus=1,
+            gpu_type="a100",
+        ),
+    ],
+)
+info = create_cluster(config, wait=True, timeout=600)
+```
+
+### Managed cluster (automatic cleanup)
+
+Use `managed_cluster` as a context manager to create a cluster that is automatically deleted when you're done. By default, port-forward tunnels are opened so all service URLs resolve to `localhost`:
+
+```python
+import ray
+from krayne.api import managed_cluster
+from krayne.config import ClusterConfig, WorkerGroupConfig
+
+config = ClusterConfig(
+    name="experiment",
+    worker_groups=[WorkerGroupConfig(replicas=2, gpus=1, gpu_type="a100")],
+)
+
+with managed_cluster(config, timeout=600) as managed:
+    ray.init(managed.tunnel.client_url)     # ray://localhost:...
+    print(managed.tunnel.dashboard_url)     # http://localhost:...
+
+    # In-cluster IPs are always available via managed.cluster
+    print(managed.cluster.client_url)       # ray://10.0.0.1:10001
+
+    # ... run distributed work ...
+    ray.shutdown()
+# Tunnels closed, then cluster deleted — even if an exception occurs
+```
+
+This is useful for scripts, CI pipelines, and notebooks where you want guaranteed cleanup.
+
+!!! tip "Disabling tunnels"
+    If you're running inside the same Kubernetes cluster (e.g. in a pod or notebook on the cluster), you can skip tunnels and use in-cluster IPs directly:
+
+    ```python
+    with managed_cluster(config, tunnel=False) as managed:
+        ray.init(managed.cluster.client_url)   # ray://10.0.0.1:10001
+    ```
+
+### Loading from YAML
+
+```python
+from krayne.api import create_cluster
+from krayne.config import load_config_from_yaml
+
+# Basic load
+config = load_config_from_yaml("cluster.yaml")
+
+# With overrides (supports dot-notation for nested fields)
+config = load_config_from_yaml(
+    "cluster.yaml",
+    overrides={"namespace": "staging", "head.cpus": 32},
+)
+
+info = create_cluster(config, wait=True)
+```
+
+---
+
+## Specifying a namespace
+
+By default, clusters are created in the `default` namespace:
+
+```bash
+# Specify a namespace
+krayne create my-cluster -n ml-team
+```
+
+```python
+config = ClusterConfig(name="my-cluster", namespace="ml-team")
+```
+
+!!! warning
+    The namespace must already exist in Kubernetes. Krayne raises `NamespaceNotFoundError` if it doesn't.
+
+---
+
+## What's next
+
+- [Managing Clusters](managing-clusters.md) — list, describe, scale, and delete clusters
+- [Configuration](configuration.md) — full config model, defaults, and YAML schema
+- [CLI Reference](../reference/cli.md) — complete `krayne create` flag documentation

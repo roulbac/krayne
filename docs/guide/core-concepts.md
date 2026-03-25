@@ -1,0 +1,209 @@
+# Core Concepts
+
+This page explains the key concepts behind Krayne and Ray on Kubernetes.
+
+---
+
+## Ray cluster anatomy
+
+A Ray cluster consists of a **head node** and one or more **worker groups**. Krayne manages these as Kubernetes pods via the KubeRay operator.
+
+```mermaid
+graph TB
+  subgraph cluster["Ray Cluster"]
+    direction TB
+    Head["<b>Head Node</b><br/>GCS Server<br/>Dashboard :8265<br/>Ray Client :10001<br/>GCS :6379"]
+    subgraph wg1["Worker Group: cpu-workers"]
+      W1["Worker 1<br/>15 CPU, 48Gi"]
+      W2["Worker 2<br/>15 CPU, 48Gi"]
+    end
+    subgraph wg2["Worker Group: gpu-workers"]
+      G1["Worker 1<br/>1x A100 GPU"]
+      G2["Worker 2<br/>1x A100 GPU"]
+    end
+    Head --- W1
+    Head --- W2
+    Head --- G1
+    Head --- G2
+  end
+  User["User"] -->|"Dashboard :8265"| Head
+  User -->|"Ray Client :10001"| Head
+  User -->|"Notebook :8888"| Head
+```
+
+| Component | Role |
+|---|---|
+| **Head node** | Runs the Global Control Service (GCS), Ray dashboard, and scheduling. Does not typically run user workloads. |
+| **Worker group** | A set of identically configured worker pods. A cluster can have multiple worker groups (e.g., CPU workers and GPU workers). |
+| **Services** | Jupyter notebook, Code Server, and SSH are optionally exposed on the head node. |
+
+---
+
+## KubeRay and the RayCluster CRD
+
+[KubeRay](https://ray-project.github.io/kuberay/) is a Kubernetes operator that manages Ray clusters via a Custom Resource Definition (CRD): `ray.io/v1/RayCluster`.
+
+Krayne generates the `RayCluster` manifest from your configuration and submits it to the Kubernetes API. The KubeRay operator then reconciles the desired state — creating pods, services, and networking.
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant Krayne as Krayne CLI/SDK
+  participant K8s as Kubernetes API
+  participant KubeRay as KubeRay Operator
+  participant Pods as Ray Pods
+
+  User->>Krayne: krayne create my-cluster
+  Krayne->>Krayne: Build ClusterConfig
+  Krayne->>Krayne: build_manifest(config)
+  Krayne->>K8s: Create RayCluster CR
+  K8s->>KubeRay: Notify: new RayCluster
+  KubeRay->>Pods: Create head + worker pods
+  Pods-->>KubeRay: Pods running
+  KubeRay-->>K8s: Update status: Ready
+  K8s-->>Krayne: Status: ready
+  Krayne-->>User: Cluster ready!
+```
+
+You never need to write the `RayCluster` YAML yourself — Krayne handles manifest generation, submission, and status polling.
+
+---
+
+## Cluster lifecycle
+
+A cluster moves through several states from creation to deletion:
+
+```mermaid
+stateDiagram-v2
+  [*] --> creating: krayne create
+  creating --> ready: All pods running
+  creating --> image_pull_error: Bad container image
+  creating --> crash_loop: Container crash
+  creating --> unschedulable: Insufficient resources
+  ready --> ready: krayne scale
+  ready --> [*]: krayne delete
+  image_pull_error --> [*]: krayne delete
+  crash_loop --> [*]: krayne delete
+  unschedulable --> [*]: krayne delete
+```
+
+| Status | Meaning |
+|---|---|
+| `creating` | Cluster submitted, pods being scheduled |
+| `ready` | All pods running, cluster operational |
+| `containers-creating` | Pod scheduled, pulling images |
+| `image-pull-error` | Container image not found or inaccessible |
+| `crash-loop` | Container repeatedly crashing (`CrashLoopBackOff`) |
+| `unschedulable` | Kubernetes cannot schedule pods (insufficient CPU, memory, or GPUs) |
+| `pods-pending` | Pods waiting to be scheduled |
+| `running` | Pods running but cluster not fully ready |
+
+Use `krayne describe <name>` to check the current status at any time.
+
+---
+
+## Namespaces
+
+Krayne scopes all operations to a Kubernetes **namespace**. The default namespace is `default`, but you can specify any namespace:
+
+```bash
+# CLI
+krayne create my-cluster -n ml-team
+krayne get -n ml-team
+
+# Python SDK
+from krayne.api import create_cluster
+from krayne.config import ClusterConfig
+
+config = ClusterConfig(name="my-cluster", namespace="ml-team")
+create_cluster(config)
+```
+
+Clusters in different namespaces are independent — they can share names without conflict.
+
+---
+
+## Configuration model
+
+Krayne uses a layered configuration system with three sources, resolved in order of precedence:
+
+```mermaid
+flowchart LR
+  CLI["<b>CLI Flags</b><br/>(highest priority)"]
+  YAML["<b>YAML File</b>"]
+  Defaults["<b>Built-in Defaults</b><br/>(lowest priority)"]
+
+  CLI --> Merge["Merge"]
+  YAML --> Merge
+  Defaults --> Merge
+  Merge --> Validate{"Pydantic<br/>Validation"}
+  Validate -->|"valid"| Config["ClusterConfig"]
+  Validate -->|"invalid"| Error["ConfigValidationError"]
+```
+
+The only required field is `name`. Everything else has sensible defaults:
+
+```bash
+# This is a complete, valid command
+krayne create my-cluster
+```
+
+See [Configuration](configuration.md) for the full config model and defaults.
+
+---
+
+## Services
+
+Krayne exposes several services on the head node, each mapped to a container port:
+
+| Service | Default | Port | Description |
+|---|---|---|---|
+| **Jupyter Notebook** | Enabled | 8888 | Web-based notebook environment on the head node |
+| **SSH** | Enabled | 22 | SSH access to the head node |
+| **Code Server** | Enabled | 8443 | Browser-based [code-server](https://github.com/coder/code-server), installed at container startup |
+
+When enabled, service URLs appear in `ClusterInfo` (e.g. `notebook_url`, `code_server_url`, `ssh_url`) and in the CLI output.
+
+All services are installed and started via a `postStart` lifecycle hook on the ray-head container. Jupyter is installed with `pip install notebook`, and Code Server is installed from a [standalone pre-built binary](https://github.com/coder/code-server/releases) (no apt-get or curl required).
+
+Services are configured via the `services` section of `ClusterConfig` or the YAML file:
+
+```yaml
+services:
+  notebook: true
+  code_server: true
+  ssh: true
+```
+
+To access services from your local machine, use `krayne tun-open` / `krayne tun-close`:
+
+```bash
+krayne tun-open my-cluster   # start tunnels (idempotent)
+krayne tun-close my-cluster   # stop tunnels (idempotent)
+```
+
+---
+
+## CLI and SDK parity
+
+Every operation available from the CLI is available as a Python function with the same semantics:
+
+| CLI Command | SDK Function | Description |
+|---|---|---|
+| `krayne create` | `create_cluster()` | Create a new cluster |
+| `krayne get` | `list_clusters()` | List all clusters |
+| `krayne describe` | `describe_cluster()` | Get detailed cluster info |
+| `krayne scale` | `scale_cluster()` | Scale a worker group |
+| `krayne delete` | `delete_cluster()` | Delete a cluster |
+| — | `get_cluster()` | Get info for a single cluster |
+| — | `wait_until_ready()` | Poll until cluster is ready |
+
+The SDK is designed for automation — use it in scripts, notebooks, and CI/CD pipelines.
+
+---
+
+## What's next
+
+- [Local Sandbox](sandbox.md) — set up a local development environment
+- [Creating Clusters](creating-clusters.md) — create CPU, GPU, and multi-worker clusters
+- [Configuration](configuration.md) — full config model, defaults, and YAML schema

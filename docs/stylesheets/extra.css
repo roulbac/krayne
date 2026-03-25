@@ -1,0 +1,10 @@
+/* Load JetBrains Mono — a monospace font with correct-width box-drawing
+   characters (╭╮╰╯│─┌┐└┘├┤┼) and symbols (✓).  Without a loaded web
+   font the browser falls back to system monospace which often renders
+   these glyphs wider than one character cell, breaking Rich-style
+   terminal output alignment. */
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap");
+
+:root {
+  --md-code-font: "JetBrains Mono";
+}
