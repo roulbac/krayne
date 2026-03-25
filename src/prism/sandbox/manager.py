@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,6 +32,29 @@ K3S_IMAGE = "rancher/k3s:v1.35.2-k3s1"
 HELM_IMAGE = "alpine/helm"
 KUBERAY_HELM_REPO = "https://ray-project.github.io/kuberay-helm"
 SANDBOX_KUBECONFIG = PRISM_DIR / "sandbox-kubeconfig"
+
+# Step names for progress reporting
+STEP_DOCKER = "Docker"
+STEP_K3S_CONTAINER = "K3S Container"
+STEP_K3S_NODE = "K3S Node"
+STEP_KUBECONFIG = "Kubeconfig"
+STEP_HELM_INSTALL = "KubeRay Helm Chart"
+STEP_CRD = "RayCluster CRD"
+STEP_OPERATOR = "KubeRay Operator"
+
+SETUP_STEPS = [
+    STEP_DOCKER,
+    STEP_K3S_CONTAINER,
+    STEP_K3S_NODE,
+    STEP_KUBECONFIG,
+    STEP_HELM_INSTALL,
+    STEP_CRD,
+    STEP_OPERATOR,
+]
+
+# Progress callback type: (step_name, status) where status is one of
+# "pending", "in_progress", "done", "failed"
+ProgressCallback = Callable[[str, str], None] | None
 
 
 @dataclass(frozen=True)
@@ -73,10 +97,19 @@ def _container_exists() -> bool:
     return result.returncode == 0
 
 
-def _wait_for_k3s(timeout: int = 120) -> None:
+def _notify(on_progress: ProgressCallback, step: str, status: str) -> None:
+    """Call the progress callback if provided."""
+    if on_progress is not None:
+        on_progress(step, status)
+
+
+def _wait_for_k3s(
+    timeout: int = 120, on_progress: ProgressCallback = None
+) -> None:
     """Poll until the k3s node is ready inside the container."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        _notify(on_progress, STEP_K3S_NODE, "in_progress")
         result = subprocess.run(
             [
                 "docker", "exec", SANDBOX_CONTAINER_NAME,
@@ -92,10 +125,13 @@ def _wait_for_k3s(timeout: int = 120) -> None:
     raise SandboxError(f"K3S node not ready within {timeout}s")
 
 
-def _wait_for_crds(kubeconfig: str, timeout: int = 120) -> None:
+def _wait_for_crds(
+    kubeconfig: str, timeout: int = 120, on_progress: ProgressCallback = None
+) -> None:
     """Wait until the RayCluster CRD is registered."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        _notify(on_progress, STEP_CRD, "in_progress")
         result = subprocess.run(
             ["kubectl", "--kubeconfig", kubeconfig, "get", "crd", "rayclusters.ray.io"],
             capture_output=True,
@@ -108,11 +144,16 @@ def _wait_for_crds(kubeconfig: str, timeout: int = 120) -> None:
 
 
 def _wait_for_deployment(
-    name: str, kubeconfig: str, namespace: str = "default", timeout: int = 180
+    name: str,
+    kubeconfig: str,
+    namespace: str = "default",
+    timeout: int = 180,
+    on_progress: ProgressCallback = None,
 ) -> None:
     """Wait until a deployment has at least one available replica."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        _notify(on_progress, STEP_OPERATOR, "in_progress")
         result = subprocess.run(
             [
                 "kubectl", "--kubeconfig", kubeconfig,
@@ -134,29 +175,30 @@ def _wait_for_deployment(
 # ---------------------------------------------------------------------------
 
 
-def setup_sandbox() -> str:
+def setup_sandbox(on_progress: ProgressCallback = None) -> str:
     """Create a local k3s container with KubeRay and return the kubeconfig path.
 
-    Steps:
-        1. Verify Docker is available.
-        2. Start a k3s container with port 6443 mapped.
-        3. Wait for k3s to become ready.
-        4. Extract the kubeconfig.
-        5. Install KubeRay via Helm.
-        6. Wait for the CRD and operator deployment.
-        7. Save the kubeconfig as the active Prism config.
+    Args:
+        on_progress: Optional callback ``(step_name, status)`` invoked as each
+            setup component transitions.  *status* is one of ``"pending"``,
+            ``"in_progress"``, ``"done"``, or ``"failed"``.
     """
     # 1. Check Docker
+    _notify(on_progress, STEP_DOCKER, "in_progress")
     try:
         _run(["docker", "info"])
     except SandboxError:
+        _notify(on_progress, STEP_DOCKER, "failed")
         raise DockerNotFoundError()
+    _notify(on_progress, STEP_DOCKER, "done")
 
     # 2. Check for existing sandbox
     if _container_exists():
+        _notify(on_progress, STEP_K3S_CONTAINER, "failed")
         raise SandboxAlreadyExistsError()
 
     # 3. Start k3s
+    _notify(on_progress, STEP_K3S_CONTAINER, "in_progress")
     _run([
         "docker", "run", "-d",
         "--name", SANDBOX_CONTAINER_NAME,
@@ -166,12 +208,16 @@ def setup_sandbox() -> str:
         K3S_IMAGE,
         "server", "--disable=traefik",
     ])
+    _notify(on_progress, STEP_K3S_CONTAINER, "done")
 
     try:
-        # 4. Wait for k3s
-        _wait_for_k3s()
+        # 4. Wait for k3s node
+        _notify(on_progress, STEP_K3S_NODE, "in_progress")
+        _wait_for_k3s(on_progress=on_progress)
+        _notify(on_progress, STEP_K3S_NODE, "done")
 
         # 5. Extract kubeconfig
+        _notify(on_progress, STEP_KUBECONFIG, "in_progress")
         result = _run([
             "docker", "exec", SANDBOX_CONTAINER_NAME,
             "cat", "/etc/rancher/k3s/k3s.yaml",
@@ -189,8 +235,10 @@ def setup_sandbox() -> str:
         internal_kubeconfig.write(raw_kubeconfig.encode())
         internal_kubeconfig.close()
         internal_path = internal_kubeconfig.name
+        _notify(on_progress, STEP_KUBECONFIG, "done")
 
         # 6. Install KubeRay via Helm
+        _notify(on_progress, STEP_HELM_INSTALL, "in_progress")
         try:
             _run([
                 "docker", "run", "--rm",
@@ -203,11 +251,20 @@ def setup_sandbox() -> str:
             ])
         finally:
             Path(internal_path).unlink(missing_ok=True)
+        _notify(on_progress, STEP_HELM_INSTALL, "done")
 
         # 7. Wait for CRD + operator
         kubeconfig_path = str(SANDBOX_KUBECONFIG)
-        _wait_for_crds(kubeconfig_path)
-        _wait_for_deployment("kuberay-operator", kubeconfig_path)
+
+        _notify(on_progress, STEP_CRD, "in_progress")
+        _wait_for_crds(kubeconfig_path, on_progress=on_progress)
+        _notify(on_progress, STEP_CRD, "done")
+
+        _notify(on_progress, STEP_OPERATOR, "in_progress")
+        _wait_for_deployment(
+            "kuberay-operator", kubeconfig_path, on_progress=on_progress
+        )
+        _notify(on_progress, STEP_OPERATOR, "done")
 
         # 8. Save as active config
         save_prism_settings(PrismSettings(kubeconfig=kubeconfig_path))

@@ -79,6 +79,7 @@ from prism.config import (  # noqa: E402
 from prism.output import (  # noqa: E402
     format_cluster_created,
     format_cluster_details,
+    build_sandbox_progress_table,
     format_cluster_list,
     format_init_success,
     format_json,
@@ -233,9 +234,22 @@ app.add_typer(sandbox_app)
 @sandbox_app.command("setup")
 def sandbox_setup() -> None:
     """Set up a local k3s cluster with KubeRay."""
+    from rich.live import Live
+    from prism.sandbox.manager import SETUP_STEPS
+
+    steps: dict[str, str] = {s: "pending" for s in SETUP_STEPS}
+
     try:
-        with console.status("Setting up sandbox..."):
-            kubeconfig_path = _setup_sandbox()
+        with Live(
+            build_sandbox_progress_table(steps), console=console, refresh_per_second=4
+        ) as live:
+
+            def _on_progress(step: str, status: str) -> None:
+                steps[step] = status
+                live.update(build_sandbox_progress_table(steps))
+
+            kubeconfig_path = _setup_sandbox(on_progress=_on_progress)
+
         format_sandbox_setup_success(kubeconfig_path, console)
     except PrismError as exc:
         _handle_error(exc)

@@ -16,6 +16,9 @@ from prism.errors import (
 )
 from prism.sandbox.manager import (
     SANDBOX_CONTAINER_NAME,
+    SETUP_STEPS,
+    STEP_DOCKER,
+    STEP_K3S_CONTAINER,
     SandboxStatus,
     sandbox_status,
     setup_sandbox,
@@ -96,6 +99,42 @@ class TestSetupSandbox:
         path = setup_sandbox()
         assert path.endswith("sandbox-kubeconfig")
         assert Path(path).exists()
+
+    @patch("prism.sandbox.manager.subprocess.run")
+    @patch("prism.sandbox.manager._container_exists", return_value=False)
+    @patch("prism.sandbox.manager._wait_for_k3s")
+    @patch("prism.sandbox.manager._wait_for_crds")
+    @patch("prism.sandbox.manager._wait_for_deployment")
+    def test_setup_progress_callback(
+        self, mock_deploy, mock_crds, mock_k3s, mock_exists, mock_run, tmp_path
+    ):
+        kubeconfig_content = "apiVersion: v1\nclusters:\n- cluster:\n    server: https://127.0.0.1:6443\n"
+
+        def side_effect(cmd, **kwargs):
+            result = MagicMock(spec=subprocess.CompletedProcess)
+            result.returncode = 0
+            result.stdout = kubeconfig_content
+            result.stderr = ""
+            return result
+
+        mock_run.side_effect = side_effect
+        callback = MagicMock()
+
+        setup_sandbox(on_progress=callback)
+
+        # Every step should have been reported as "done"
+        done_calls = [
+            c for c in callback.call_args_list if c[0][1] == "done"
+        ]
+        done_steps = {c[0][0] for c in done_calls}
+        assert done_steps == set(SETUP_STEPS)
+
+        # Docker should be reported as in_progress then done
+        docker_calls = [
+            c[0][1] for c in callback.call_args_list if c[0][0] == STEP_DOCKER
+        ]
+        assert docker_calls[0] == "in_progress"
+        assert docker_calls[-1] == "done"
 
     @patch("prism.sandbox.manager._run")
     def test_docker_not_found(self, mock_run):

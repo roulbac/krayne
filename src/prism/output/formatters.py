@@ -125,6 +125,30 @@ def format_sandbox_setup_success(kubeconfig_path: str, console: Console) -> None
     console.print(Panel(table, title="Sandbox Ready", border_style="green"))
 
 
+_STATUS_DISPLAY = {
+    "pending": "[dim]waiting[/dim]",
+    "in_progress": "[yellow]setting up...[/yellow]",
+    "done": "[green]✓ ready[/green]",
+    "failed": "[red]✗ failed[/red]",
+}
+
+
+def build_sandbox_progress_table(steps: dict[str, str]) -> Table:
+    """Build a Rich Table showing sandbox setup component statuses.
+
+    *steps* maps component names to status strings
+    (``"pending"``, ``"in_progress"``, ``"done"``, ``"failed"``).
+    """
+    table = Table(
+        show_header=True, box=None, padding=(0, 2), title="Sandbox Setup",
+    )
+    table.add_column("Component", style="bold")
+    table.add_column("Status")
+    for name, status in steps.items():
+        table.add_row(name, _STATUS_DISPLAY.get(status, status))
+    return table
+
+
 def format_sandbox_status(status: SandboxStatus, console: Console) -> None:
     """Print a panel showing sandbox status."""
     table = Table(show_header=False, box=None, padding=(0, 2))

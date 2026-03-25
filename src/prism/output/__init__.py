@@ -1,6 +1,7 @@
 """Output formatters for CLI display."""
 
 from prism.output.formatters import (
+    build_sandbox_progress_table,
     format_cluster_created,
     format_cluster_details,
     format_cluster_list,
@@ -11,6 +12,7 @@ from prism.output.formatters import (
 )
 
 __all__ = [
+    "build_sandbox_progress_table",
     "format_cluster_created",
     "format_cluster_details",
     "format_cluster_list",
