@@ -1,11 +1,9 @@
-"""Integration tests: full cluster lifecycle against a real k3d cluster with KubeRay.
+"""Integration tests: full cluster lifecycle against a testcontainers K3S cluster with KubeRay.
 
 Requirements:
   - Docker running
-  - k3d CLI available on PATH
   - kubectl CLI available on PATH
-  - helm CLI available on PATH
-  - ``pip install testcontainers``
+  - ``uv sync``
 
 Run with:
   pytest tests/integration -m integration --timeout=600
@@ -14,7 +12,6 @@ Run with:
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import tempfile
 import time
@@ -23,16 +20,20 @@ from typing import Generator
 
 import pytest
 
-# Skip the entire module if Docker is not available
 pytestmark = pytest.mark.integration
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+K3S_IMAGE = "rancher/k3s:v1.35.2-k3s1"
+HELM_IMAGE = "alpine/helm"
+KUBERAY_NAMESPACE = "default"
+KUBERAY_HELM_REPO = "https://ray-project.github.io/kuberay-helm"
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-K3D_CLUSTER_NAME = "prism-integration-test"
-KUBERAY_NAMESPACE = "default"
-KUBERAY_HELM_REPO = "https://ray-project.github.io/kuberay-helm"
 
 
 def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -40,37 +41,46 @@ def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, check=True, capture_output=True, text=True, **kwargs)
 
 
-def _cmd_exists(name: str) -> bool:
-    return shutil.which(name) is not None
+def _kubectl(kubeconfig: str, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["kubectl", "--kubeconfig", kubeconfig, *args],
+        capture_output=True,
+        text=True,
+    )
 
 
-def _wait_for_crds(timeout: int = 120) -> None:
+def _helm(k3s_container_id: str, kubeconfig: str, *args: str) -> subprocess.CompletedProcess:
+    """Run a helm command via the alpine/helm Docker image on the k3s container network."""
+    return _run([
+        "docker", "run", "--rm",
+        "--network", f"container:{k3s_container_id}",
+        "-v", f"{kubeconfig}:/root/.kube/config:ro",
+        HELM_IMAGE,
+        *args,
+    ])
+
+
+def _wait_for_crds(kubeconfig: str, timeout: int = 120) -> None:
     """Wait until the RayCluster CRD is registered."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        result = subprocess.run(
-            ["kubectl", "get", "crd", "rayclusters.ray.io"],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
+        if _kubectl(kubeconfig, "get", "crd", "rayclusters.ray.io").returncode == 0:
             return
         time.sleep(3)
     raise TimeoutError("RayCluster CRD not registered within timeout")
 
 
-def _wait_for_deployment(name: str, namespace: str = "default", timeout: int = 180) -> None:
+def _wait_for_deployment(
+    name: str, kubeconfig: str, namespace: str = "default", timeout: int = 180
+) -> None:
     """Wait until a deployment has at least one available replica."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        result = subprocess.run(
-            [
-                "kubectl", "get", "deployment", name,
-                "-n", namespace,
-                "-o", "jsonpath={.status.availableReplicas}",
-            ],
-            capture_output=True,
-            text=True,
+        result = _kubectl(
+            kubeconfig,
+            "get", "deployment", name,
+            "-n", namespace,
+            "-o", "jsonpath={.status.availableReplicas}",
         )
         if result.returncode == 0 and result.stdout.strip() not in ("", "0", "null"):
             return
@@ -84,63 +94,51 @@ def _wait_for_deployment(name: str, namespace: str = "default", timeout: int = 1
 
 
 @pytest.fixture(scope="session")
-def k3d_cluster() -> Generator[str, None, None]:
-    """Create a k3d cluster for the test session, install KubeRay, tear down after."""
-    # Pre-flight checks
-    for tool in ("docker", "k3d", "kubectl", "helm"):
-        if not _cmd_exists(tool):
-            pytest.skip(f"{tool} not found on PATH")
+def k3s_cluster() -> Generator[str, None, None]:
+    """Spin up a K3S container, install KubeRay via ``alpine/helm``, tear down after.
 
-    # Check Docker is running
-    result = subprocess.run(["docker", "info"], capture_output=True, text=True)
-    if result.returncode != 0:
-        pytest.skip("Docker is not running")
+    Yields the path to a temporary kubeconfig file pointing at the K3S cluster.
+    """
+    from testcontainers.k3s import K3SContainer
 
-    # Create k3d cluster
-    _run([
-        "k3d", "cluster", "create", K3D_CLUSTER_NAME,
-        "--agents", "1",
-        "--wait",
-        "--timeout", "120s",
-        "--no-lb",
-    ])
+    with K3SContainer(image=K3S_IMAGE, enable_cgroup_mount=False) as k3s:
+        container_id = k3s.get_wrapped_container().id
 
-    try:
-        # Merge kubeconfig so the kubernetes client can find it
-        kubeconfig_path = os.environ.get("KUBECONFIG", str(Path.home() / ".kube" / "config"))
-        _run(["k3d", "kubeconfig", "merge", K3D_CLUSTER_NAME, "--kubeconfig-merge-default"])
+        tmpdir = tempfile.mkdtemp(prefix="prism-integ-")
+        host_kubeconfig = os.path.join(tmpdir, "kubeconfig")
+        internal_kubeconfig = os.path.join(tmpdir, "kubeconfig-internal")
 
-        # Install KubeRay operator via Helm
-        _run(["helm", "repo", "add", "kuberay", KUBERAY_HELM_REPO])
-        _run(["helm", "repo", "update"])
-        _run([
-            "helm", "install", "kuberay-operator", "kuberay/kuberay-operator",
-            "--namespace", KUBERAY_NAMESPACE,
-            "--wait",
-            "--timeout", "180s",
-        ])
+        with open(host_kubeconfig, "w") as f:
+            f.write(k3s.config_yaml())
 
-        # Wait for the CRD and operator deployment to be available
-        _wait_for_crds()
-        _wait_for_deployment("kuberay-operator", KUBERAY_NAMESPACE)
+        raw = k3s.get_wrapped_container().exec_run(["cat", "/etc/rancher/k3s/k3s.yaml"])
+        with open(internal_kubeconfig, "w") as f:
+            f.write(raw.output.decode("utf-8"))
 
-        yield K3D_CLUSTER_NAME
+        try:
+            _helm(
+                container_id, internal_kubeconfig,
+                "install", "kuberay-operator", "kuberay-operator",
+                "--repo", KUBERAY_HELM_REPO,
+                "--namespace", KUBERAY_NAMESPACE,
+            )
 
-    finally:
-        # Tear down
-        subprocess.run(
-            ["k3d", "cluster", "delete", K3D_CLUSTER_NAME],
-            capture_output=True,
-            text=True,
-        )
+            _wait_for_crds(host_kubeconfig)
+            _wait_for_deployment("kuberay-operator", host_kubeconfig, KUBERAY_NAMESPACE, timeout=300)
+
+            yield host_kubeconfig
+        finally:
+            for p in Path(tmpdir).iterdir():
+                p.unlink()
+            Path(tmpdir).rmdir()
 
 
 @pytest.fixture()
-def kube_client(k3d_cluster):
-    """Return a DefaultKubeClient connected to the k3d cluster."""
+def kube_client(k3s_cluster):
+    """Return a DefaultKubeClient connected to the K3S cluster."""
     from prism.kube.client import DefaultKubeClient
 
-    return DefaultKubeClient()
+    return DefaultKubeClient(kubeconfig=k3s_cluster)
 
 
 # ---------------------------------------------------------------------------
@@ -149,7 +147,7 @@ def kube_client(k3d_cluster):
 
 
 class TestClusterLifecycle:
-    """End-to-end lifecycle: create → get → list → describe → scale → delete."""
+    """End-to-end lifecycle: create -> get -> list -> describe -> scale -> delete."""
 
     CLUSTER_NAME = "integ-test"
     NAMESPACE = "default"
@@ -165,7 +163,6 @@ class TestClusterLifecycle:
         )
         from prism.config import ClusterConfig, HeadNodeConfig, WorkerGroupConfig
 
-        # Use minimal resources so it runs on a tiny k3d cluster
         config = ClusterConfig(
             name=self.CLUSTER_NAME,
             namespace=self.NAMESPACE,
@@ -207,7 +204,6 @@ class TestClusterLifecycle:
                 client=kube_client,
             )
             assert info.name == self.CLUSTER_NAME
-            # Verify the patch took effect
             details = describe_cluster(
                 self.CLUSTER_NAME, self.NAMESPACE, client=kube_client
             )

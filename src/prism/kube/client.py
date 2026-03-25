@@ -36,12 +36,12 @@ class KubeClient(Protocol):
 class DefaultKubeClient:
     """Default KubeClient backed by the official ``kubernetes`` Python client."""
 
-    def __init__(self) -> None:
+    def __init__(self, kubeconfig: str | None = None) -> None:
         try:
             k8s_config.load_incluster_config()
         except k8s_config.ConfigException:
             try:
-                k8s_config.load_kube_config()
+                k8s_config.load_kube_config(config_file=kubeconfig)
             except k8s_config.ConfigException as exc:
                 raise KubeConnectionError(
                     "Cannot load Kubernetes configuration. "

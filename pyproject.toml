@@ -20,24 +20,17 @@ prism = "prism.cli.app:app"
 dev = [
     "pytest>=7",
     "pytest-timeout>=2",
-]
-integration = [
-    "testcontainers>=4,<5",
-]
-docs = [
+    "testcontainers[k3s]>=4,<5",
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
 ]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["uv_build>=0.11.1,<0.12"]
+build-backend = "uv_build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/prism"]
-
-[tool.uv]
-default-groups = ["dev"]
+[tool.uv.build-backend]
+module-name = "prism"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
