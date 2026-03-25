@@ -17,8 +17,8 @@ class ServicesConfig(BaseModel):
 class HeadNodeConfig(BaseModel):
     """Head node resource configuration."""
 
-    cpus: int = 15
-    memory: str = "48Gi"
+    cpus: int = 2
+    memory: str = "2Gi"
     gpus: int = 0
     image: str | None = None
 
@@ -28,8 +28,8 @@ class WorkerGroupConfig(BaseModel):
 
     name: str = "worker"
     replicas: int = 1
-    cpus: int = 15
-    memory: str = "48Gi"
+    cpus: int = 2
+    memory: str = "2Gi"
     gpus: int = 0
     gpu_type: str = "t4"
     image: str | None = None

@@ -26,9 +26,9 @@ _INFO = ClusterInfo(
 
 _DETAILS = ClusterDetails(
     info=_INFO,
-    head=HeadNodeInfo(cpus=15, memory="48Gi", gpus=0, image="rayproject/ray:2.41.0"),
+    head=HeadNodeInfo(cpus=2, memory="2Gi", gpus=0, image="rayproject/ray:2.41.0"),
     worker_groups=[
-        WorkerGroupInfo(name="worker", replicas=2, cpus=15, memory="48Gi", gpus=0, gpu_type=None)
+        WorkerGroupInfo(name="worker", replicas=2, cpus=2, memory="2Gi", gpus=0, gpu_type=None)
     ],
     ray_version="unknown",
     python_version="unknown",

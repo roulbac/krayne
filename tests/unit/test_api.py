@@ -42,7 +42,7 @@ _SAMPLE_OBJ = {
                             "name": "ray-head",
                             "image": "rayproject/ray:2.41.0",
                             "resources": {
-                                "requests": {"cpu": 15, "memory": "48Gi"},
+                                "requests": {"cpu": 2, "memory": "2Gi"},
                             },
                         }
                     ]
@@ -62,7 +62,7 @@ _SAMPLE_OBJ = {
                                 "name": "ray-worker",
                                 "image": "rayproject/ray:2.41.0",
                                 "resources": {
-                                    "requests": {"cpu": 15, "memory": "48Gi"},
+                                    "requests": {"cpu": 2, "memory": "2Gi"},
                                 },
                             }
                         ]
@@ -131,7 +131,7 @@ class TestDescribeCluster:
         details = describe_cluster("test", "default", client=mock_client)
         assert isinstance(details, ClusterDetails)
         assert details.info.name == "test"
-        assert details.head.cpus == 15
+        assert details.head.cpus == 2
         assert len(details.worker_groups) == 1
         assert details.worker_groups[0].replicas == 2
 

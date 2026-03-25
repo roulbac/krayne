@@ -28,8 +28,8 @@ class TestClusterConfigDefaults:
         cfg = ClusterConfig(name="test")
         assert cfg.name == "test"
         assert cfg.namespace == "default"
-        assert cfg.head.cpus == 15
-        assert cfg.head.memory == "48Gi"
+        assert cfg.head.cpus == 2
+        assert cfg.head.memory == "2Gi"
         assert cfg.head.gpus == 0
         assert len(cfg.worker_groups) == 1
         assert cfg.worker_groups[0].replicas == 1
