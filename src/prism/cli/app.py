@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import traceback
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -24,6 +25,7 @@ err_console = Console(stderr=True)
 # Global options stored on the context
 _debug: bool = False
 _output_json: bool = False
+_kubeconfig: str | None = None
 
 
 def _version_callback(value: bool) -> None:
@@ -40,11 +42,13 @@ def main(
     ),
     debug: bool = typer.Option(False, "--debug", help="Show full tracebacks on error."),
     output: str = typer.Option("table", "--output", "-o", help="Output format: table or json."),
+    kubeconfig: Optional[str] = typer.Option(None, "--kubeconfig", help="Path to kubeconfig file."),
 ) -> None:
     """Prism — Ray clusters made simple."""
-    global _debug, _output_json
+    global _debug, _output_json, _kubeconfig
     _debug = debug
     _output_json = output == "json"
+    _kubeconfig = kubeconfig
 
 
 def _handle_error(exc: Exception) -> None:
@@ -65,12 +69,26 @@ from prism.api import (  # noqa: E402
     list_clusters as _list_clusters,
     scale_cluster as _scale_cluster,
 )
-from prism.config import ClusterConfig, WorkerGroupConfig, load_config_from_yaml  # noqa: E402
+from prism.config import (  # noqa: E402
+    ClusterConfig,
+    PrismSettings,
+    WorkerGroupConfig,
+    load_config_from_yaml,
+    save_prism_settings,
+)
 from prism.output import (  # noqa: E402
     format_cluster_created,
     format_cluster_details,
     format_cluster_list,
+    format_init_success,
     format_json,
+    format_sandbox_setup_success,
+    format_sandbox_status,
+)
+from prism.sandbox import (  # noqa: E402
+    setup_sandbox as _setup_sandbox,
+    teardown_sandbox as _teardown_sandbox,
+    sandbox_status as _sandbox_status,
 )
 
 
@@ -106,7 +124,7 @@ def create(
                 ],
             )
 
-        info = _create_cluster(config, wait=wait, timeout=timeout)
+        info = _create_cluster(config, wait=wait, timeout=timeout, kubeconfig=_kubeconfig)
         if _output_json:
             format_json(info, console)
         else:
@@ -121,7 +139,7 @@ def get(
 ) -> None:
     """List Ray clusters in a namespace."""
     try:
-        clusters = _list_clusters(namespace)
+        clusters = _list_clusters(namespace, kubeconfig=_kubeconfig)
         if _output_json:
             format_json(clusters, console)
         else:
@@ -137,7 +155,7 @@ def describe(
 ) -> None:
     """Show detailed information about a cluster."""
     try:
-        details = _describe_cluster(name, namespace)
+        details = _describe_cluster(name, namespace, kubeconfig=_kubeconfig)
         if _output_json:
             format_json(details, console)
         else:
@@ -155,7 +173,7 @@ def scale(
 ) -> None:
     """Scale a worker group of a cluster."""
     try:
-        info = _scale_cluster(name, namespace, worker_group, replicas)
+        info = _scale_cluster(name, namespace, worker_group, replicas, kubeconfig=_kubeconfig)
         if _output_json:
             format_json(info, console)
         else:
@@ -176,7 +194,71 @@ def delete(
             typer.confirm(
                 f"Delete cluster '{name}' in namespace '{namespace}'?", abort=True
             )
-        _delete_cluster(name, namespace)
+        _delete_cluster(name, namespace, kubeconfig=_kubeconfig)
         console.print(f"Cluster '{name}' deleted.", style="green")
+    except PrismError as exc:
+        _handle_error(exc)
+
+
+# -- Init command -----------------------------------------------------------
+
+
+@app.command("init")
+def init(
+    kubeconfig: str = typer.Argument(..., help="Path to kubeconfig file."),
+) -> None:
+    """Save a kubeconfig path for Prism to use."""
+    try:
+        path = Path(kubeconfig).resolve()
+        if not path.exists():
+            from prism.errors import ConfigValidationError
+
+            raise ConfigValidationError(f"Kubeconfig file not found: {path}")
+        save_prism_settings(PrismSettings(kubeconfig=str(path)))
+        format_init_success(str(path), console)
+    except PrismError as exc:
+        _handle_error(exc)
+
+
+# -- Sandbox sub-app --------------------------------------------------------
+
+sandbox_app = typer.Typer(
+    name="sandbox",
+    help="Manage a local development sandbox (k3s + KubeRay).",
+    no_args_is_help=True,
+)
+app.add_typer(sandbox_app)
+
+
+@sandbox_app.command("setup")
+def sandbox_setup() -> None:
+    """Set up a local k3s cluster with KubeRay."""
+    try:
+        with console.status("Setting up sandbox..."):
+            kubeconfig_path = _setup_sandbox()
+        format_sandbox_setup_success(kubeconfig_path, console)
+    except PrismError as exc:
+        _handle_error(exc)
+
+
+@sandbox_app.command("teardown")
+def sandbox_teardown() -> None:
+    """Tear down the local sandbox cluster."""
+    try:
+        _teardown_sandbox()
+        console.print("Sandbox removed.", style="green")
+    except PrismError as exc:
+        _handle_error(exc)
+
+
+@sandbox_app.command("status")
+def sandbox_status_cmd() -> None:
+    """Show the current status of the sandbox."""
+    try:
+        status = _sandbox_status()
+        if _output_json:
+            format_json(status, console)
+        else:
+            format_sandbox_status(status, console)
     except PrismError as exc:
         _handle_error(exc)

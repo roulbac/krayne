@@ -51,3 +51,34 @@ class NamespaceNotFoundError(PrismError):
     def __init__(self, namespace: str) -> None:
         self.namespace = namespace
         super().__init__(f"Namespace '{namespace}' not found")
+
+
+class SandboxError(PrismError):
+    """Base exception for sandbox-related errors."""
+
+
+class DockerNotFoundError(SandboxError):
+    """Docker CLI is not available or Docker daemon is not running."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Docker not found or not running. "
+            "Install Docker and ensure the daemon is started."
+        )
+
+
+class SandboxAlreadyExistsError(SandboxError):
+    """Sandbox container already exists."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Sandbox 'prism-sandbox' already exists. "
+            "Run 'prism sandbox teardown' first."
+        )
+
+
+class SandboxNotFoundError(SandboxError):
+    """No sandbox container to tear down."""
+
+    def __init__(self) -> None:
+        super().__init__("No sandbox found. Run 'prism sandbox setup' first.")

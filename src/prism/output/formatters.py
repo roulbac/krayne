@@ -11,6 +11,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from prism.api.types import ClusterDetails, ClusterInfo
+from prism.sandbox.manager import SandboxStatus
 
 
 def format_cluster_created(info: ClusterInfo, console: Console) -> None:
@@ -102,3 +103,37 @@ def format_json(data: Any, console: Console) -> None:
         return obj
 
     console.print_json(json.dumps(_to_dict(data), default=str))
+
+
+def format_init_success(kubeconfig_path: str, console: Console) -> None:
+    """Print a confirmation panel after ``prism init``."""
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column("Field", style="bold cyan")
+    table.add_column("Value")
+    table.add_row("Kubeconfig", kubeconfig_path)
+    console.print(Panel(table, title="Prism Initialized", border_style="green"))
+
+
+def format_sandbox_setup_success(kubeconfig_path: str, console: Console) -> None:
+    """Print a success panel after sandbox setup."""
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column("Field", style="bold cyan")
+    table.add_column("Value")
+    table.add_row("Status", "running")
+    table.add_row("Kubeconfig", kubeconfig_path)
+    table.add_row("Next step", "prism create my-cluster")
+    console.print(Panel(table, title="Sandbox Ready", border_style="green"))
+
+
+def format_sandbox_status(status: SandboxStatus, console: Console) -> None:
+    """Print a panel showing sandbox status."""
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column("Field", style="bold cyan")
+    table.add_column("Value")
+    table.add_row("Running", "yes" if status.running else "no")
+    table.add_row("Container ID", status.container_id or "-")
+    table.add_row("K3S Image", status.k3s_version or "-")
+    table.add_row("Kubeconfig", status.kubeconfig or "-")
+    table.add_row("Created", status.created_at or "-")
+    style = "green" if status.running else "dim"
+    console.print(Panel(table, title="Sandbox Status", border_style=style))

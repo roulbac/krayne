@@ -12,15 +12,21 @@ from prism.api.types import (
     WorkerGroupInfo,
 )
 from prism.config.models import ClusterConfig
+from prism.config.settings import load_prism_settings
 from prism.errors import ClusterTimeoutError
 from prism.kube.client import DefaultKubeClient, KubeClient, _extract_status
 from prism.kube.manifest import RAY_IMAGE, build_manifest
 
 
-def _resolve_client(client: KubeClient | None) -> KubeClient:
-    if client is None:
-        return DefaultKubeClient()
-    return client
+def _resolve_client(
+    client: KubeClient | None, kubeconfig: str | None = None
+) -> KubeClient:
+    if client is not None:
+        return client
+    if kubeconfig is None:
+        settings = load_prism_settings()
+        kubeconfig = settings.kubeconfig
+    return DefaultKubeClient(kubeconfig=kubeconfig)
 
 
 # ---------------------------------------------------------------------------
@@ -32,11 +38,12 @@ def create_cluster(
     config: ClusterConfig,
     *,
     client: KubeClient | None = None,
+    kubeconfig: str | None = None,
     wait: bool = False,
     timeout: int = 300,
 ) -> ClusterInfo:
     """Create a new Ray cluster from *config* and return its info."""
-    kube = _resolve_client(client)
+    kube = _resolve_client(client, kubeconfig)
     manifest = build_manifest(config)
     obj = kube.create_ray_cluster(manifest)
     info = _obj_to_info(obj)
@@ -52,9 +59,10 @@ def get_cluster(
     namespace: str = "default",
     *,
     client: KubeClient | None = None,
+    kubeconfig: str | None = None,
 ) -> ClusterInfo:
     """Return summary info for a single cluster."""
-    kube = _resolve_client(client)
+    kube = _resolve_client(client, kubeconfig)
     obj = kube.get_ray_cluster(name, namespace)
     return _obj_to_info(obj)
 
@@ -63,9 +71,10 @@ def list_clusters(
     namespace: str = "default",
     *,
     client: KubeClient | None = None,
+    kubeconfig: str | None = None,
 ) -> list[ClusterInfo]:
     """List all Ray clusters in *namespace*."""
-    kube = _resolve_client(client)
+    kube = _resolve_client(client, kubeconfig)
     items = kube.list_ray_clusters(namespace)
     return [_obj_to_info(obj) for obj in items]
 
@@ -75,9 +84,10 @@ def describe_cluster(
     namespace: str = "default",
     *,
     client: KubeClient | None = None,
+    kubeconfig: str | None = None,
 ) -> ClusterDetails:
     """Return extended details for a cluster."""
-    kube = _resolve_client(client)
+    kube = _resolve_client(client, kubeconfig)
     obj = kube.get_ray_cluster(name, namespace)
     return _obj_to_details(obj)
 
@@ -89,9 +99,10 @@ def scale_cluster(
     replicas: int,
     *,
     client: KubeClient | None = None,
+    kubeconfig: str | None = None,
 ) -> ClusterInfo:
     """Scale *worker_group* of a cluster to *replicas*."""
-    kube = _resolve_client(client)
+    kube = _resolve_client(client, kubeconfig)
     obj = kube.get_ray_cluster(name, namespace)
 
     worker_specs = obj.get("spec", {}).get("workerGroupSpecs", [])
@@ -118,9 +129,10 @@ def delete_cluster(
     namespace: str = "default",
     *,
     client: KubeClient | None = None,
+    kubeconfig: str | None = None,
 ) -> None:
     """Delete a Ray cluster."""
-    kube = _resolve_client(client)
+    kube = _resolve_client(client, kubeconfig)
     kube.delete_ray_cluster(name, namespace)
 
 
@@ -129,11 +141,12 @@ def wait_until_ready(
     namespace: str = "default",
     *,
     client: KubeClient | None = None,
+    kubeconfig: str | None = None,
     timeout: int = 300,
     _poll_interval: float = 2.0,
 ) -> ClusterInfo:
     """Poll until the cluster reaches *ready* state or *timeout* expires."""
-    kube = _resolve_client(client)
+    kube = _resolve_client(client, kubeconfig)
     deadline = time.monotonic() + timeout
     while True:
         obj = kube.get_ray_cluster(name, namespace)

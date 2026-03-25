@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -167,3 +167,39 @@ class TestWaitUntilReady:
             wait_until_ready(
                 "test", "default", client=mock_client, timeout=1, _poll_interval=0.1
             )
+
+
+class TestKubeconfigPassthrough:
+    """Verify that kubeconfig= reaches DefaultKubeClient when no client is provided."""
+
+    @pytest.fixture(autouse=True)
+    def _patch_client(self):
+        with patch("prism.api.clusters.DefaultKubeClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.list_ray_clusters.return_value = [_SAMPLE_OBJ]
+            mock_instance.get_ray_cluster.return_value = _SAMPLE_OBJ
+            mock_instance.create_ray_cluster.return_value = _SAMPLE_OBJ
+            mock_cls.return_value = mock_instance
+            self.mock_cls = mock_cls
+            self.mock_instance = mock_instance
+            yield
+
+    @pytest.fixture(autouse=True)
+    def _patch_settings(self):
+        with patch("prism.api.clusters.load_prism_settings") as mock_settings:
+            from prism.config.settings import PrismSettings
+
+            mock_settings.return_value = PrismSettings()
+            yield
+
+    def test_explicit_kubeconfig(self):
+        list_clusters("default", kubeconfig="/custom/kubeconfig")
+        self.mock_cls.assert_called_once_with(kubeconfig="/custom/kubeconfig")
+
+    def test_no_kubeconfig_uses_settings(self):
+        from prism.config.settings import PrismSettings
+
+        with patch("prism.api.clusters.load_prism_settings") as mock_settings:
+            mock_settings.return_value = PrismSettings(kubeconfig="/from/settings")
+            list_clusters("default")
+            self.mock_cls.assert_called_with(kubeconfig="/from/settings")
