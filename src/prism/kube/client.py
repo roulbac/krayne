@@ -1,5 +1,3 @@
-"""Kubernetes client: protocol definition and default implementation."""
-
 from __future__ import annotations
 
 import time
@@ -58,8 +56,6 @@ class DefaultKubeClient:
 
         self._custom = k8s_client.CustomObjectsApi()
         self._core = k8s_client.CoreV1Api()
-
-    # -- CRD operations -------------------------------------------------------
 
     def create_ray_cluster(self, manifest: dict) -> dict:
         namespace = manifest["metadata"]["namespace"]
@@ -151,7 +147,6 @@ class DefaultKubeClient:
     def get_head_node_port(
         self, cluster_name: str, namespace: str, port_name: str
     ) -> int | None:
-        """Return the NodePort for *port_name* on the head service, or None."""
         svc_name = f"{cluster_name}-head-svc"
         try:
             svc = self._core.read_namespaced_service(svc_name, namespace)
@@ -161,8 +156,6 @@ class DefaultKubeClient:
             if port.name == port_name and port.node_port:
                 return int(port.node_port)
         return None
-
-    # -- helpers --------------------------------------------------------------
 
     def _ensure_namespace(self, namespace: str) -> None:
         try:
@@ -195,7 +188,6 @@ def _extract_status(obj: dict, pods: list[dict] | None = None) -> str:
 
 
 def _status_from_pods(pods: list[dict]) -> str:
-    """Derive a human-readable status from pod phases and container states."""
     if not pods:
         return "creating"
 

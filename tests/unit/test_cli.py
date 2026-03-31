@@ -1,5 +1,3 @@
-"""Unit tests for the Prism CLI using Typer's CliRunner."""
-
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch

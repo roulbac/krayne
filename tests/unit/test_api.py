@@ -1,5 +1,3 @@
-"""Unit tests for prism.api (SDK functional layer) with a mock KubeClient."""
-
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -20,13 +18,7 @@ from prism.config import ClusterConfig, WorkerGroupConfig
 from prism.errors import ClusterTimeoutError, PrismError
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
 _SAMPLE_OBJ = {
-    "apiVersion": "ray.io/v1",
-    "kind": "RayCluster",
     "metadata": {
         "name": "test",
         "namespace": "default",
@@ -85,11 +77,6 @@ def mock_client():
     client.list_pods.return_value = []
     client.get_head_node_port.return_value = None
     return client
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 
 
 class TestCreateCluster:

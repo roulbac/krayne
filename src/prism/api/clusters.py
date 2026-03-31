@@ -1,5 +1,3 @@
-"""Functional SDK for Ray cluster lifecycle management."""
-
 from __future__ import annotations
 
 import time
@@ -31,11 +29,6 @@ def _resolve_client(
         if context is None:
             context = settings.kube_context
     return DefaultKubeClient(kubeconfig=kubeconfig, context=context)
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 
 def create_cluster(
@@ -169,13 +162,7 @@ def wait_until_ready(
         time.sleep(_poll_interval)
 
 
-# ---------------------------------------------------------------------------
-# Helpers — raw K8s object → SDK types
-# ---------------------------------------------------------------------------
-
-
 def _is_sandbox() -> bool:
-    """Return True if the active kubeconfig points to the sandbox."""
     from prism.sandbox.manager import SANDBOX_KUBECONFIG
 
     settings = load_prism_settings()

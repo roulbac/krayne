@@ -1,5 +1,3 @@
-"""YAML configuration loading."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -43,7 +41,6 @@ def load_config_from_yaml(
 
 
 def _deep_set(data: dict, keys: list[str], value: Any) -> None:
-    """Set a nested key in *data* using a list of path segments."""
     for key in keys[:-1]:
         data = data.setdefault(key, {})
     data[keys[-1]] = value

@@ -1,12 +1,6 @@
-"""Pydantic models for cluster configuration."""
-
 from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
-
-# ---------------------------------------------------------------------------
-# Resource defaults — single source of truth for models, CLI, and tests
-# ---------------------------------------------------------------------------
 
 DEFAULT_CPUS = "1"
 DEFAULT_MEMORY = "2Gi"

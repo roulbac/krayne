@@ -1,10 +1,8 @@
-"""Unit tests for prism.sandbox.manager (mocked subprocess calls)."""
-
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -37,46 +35,7 @@ def _isolate_settings(tmp_path, monkeypatch):
     monkeypatch.setattr(mgr_mod, "SANDBOX_KUBECONFIG", tmp_path / "sandbox-kubeconfig")
 
 
-# ---------------------------------------------------------------------------
-# setup_sandbox
-# ---------------------------------------------------------------------------
-
-
 class TestSetupSandbox:
-    def _mock_run_side_effect(self, tmp_path):
-        """Build a side_effect function that handles setup_sandbox's subprocess calls."""
-        kubeconfig_content = "apiVersion: v1\nclusters:\n- cluster:\n    server: https://127.0.0.1:6443\n"
-
-        def side_effect(cmd, **kwargs):
-            cmd_str = " ".join(cmd)
-            result = MagicMock(spec=subprocess.CompletedProcess)
-            result.returncode = 0
-            result.stdout = ""
-            result.stderr = ""
-
-            if "docker info" in cmd_str:
-                pass
-            elif "docker inspect" in cmd_str and SANDBOX_CONTAINER_NAME in cmd_str:
-                # First call (existence check) should fail, subsequent ones succeed
-                result.returncode = 1
-                raise subprocess.CalledProcessError(1, cmd, "", "not found")
-            elif "docker run -d" in cmd_str:
-                result.stdout = "container_id_123"
-            elif "docker exec" in cmd_str and "kubectl" in cmd_str:
-                result.stdout = "Ready"
-            elif "docker exec" in cmd_str and "cat" in cmd_str:
-                result.stdout = kubeconfig_content
-            elif "alpine/helm" in cmd_str:
-                pass
-            elif "kubectl" in cmd_str and "crd" in cmd_str:
-                pass
-            elif "kubectl" in cmd_str and "deployment" in cmd_str:
-                result.stdout = "1"
-
-            return result
-
-        return side_effect
-
     @staticmethod
     def _make_side_effect():
         kubeconfig_content = "apiVersion: v1\nclusters:\n- cluster:\n    server: https://127.0.0.1:6443\n"
@@ -149,11 +108,6 @@ class TestSetupSandbox:
             setup_sandbox()
 
 
-# ---------------------------------------------------------------------------
-# teardown_sandbox
-# ---------------------------------------------------------------------------
-
-
 class TestTeardownSandbox:
     @patch("prism.sandbox.manager._run")
     @patch("prism.sandbox.manager._container_exists", return_value=True)
@@ -170,11 +124,6 @@ class TestTeardownSandbox:
     def test_teardown_not_found(self, mock_exists):
         with pytest.raises(SandboxNotFoundError):
             teardown_sandbox()
-
-
-# ---------------------------------------------------------------------------
-# sandbox_status
-# ---------------------------------------------------------------------------
 
 
 class TestSandboxStatus:

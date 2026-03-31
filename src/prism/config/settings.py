@@ -1,5 +1,3 @@
-"""Persistent Prism settings stored at ~/.prism/config.yaml."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field

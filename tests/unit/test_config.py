@@ -1,5 +1,3 @@
-"""Unit tests for prism.config."""
-
 from __future__ import annotations
 
 import textwrap
@@ -18,11 +16,6 @@ from prism.config import (
     load_config_from_yaml,
 )
 from prism.errors import ConfigValidationError
-
-
-# ---------------------------------------------------------------------------
-# ClusterConfig defaults
-# ---------------------------------------------------------------------------
 
 
 class TestClusterConfigDefaults:
@@ -58,11 +51,6 @@ class TestClusterConfigDefaults:
     def test_extra_fields_rejected(self):
         with pytest.raises(ValidationError):
             ClusterConfig(name="bad", unknown_field="oops")
-
-
-# ---------------------------------------------------------------------------
-# YAML loading
-# ---------------------------------------------------------------------------
 
 
 class TestYamlLoading:
@@ -112,11 +100,6 @@ class TestYamlLoading:
         yaml_file.write_text("name: test\nbogus_field: 123\n")
         with pytest.raises(ConfigValidationError):
             load_config_from_yaml(yaml_file)
-
-
-# ---------------------------------------------------------------------------
-# Serialization round-trip
-# ---------------------------------------------------------------------------
 
 
 class TestRoundTrip:

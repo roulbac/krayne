@@ -1,5 +1,3 @@
-"""Pure-function manifest builder: ClusterConfig -> KubeRay RayCluster dict."""
-
 from __future__ import annotations
 
 import os

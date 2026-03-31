@@ -1,5 +1,3 @@
-"""Unit tests for prism.config.settings (persistent settings)."""
-
 from __future__ import annotations
 
 from pathlib import Path

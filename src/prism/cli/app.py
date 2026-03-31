@@ -1,5 +1,3 @@
-"""Prism CLI — thin Typer shell over the SDK."""
-
 from __future__ import annotations
 
 import traceback
@@ -58,8 +56,6 @@ def _handle_error(exc: Exception) -> None:
         err_console.print(Panel(str(exc), title="Error", border_style="red"))
     raise typer.Exit(1)
 
-
-# -- Commands ----------------------------------------------------------------
 
 from prism.api import (  # noqa: E402
     create_cluster as _create_cluster,
@@ -225,9 +221,6 @@ def delete(
         _handle_error(exc)
 
 
-# -- Init command -----------------------------------------------------------
-
-
 @app.command("init")
 def init(
     kubeconfig: str = typer.Option(
@@ -330,8 +323,6 @@ def init(
     except PrismError as exc:
         _handle_error(exc)
 
-
-# -- Sandbox sub-app --------------------------------------------------------
 
 sandbox_app = typer.Typer(
     name="sandbox",
