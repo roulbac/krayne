@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import platform
 
 from prism.config.models import ClusterConfig, HeadNodeConfig, WorkerGroupConfig
 
-_RAY_VERSION = "2.41.0"
+_RAY_VERSION = os.environ.get("PRISM_RAY_VERSION", "latest")
 RAY_IMAGE = (
     f"rayproject/ray:{_RAY_VERSION}-aarch64"
     if platform.machine() == "arm64"
