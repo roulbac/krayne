@@ -14,6 +14,7 @@ class ClusterInfo:
     status: str
     head_ip: str | None
     dashboard_url: str | None
+    client_url: str | None
     notebook_url: str | None
     vscode_url: str | None
     num_workers: int
@@ -24,7 +25,7 @@ class ClusterInfo:
 class HeadNodeInfo:
     """Head node resource details."""
 
-    cpus: int
+    cpus: str
     memory: str
     gpus: int
     image: str
@@ -36,7 +37,7 @@ class WorkerGroupInfo:
 
     name: str
     replicas: int
-    cpus: int
+    cpus: str
     memory: str
     gpus: int
     gpu_type: str | None

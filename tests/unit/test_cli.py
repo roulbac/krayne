@@ -18,6 +18,7 @@ _INFO = ClusterInfo(
     status="ready",
     head_ip="10.0.0.1",
     dashboard_url="http://10.0.0.1:8265",
+    client_url="ray://10.0.0.1:10001",
     notebook_url=None,
     vscode_url=None,
     num_workers=2,
@@ -26,9 +27,9 @@ _INFO = ClusterInfo(
 
 _DETAILS = ClusterDetails(
     info=_INFO,
-    head=HeadNodeInfo(cpus=15, memory="48Gi", gpus=0, image="rayproject/ray:2.41.0"),
+    head=HeadNodeInfo(cpus="2", memory="2Gi", gpus=0, image="rayproject/ray:2.41.0"),
     worker_groups=[
-        WorkerGroupInfo(name="worker", replicas=2, cpus=15, memory="48Gi", gpus=0, gpu_type=None)
+        WorkerGroupInfo(name="worker", replicas=2, cpus="2", memory="2Gi", gpus=0, gpu_type=None)
     ],
     ray_version="unknown",
     python_version="unknown",
@@ -43,11 +44,12 @@ class TestVersion:
 
 
 class TestCreate:
+    @patch("prism.cli.app._get_cluster", return_value=_INFO)
     @patch("prism.cli.app._create_cluster", return_value=_INFO)
-    def test_create_basic(self, mock_create):
+    def test_create_basic(self, mock_create, mock_get):
         result = runner.invoke(app, ["create", "my-cluster"])
         assert result.exit_code == 0
-        assert "my-cluster" in result.output or "Cluster Created" in result.output
+        assert "Cluster Ready" in result.output
         mock_create.assert_called_once()
 
     @patch("prism.cli.app._create_cluster", return_value=_INFO)
@@ -104,3 +106,106 @@ class TestDelete:
         result = runner.invoke(app, ["delete", "test"], input="n\n")
         assert result.exit_code != 0
         mock_delete.assert_not_called()
+
+
+class TestInit:
+    KUBECONFIG_YAML = (
+        "apiVersion: v1\n"
+        "kind: Config\n"
+        "contexts:\n"
+        "- name: my-context\n"
+        "  context:\n"
+        "    cluster: my-cluster\n"
+        "    user: my-user\n"
+        "current-context: my-context\n"
+    )
+
+    @patch("prism.cli.app.save_prism_settings")
+    def test_init_headless(self, mock_save, tmp_path):
+        kubeconfig = tmp_path / "kubeconfig"
+        kubeconfig.write_text(self.KUBECONFIG_YAML)
+        result = runner.invoke(
+            app, ["init", "--kubeconfig", str(kubeconfig), "--context", "my-context"]
+        )
+        assert result.exit_code == 0
+        assert "Initialized" in result.output
+        mock_save.assert_called_once()
+
+    @patch("prism.cli.app.save_prism_settings")
+    def test_init_interactive(self, mock_save, tmp_path):
+        kubeconfig = tmp_path / "kubeconfig"
+        kubeconfig.write_text(self.KUBECONFIG_YAML)
+        with patch("questionary.select") as mock_select, \
+             patch("questionary.path") as mock_path:
+            # First select call: pick "Custom path"
+            mock_select.return_value.ask.return_value = "Custom path"
+            mock_path.return_value.ask.return_value = str(kubeconfig)
+            result = runner.invoke(app, ["init"])
+        assert result.exit_code == 0
+        assert "Initialized" in result.output
+        mock_save.assert_called_once()
+
+    def test_init_nonexistent_file(self):
+        result = runner.invoke(
+            app,
+            ["init", "--kubeconfig", "/nonexistent/kubeconfig", "--context", "x"],
+        )
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower() or "Error" in result.output
+
+    def test_init_invalid_context(self, tmp_path):
+        kubeconfig = tmp_path / "kubeconfig"
+        kubeconfig.write_text(self.KUBECONFIG_YAML)
+        result = runner.invoke(
+            app,
+            ["init", "--kubeconfig", str(kubeconfig), "--context", "nope"],
+        )
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower() or "Error" in result.output
+
+
+class TestGlobalKubeconfig:
+    @patch("prism.cli.app._list_clusters", return_value=[_INFO])
+    def test_kubeconfig_flag_passed(self, mock_list, tmp_path):
+        kubeconfig = tmp_path / "kubeconfig"
+        kubeconfig.write_text("apiVersion: v1")
+        result = runner.invoke(app, ["--kubeconfig", str(kubeconfig), "get"])
+        assert result.exit_code == 0
+        mock_list.assert_called_once()
+        _, kwargs = mock_list.call_args
+        assert kwargs.get("kubeconfig") == str(kubeconfig)
+
+
+class TestSandboxSetup:
+    @patch("prism.cli.app._setup_sandbox", return_value="/home/user/.prism/sandbox-kubeconfig")
+    def test_sandbox_setup(self, mock_setup):
+        result = runner.invoke(app, ["sandbox", "setup"])
+        assert result.exit_code == 0
+        assert "Sandbox Ready" in result.output
+        mock_setup.assert_called_once()
+
+
+class TestSandboxTeardown:
+    @patch("prism.cli.app._teardown_sandbox")
+    def test_sandbox_teardown(self, mock_teardown):
+        result = runner.invoke(app, ["sandbox", "teardown"])
+        assert result.exit_code == 0
+        assert "removed" in result.output.lower()
+        mock_teardown.assert_called_once()
+
+
+class TestSandboxStatusCli:
+    @patch("prism.cli.app._sandbox_status")
+    def test_sandbox_status(self, mock_status):
+        from prism.sandbox.manager import SandboxStatus
+
+        mock_status.return_value = SandboxStatus(
+            running=True,
+            container_id="abc123",
+            kubeconfig="/home/user/.prism/sandbox-kubeconfig",
+            k3s_version="rancher/k3s:v1.35.2-k3s1",
+            created_at="2026-01-01T00:00:00Z",
+        )
+        result = runner.invoke(app, ["sandbox", "status"])
+        assert result.exit_code == 0
+        assert "Sandbox Status" in result.output

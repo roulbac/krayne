@@ -11,6 +11,7 @@ dependencies = [
     "pydantic>=2,<3",
     "kubernetes>=28,<32",
     "pyyaml>=6,<7",
+    "questionary>=2,<3",
 ]
 
 [project.scripts]
@@ -20,7 +21,6 @@ prism = "prism.cli.app:app"
 dev = [
     "pytest>=7",
     "pytest-timeout>=2",
-    "testcontainers[k3s]>=4,<5",
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
 ]
