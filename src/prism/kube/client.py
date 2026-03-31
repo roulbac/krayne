@@ -144,7 +144,7 @@ class DefaultKubeClient:
                 namespace=namespace,
                 label_selector=f"ray.io/cluster={cluster_name}",
             )
-            return [pod.to_dict() for pod in resp.items]
+            return [pod.to_dict() for pod in (resp.items or [])]
         except ApiException as exc:
             raise KubeConnectionError(str(exc)) from exc
 
