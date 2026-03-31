@@ -32,8 +32,8 @@ HELM_IMAGE = "alpine/helm"
 KUBERAY_HELM_REPO = "https://ray-project.github.io/kuberay-helm"
 SANDBOX_KUBECONFIG = PRISM_DIR / "sandbox-kubeconfig"
 
-MIN_CPUS = 4
-MIN_MEMORY_GB = 8
+MIN_CPUS = 2
+MIN_MEMORY_GB = 4
 
 # Step names for progress reporting
 STEP_DOCKER = "Docker"
