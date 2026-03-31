@@ -21,7 +21,7 @@ from prism.api import (
     list_clusters,
     scale_cluster,
 )
-from prism.config import ClusterConfig
+from prism.config import DEFAULT_CPUS, ClusterConfig
 from prism.errors import ClusterNotFoundError
 
 pytestmark = pytest.mark.integration
@@ -58,7 +58,7 @@ class TestClusterLifecycle:
             self.CLUSTER_NAME, self.NAMESPACE, client=kube_client
         )
         assert details.info.name == self.CLUSTER_NAME
-        assert details.head.cpus == "500m"
+        assert details.head.cpus == DEFAULT_CPUS
         assert len(details.worker_groups) == 1
 
         # SCALE
