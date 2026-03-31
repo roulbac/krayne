@@ -22,7 +22,7 @@ class TestBuildManifest:
         m = build_manifest(cfg)
         head = m["spec"]["headGroupSpec"]
         container = head["template"]["spec"]["containers"][0]
-        assert container["resources"]["requests"]["cpu"] == 8
+        assert container["resources"]["requests"]["cpu"] == "8"
         assert container["resources"]["requests"]["memory"] == "32Gi"
         assert container["image"] == RAY_IMAGE
 

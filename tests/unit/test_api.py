@@ -83,6 +83,7 @@ def mock_client():
     client.patch_ray_cluster.return_value = _SAMPLE_OBJ
     client.delete_ray_cluster.return_value = None
     client.list_pods.return_value = []
+    client.get_head_node_port.return_value = None
     return client
 
 
@@ -132,7 +133,7 @@ class TestDescribeCluster:
         details = describe_cluster("test", "default", client=mock_client)
         assert isinstance(details, ClusterDetails)
         assert details.info.name == "test"
-        assert details.head.cpus == 2
+        assert details.head.cpus == "2"
         assert len(details.worker_groups) == 1
         assert details.worker_groups[0].replicas == 2
 
@@ -195,7 +196,9 @@ class TestKubeconfigPassthrough:
 
     def test_explicit_kubeconfig(self):
         list_clusters("default", kubeconfig="/custom/kubeconfig")
-        self.mock_cls.assert_called_once_with(kubeconfig="/custom/kubeconfig")
+        self.mock_cls.assert_called_once_with(
+            kubeconfig="/custom/kubeconfig", context=None
+        )
 
     def test_no_kubeconfig_uses_settings(self):
         from prism.config.settings import PrismSettings
@@ -203,7 +206,9 @@ class TestKubeconfigPassthrough:
         with patch("prism.api.clusters.load_prism_settings") as mock_settings:
             mock_settings.return_value = PrismSettings(kubeconfig="/from/settings")
             list_clusters("default")
-            self.mock_cls.assert_called_with(kubeconfig="/from/settings")
+            self.mock_cls.assert_called_with(
+                kubeconfig="/from/settings", context=None
+            )
 
 
 class TestPodLevelStatus:

@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# ---------------------------------------------------------------------------
+# Resource defaults — single source of truth for models, CLI, and tests
+# ---------------------------------------------------------------------------
+
+DEFAULT_CPUS = "1"
+DEFAULT_MEMORY = "2Gi"
 
 
 class ServicesConfig(BaseModel):
@@ -17,10 +24,15 @@ class ServicesConfig(BaseModel):
 class HeadNodeConfig(BaseModel):
     """Head node resource configuration."""
 
-    cpus: int = 2
-    memory: str = "2Gi"
+    cpus: str = DEFAULT_CPUS
+    memory: str = DEFAULT_MEMORY
     gpus: int = 0
     image: str | None = None
+
+    @field_validator("cpus", mode="before")
+    @classmethod
+    def _coerce_cpus(cls, v: object) -> str:
+        return str(v)
 
 
 class WorkerGroupConfig(BaseModel):
@@ -28,11 +40,16 @@ class WorkerGroupConfig(BaseModel):
 
     name: str = "worker"
     replicas: int = 1
-    cpus: int = 2
-    memory: str = "2Gi"
+    cpus: str = DEFAULT_CPUS
+    memory: str = DEFAULT_MEMORY
     gpus: int = 0
     gpu_type: str = "t4"
     image: str | None = None
+
+    @field_validator("cpus", mode="before")
+    @classmethod
+    def _coerce_cpus(cls, v: object) -> str:
+        return str(v)
 
 
 class ClusterConfig(BaseModel):

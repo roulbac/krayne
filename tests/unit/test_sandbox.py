@@ -77,6 +77,22 @@ class TestSetupSandbox:
 
         return side_effect
 
+    @staticmethod
+    def _make_side_effect():
+        kubeconfig_content = "apiVersion: v1\nclusters:\n- cluster:\n    server: https://127.0.0.1:6443\n"
+
+        def side_effect(cmd, **kwargs):
+            result = MagicMock(spec=subprocess.CompletedProcess)
+            result.returncode = 0
+            result.stderr = ""
+            if "docker" in cmd and "info" in cmd:
+                result.stdout = "8 8589934592"
+            else:
+                result.stdout = kubeconfig_content
+            return result
+
+        return side_effect
+
     @patch("prism.sandbox.manager.subprocess.run")
     @patch("prism.sandbox.manager._container_exists", return_value=False)
     @patch("prism.sandbox.manager._wait_for_k3s")
@@ -85,16 +101,7 @@ class TestSetupSandbox:
     def test_setup_success(
         self, mock_deploy, mock_crds, mock_k3s, mock_exists, mock_run, tmp_path
     ):
-        kubeconfig_content = "apiVersion: v1\nclusters:\n- cluster:\n    server: https://127.0.0.1:6443\n"
-
-        def side_effect(cmd, **kwargs):
-            result = MagicMock(spec=subprocess.CompletedProcess)
-            result.returncode = 0
-            result.stdout = kubeconfig_content
-            result.stderr = ""
-            return result
-
-        mock_run.side_effect = side_effect
+        mock_run.side_effect = self._make_side_effect()
 
         path = setup_sandbox()
         assert path.endswith("sandbox-kubeconfig")
@@ -108,16 +115,7 @@ class TestSetupSandbox:
     def test_setup_progress_callback(
         self, mock_deploy, mock_crds, mock_k3s, mock_exists, mock_run, tmp_path
     ):
-        kubeconfig_content = "apiVersion: v1\nclusters:\n- cluster:\n    server: https://127.0.0.1:6443\n"
-
-        def side_effect(cmd, **kwargs):
-            result = MagicMock(spec=subprocess.CompletedProcess)
-            result.returncode = 0
-            result.stdout = kubeconfig_content
-            result.stderr = ""
-            return result
-
-        mock_run.side_effect = side_effect
+        mock_run.side_effect = self._make_side_effect()
         callback = MagicMock()
 
         setup_sandbox(on_progress=callback)
@@ -145,8 +143,8 @@ class TestSetupSandbox:
     @patch("prism.sandbox.manager._run")
     @patch("prism.sandbox.manager._container_exists", return_value=True)
     def test_already_exists(self, mock_exists, mock_run):
-        # _run for docker info should succeed
-        mock_run.return_value = MagicMock(returncode=0)
+        # _run for docker info should succeed with enough resources
+        mock_run.return_value = MagicMock(returncode=0, stdout="8 8589934592")
         with pytest.raises(SandboxAlreadyExistsError):
             setup_sandbox()
 

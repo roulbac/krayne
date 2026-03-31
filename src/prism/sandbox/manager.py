@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import subprocess
-import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -33,6 +32,9 @@ HELM_IMAGE = "alpine/helm"
 KUBERAY_HELM_REPO = "https://ray-project.github.io/kuberay-helm"
 SANDBOX_KUBECONFIG = PRISM_DIR / "sandbox-kubeconfig"
 
+MIN_CPUS = 4
+MIN_MEMORY_GB = 8
+
 # Step names for progress reporting
 STEP_DOCKER = "Docker"
 STEP_K3S_CONTAINER = "K3S Container"
@@ -40,7 +42,7 @@ STEP_K3S_NODE = "K3S Node"
 STEP_KUBECONFIG = "Kubeconfig"
 STEP_HELM_INSTALL = "KubeRay Helm Chart"
 STEP_CRD = "RayCluster CRD"
-STEP_OPERATOR = "KubeRay Operator"
+STEP_OPERATOR = "Operator Ready"
 
 SETUP_STEPS = [
     STEP_DOCKER,
@@ -186,10 +188,25 @@ def setup_sandbox(on_progress: ProgressCallback = None) -> str:
     # 1. Check Docker
     _notify(on_progress, STEP_DOCKER, "in_progress")
     try:
-        _run(["docker", "info"])
+        result = _run(["docker", "info", "--format", "{{.NCPU}} {{.MemTotal}}"])
     except SandboxError:
         _notify(on_progress, STEP_DOCKER, "failed")
         raise DockerNotFoundError()
+
+    # Validate Docker has enough resources
+    parts = result.stdout.strip().split()
+    if len(parts) >= 2:
+        ncpu = int(parts[0])
+        mem_bytes = int(parts[1])
+        mem_gb = mem_bytes / (1024 ** 3)
+        if ncpu < MIN_CPUS or mem_gb < MIN_MEMORY_GB:
+            _notify(on_progress, STEP_DOCKER, "failed")
+            raise SandboxError(
+                f"Docker has {ncpu} CPUs and {mem_gb:.1f}GB memory, "
+                f"but the sandbox requires at least {MIN_CPUS} CPUs "
+                f"and {MIN_MEMORY_GB}GB memory. "
+                f"Increase resources in your Docker/Rancher Desktop settings."
+            )
     _notify(on_progress, STEP_DOCKER, "done")
 
     # 2. Check for existing sandbox
@@ -204,9 +221,13 @@ def setup_sandbox(on_progress: ProgressCallback = None) -> str:
         "--name", SANDBOX_CONTAINER_NAME,
         "--privileged",
         "-p", "6443:6443",
+        "-p", "30000-30100:30000-30100",
+        "--cpus", str(MIN_CPUS),
+        "--memory", f"{MIN_MEMORY_GB}g",
         "-e", "K3S_KUBECONFIG_MODE=644",
         K3S_IMAGE,
         "server", "--disable=traefik",
+        "--kube-apiserver-arg", "service-node-port-range=30000-30100",
     ])
     _notify(on_progress, STEP_K3S_CONTAINER, "done")
 
@@ -224,33 +245,27 @@ def setup_sandbox(on_progress: ProgressCallback = None) -> str:
         ])
         raw_kubeconfig = result.stdout
 
-        # Write host-accessible kubeconfig (127.0.0.1:6443 works via port mapping)
+        # Write host kubeconfig (127.0.0.1:6443 reachable via port mapping)
         PRISM_DIR.mkdir(parents=True, exist_ok=True)
         SANDBOX_KUBECONFIG.write_text(raw_kubeconfig)
-
-        # Write internal kubeconfig for helm (shares container network)
-        internal_kubeconfig = tempfile.NamedTemporaryFile(
-            prefix="prism-sandbox-internal-", suffix=".yaml", delete=False
-        )
-        internal_kubeconfig.write(raw_kubeconfig.encode())
-        internal_kubeconfig.close()
-        internal_path = internal_kubeconfig.name
         _notify(on_progress, STEP_KUBECONFIG, "done")
 
-        # 6. Install KubeRay via Helm
+        # 6. Install KubeRay via Helm (shares k3s container network)
         _notify(on_progress, STEP_HELM_INSTALL, "in_progress")
+        internal_kubeconfig = str(PRISM_DIR / "sandbox-kubeconfig-internal")
+        Path(internal_kubeconfig).write_text(raw_kubeconfig)
         try:
             _run([
                 "docker", "run", "--rm",
                 "--network", f"container:{SANDBOX_CONTAINER_NAME}",
-                "-v", f"{internal_path}:/root/.kube/config:ro",
+                "-v", f"{internal_kubeconfig}:/root/.kube/config:ro",
                 HELM_IMAGE,
                 "install", "kuberay-operator", "kuberay-operator",
                 "--repo", KUBERAY_HELM_REPO,
                 "--namespace", "default",
             ])
         finally:
-            Path(internal_path).unlink(missing_ok=True)
+            Path(internal_kubeconfig).unlink(missing_ok=True)
         _notify(on_progress, STEP_HELM_INSTALL, "done")
 
         # 7. Wait for CRD + operator

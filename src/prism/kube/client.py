@@ -32,17 +32,24 @@ class KubeClient(Protocol):
     def delete_ray_cluster(self, name: str, namespace: str) -> None: ...
     def get_cluster_status(self, name: str, namespace: str) -> str: ...
     def list_pods(self, cluster_name: str, namespace: str) -> list[dict]: ...
+    def get_head_node_port(self, cluster_name: str, namespace: str, port_name: str) -> int | None: ...
 
 
 class DefaultKubeClient:
     """Default KubeClient backed by the official ``kubernetes`` Python client."""
 
-    def __init__(self, kubeconfig: str | None = None) -> None:
+    def __init__(
+        self,
+        kubeconfig: str | None = None,
+        context: str | None = None,
+    ) -> None:
         try:
             k8s_config.load_incluster_config()
         except k8s_config.ConfigException:
             try:
-                k8s_config.load_kube_config(config_file=kubeconfig)
+                k8s_config.load_kube_config(
+                    config_file=kubeconfig, context=context
+                )
             except k8s_config.ConfigException as exc:
                 raise KubeConnectionError(
                     "Cannot load Kubernetes configuration. "
@@ -140,6 +147,20 @@ class DefaultKubeClient:
             return [pod.to_dict() for pod in resp.items]
         except ApiException as exc:
             raise KubeConnectionError(str(exc)) from exc
+
+    def get_head_node_port(
+        self, cluster_name: str, namespace: str, port_name: str
+    ) -> int | None:
+        """Return the NodePort for *port_name* on the head service, or None."""
+        svc_name = f"{cluster_name}-head-svc"
+        try:
+            svc = self._core.read_namespaced_service(svc_name, namespace)
+        except ApiException:
+            return None
+        for port in svc.spec.ports or []:
+            if port.name == port_name and port.node_port:
+                return int(port.node_port)
+        return None
 
     # -- helpers --------------------------------------------------------------
 

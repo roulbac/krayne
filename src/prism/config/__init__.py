@@ -1,6 +1,8 @@
 """Prism configuration models."""
 
 from prism.config.models import (
+    DEFAULT_CPUS,
+    DEFAULT_MEMORY,
     ClusterConfig,
     HeadNodeConfig,
     ServicesConfig,
@@ -15,6 +17,8 @@ from prism.config.settings import (
 )
 
 __all__ = [
+    "DEFAULT_CPUS",
+    "DEFAULT_MEMORY",
     "ClusterConfig",
     "HeadNodeConfig",
     "ServicesConfig",

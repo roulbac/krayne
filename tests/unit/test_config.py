@@ -9,6 +9,8 @@ import pytest
 from pydantic import ValidationError
 
 from prism.config import (
+    DEFAULT_CPUS,
+    DEFAULT_MEMORY,
     ClusterConfig,
     HeadNodeConfig,
     ServicesConfig,
@@ -28,8 +30,8 @@ class TestClusterConfigDefaults:
         cfg = ClusterConfig(name="test")
         assert cfg.name == "test"
         assert cfg.namespace == "default"
-        assert cfg.head.cpus == 2
-        assert cfg.head.memory == "2Gi"
+        assert cfg.head.cpus == DEFAULT_CPUS
+        assert cfg.head.memory == DEFAULT_MEMORY
         assert cfg.head.gpus == 0
         assert len(cfg.worker_groups) == 1
         assert cfg.worker_groups[0].replicas == 1
@@ -83,7 +85,7 @@ class TestYamlLoading:
         cfg = load_config_from_yaml(yaml_file)
         assert cfg.name == "from-yaml"
         assert cfg.namespace == "ml-team"
-        assert cfg.head.cpus == 8
+        assert cfg.head.cpus == "8"
         assert cfg.worker_groups[0].gpu_type == "a100"
 
     def test_overrides_take_precedence(self, tmp_path: Path):
@@ -97,7 +99,7 @@ class TestYamlLoading:
         yaml_file = tmp_path / "cluster.yaml"
         yaml_file.write_text("name: test\n")
         cfg = load_config_from_yaml(yaml_file, overrides={"head.cpus": 4})
-        assert cfg.head.cpus == 4
+        assert cfg.head.cpus == "4"
 
     def test_invalid_yaml_top_level(self, tmp_path: Path):
         yaml_file = tmp_path / "bad.yaml"

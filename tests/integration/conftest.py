@@ -1,39 +1,29 @@
 from __future__ import annotations
 
-import json
-import subprocess
-
 import pytest
 
-
-def _resolve_docker_host() -> str | None:
-    """Read the Docker socket URI from the active ``docker`` CLI context."""
-    raw = subprocess.run(
-        ["docker", "context", "inspect"],
-        capture_output=True, text=True, check=True,
-    )
-    ctx = json.loads(raw.stdout)
-    return ctx[0]["Endpoints"]["docker"]["Host"] or None
+from prism.errors import SandboxNotFoundError
+from prism.kube.client import DefaultKubeClient
+from prism.sandbox.manager import setup_sandbox, teardown_sandbox
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _docker_env() -> None:
-    """Expose the Docker socket to the Python Docker SDK and testcontainers.
+def _maybe_teardown_sandbox() -> None:
+    """Tear down any existing sandbox."""
+    try:
+        teardown_sandbox()
+    except SandboxNotFoundError:
+        pass
 
-    Many Docker distributions (Rancher Desktop, Colima, etc.) route through a
-    non-default socket that the CLI resolves via contexts.  The Python SDK and
-    testcontainers do not read Docker contexts, so we bridge the gap here.
-    """
-    mp = pytest.MonkeyPatch()
+@pytest.fixture(scope="session")
+def sandbox_kubeconfig() -> str:
+    """Tear down any existing sandbox, set up a fresh one, then tear down after tests."""
+    _maybe_teardown_sandbox()
+    kubeconfig = setup_sandbox()
+    yield kubeconfig  # type: ignore[misc]
+    teardown_sandbox()
 
-    docker_host = _resolve_docker_host()
-    if docker_host:
-        mp.setenv("DOCKER_HOST", docker_host)
 
-    # The Reaper (Ryuk) container mounts the Docker socket.  On macOS the host
-    # socket path (e.g. ~/.rd/docker.sock) doesn't exist inside the VM —
-    # /var/run/docker.sock does.
-    mp.setenv("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.sock")
-
-    yield  # type: ignore[misc]
-    mp.undo()
+@pytest.fixture()
+def kube_client(sandbox_kubeconfig: str) -> DefaultKubeClient:
+    """Return a DefaultKubeClient connected to the sandbox cluster."""
+    return DefaultKubeClient(kubeconfig=sandbox_kubeconfig)

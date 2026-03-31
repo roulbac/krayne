@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import platform
+
 from prism.config.models import ClusterConfig, HeadNodeConfig, WorkerGroupConfig
 
-RAY_IMAGE = "rayproject/ray:2.41.0"
+_RAY_VERSION = "2.41.0"
+RAY_IMAGE = (
+    f"rayproject/ray:{_RAY_VERSION}-aarch64"
+    if platform.machine() == "arm64"
+    else f"rayproject/ray:{_RAY_VERSION}"
+)
 RAYCLUSTER_API_VERSION = "ray.io/v1"
 RAYCLUSTER_KIND = "RayCluster"
 
@@ -42,6 +49,7 @@ def _build_head_spec(head: HeadNodeConfig) -> dict:
         resources["requests"]["nvidia.com/gpu"] = head.gpus
 
     return {
+        "serviceType": "NodePort",
         "rayStartParams": {"dashboard-host": "0.0.0.0"},
         "template": {
             "spec": {
