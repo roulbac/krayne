@@ -1,6 +1,3 @@
-"""Prism exception hierarchy."""
-
-
 class PrismError(Exception):
     """Base exception for all Prism errors."""
 

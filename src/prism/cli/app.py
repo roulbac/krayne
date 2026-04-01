@@ -1,5 +1,3 @@
-"""Prism CLI — thin Typer shell over the SDK."""
-
 from __future__ import annotations
 
 import traceback
@@ -58,8 +56,6 @@ def _handle_error(exc: Exception) -> None:
         err_console.print(Panel(str(exc), title="Error", border_style="red"))
     raise typer.Exit(1)
 
-
-# -- Commands ----------------------------------------------------------------
 
 from prism.api import (  # noqa: E402
     create_cluster as _create_cluster,
@@ -137,12 +133,15 @@ def create(
             return
 
         try:
+            deadline = time.monotonic() + timeout
             with Live(
                 format_cluster_created(info, console, live=True),
                 console=console,
                 refresh_per_second=2,
             ) as live:
                 while info.status not in ("ready", "running"):
+                    if time.monotonic() >= deadline:
+                        break
                     time.sleep(2)
                     info = _get_cluster(
                         name, namespace, kubeconfig=_kubeconfig
@@ -223,9 +222,6 @@ def delete(
         console.print(f"Cluster '{name}' deleted.", style="green")
     except PrismError as exc:
         _handle_error(exc)
-
-
-# -- Init command -----------------------------------------------------------
 
 
 @app.command("init")
@@ -330,8 +326,6 @@ def init(
     except PrismError as exc:
         _handle_error(exc)
 
-
-# -- Sandbox sub-app --------------------------------------------------------
 
 sandbox_app = typer.Typer(
     name="sandbox",

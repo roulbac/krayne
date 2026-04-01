@@ -1,5 +1,3 @@
-"""Sandbox lifecycle: set up and tear down a local k3s cluster with KubeRay."""
-
 from __future__ import annotations
 
 import subprocess
@@ -21,10 +19,6 @@ from prism.errors import (
     SandboxError,
     SandboxNotFoundError,
 )
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
 
 SANDBOX_CONTAINER_NAME = "prism-sandbox"
 K3S_IMAGE = "rancher/k3s:v1.35.2-k3s1"
@@ -54,15 +48,11 @@ SETUP_STEPS = [
     STEP_OPERATOR,
 ]
 
-# Progress callback type: (step_name, status) where status is one of
-# "pending", "in_progress", "done", "failed"
 ProgressCallback = Callable[[str, str], None] | None
 
 
 @dataclass(frozen=True)
 class SandboxStatus:
-    """Current state of the sandbox environment."""
-
     running: bool
     container_id: str | None = None
     kubeconfig: str | None = None
@@ -70,13 +60,7 @@ class SandboxStatus:
     created_at: str | None = None
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def _run(cmd: list[str], check: bool = True, **kwargs) -> subprocess.CompletedProcess:
-    """Run a subprocess, raising ``SandboxError`` on failure."""
     try:
         return subprocess.run(
             cmd, check=check, capture_output=True, text=True, **kwargs
@@ -90,7 +74,6 @@ def _run(cmd: list[str], check: bool = True, **kwargs) -> subprocess.CompletedPr
 
 
 def _container_exists() -> bool:
-    """Return True if the sandbox container exists (running or stopped)."""
     result = subprocess.run(
         ["docker", "inspect", SANDBOX_CONTAINER_NAME],
         capture_output=True,
@@ -100,7 +83,6 @@ def _container_exists() -> bool:
 
 
 def _notify(on_progress: ProgressCallback, step: str, status: str) -> None:
-    """Call the progress callback if provided."""
     if on_progress is not None:
         on_progress(step, status)
 
@@ -108,7 +90,6 @@ def _notify(on_progress: ProgressCallback, step: str, status: str) -> None:
 def _wait_for_k3s(
     timeout: int = 120, on_progress: ProgressCallback = None
 ) -> None:
-    """Poll until the k3s node is ready inside the container."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         _notify(on_progress, STEP_K3S_NODE, "in_progress")
@@ -130,7 +111,6 @@ def _wait_for_k3s(
 def _wait_for_crds(
     kubeconfig: str, timeout: int = 120, on_progress: ProgressCallback = None
 ) -> None:
-    """Wait until the RayCluster CRD is registered."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         _notify(on_progress, STEP_CRD, "in_progress")
@@ -152,7 +132,6 @@ def _wait_for_deployment(
     timeout: int = 180,
     on_progress: ProgressCallback = None,
 ) -> None:
-    """Wait until a deployment has at least one available replica."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         _notify(on_progress, STEP_OPERATOR, "in_progress")
@@ -172,19 +151,8 @@ def _wait_for_deployment(
     raise SandboxError(f"Deployment {name} not available within {timeout}s")
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-
 def setup_sandbox(on_progress: ProgressCallback = None) -> str:
-    """Create a local k3s container with KubeRay and return the kubeconfig path.
-
-    Args:
-        on_progress: Optional callback ``(step_name, status)`` invoked as each
-            setup component transitions.  *status* is one of ``"pending"``,
-            ``"in_progress"``, ``"done"``, or ``"failed"``.
-    """
+    """Create a local k3s container with KubeRay and return the kubeconfig path."""
     # 1. Check Docker
     _notify(on_progress, STEP_DOCKER, "in_progress")
     try:
@@ -297,7 +265,6 @@ def setup_sandbox(on_progress: ProgressCallback = None) -> str:
 
 
 def teardown_sandbox() -> None:
-    """Stop and remove the sandbox container and clean up configuration."""
     if not _container_exists():
         raise SandboxNotFoundError()
 
@@ -314,7 +281,6 @@ def teardown_sandbox() -> None:
 
 
 def sandbox_status() -> SandboxStatus:
-    """Return the current status of the sandbox environment."""
     import json as _json
 
     result = subprocess.run(

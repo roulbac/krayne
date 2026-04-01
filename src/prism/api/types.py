@@ -1,5 +1,3 @@
-"""Return types for the SDK — immutable dataclasses."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

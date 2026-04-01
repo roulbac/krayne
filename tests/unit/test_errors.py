@@ -1,5 +1,3 @@
-"""Unit tests for the Prism exception hierarchy."""
-
 from prism.errors import (
     ClusterAlreadyExistsError,
     ClusterNotFoundError,

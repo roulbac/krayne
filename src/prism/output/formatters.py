@@ -1,5 +1,3 @@
-"""Rich formatters for CLI output."""
-
 from __future__ import annotations
 
 import dataclasses
@@ -15,7 +13,6 @@ from prism.sandbox.manager import SandboxStatus
 
 
 def _style_status(status: str) -> str:
-    """Apply Rich markup to a cluster status string."""
     if status in ("ready", "running"):
         return f"[green]{status}[/green]"
     if status in ("pods-pending", "containers-creating", "creating"):
@@ -26,7 +23,6 @@ def _style_status(status: str) -> str:
 
 
 def _build_cluster_panel(info: ClusterInfo) -> Panel:
-    """Build a Rich Panel summarising a cluster."""
     ready = info.status in ("ready", "running")
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column("Field", style="bold cyan")
@@ -58,7 +54,6 @@ def format_cluster_created(
 
 
 def format_cluster_list(clusters: list[ClusterInfo], console: Console) -> None:
-    """Print a table of clusters."""
     table = Table(title="Ray Clusters")
     table.add_column("Name", style="bold")
     table.add_column("Namespace")
@@ -71,7 +66,6 @@ def format_cluster_list(clusters: list[ClusterInfo], console: Console) -> None:
 
 
 def format_cluster_details(details: ClusterDetails, console: Console) -> None:
-    """Print extended cluster information."""
     info = details.info
 
     # Header
@@ -122,8 +116,6 @@ def format_cluster_details(details: ClusterDetails, console: Console) -> None:
 
 
 def format_json(data: Any, console: Console) -> None:
-    """Print any dataclass (or list of dataclasses) as JSON."""
-
     def _to_dict(obj: Any) -> Any:
         if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
             return dataclasses.asdict(obj)
@@ -137,7 +129,6 @@ def format_json(data: Any, console: Console) -> None:
 def format_init_success(
     kubeconfig_path: str, kube_context: str, console: Console
 ) -> None:
-    """Print a confirmation panel after ``prism init``."""
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column("Field", style="bold cyan")
     table.add_column("Value")
@@ -147,7 +138,6 @@ def format_init_success(
 
 
 def format_sandbox_setup_success(kubeconfig_path: str, console: Console) -> None:
-    """Print a success panel after sandbox setup."""
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column("Field", style="bold cyan")
     table.add_column("Value")
@@ -172,11 +162,6 @@ _STATUS_DISPLAY = {
 
 
 def build_sandbox_progress_table(steps: dict[str, str]) -> Table:
-    """Build a Rich Table showing sandbox setup component statuses.
-
-    *steps* maps component names to status strings
-    (``"pending"``, ``"in_progress"``, ``"done"``, ``"failed"``).
-    """
     table = Table(
         show_header=True, box=None, padding=(0, 2), title="Sandbox Setup",
     )
@@ -188,7 +173,6 @@ def build_sandbox_progress_table(steps: dict[str, str]) -> Table:
 
 
 def format_sandbox_status(status: SandboxStatus, console: Console) -> None:
-    """Print a panel showing sandbox status."""
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column("Field", style="bold cyan")
     table.add_column("Value")

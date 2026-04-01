@@ -1,5 +1,3 @@
-"""Unit tests for prism.kube.manifest (pure-function manifest builder)."""
-
 from __future__ import annotations
 
 from prism.config import ClusterConfig, HeadNodeConfig, WorkerGroupConfig
