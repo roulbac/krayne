@@ -34,7 +34,6 @@ class TestClusterConfigDefaults:
         assert cfg.services.notebook is True
         assert cfg.services.vscode_server is False
         assert cfg.services.ssh is True
-        assert cfg.services.tutorials is False
 
     def test_custom_worker_groups(self):
         cfg = ClusterConfig(

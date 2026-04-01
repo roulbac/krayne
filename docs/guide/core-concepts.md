@@ -161,7 +161,6 @@ Prism can enable several services on the head node:
 | **Jupyter Notebook** | Enabled | Web-based notebook environment on the head node |
 | **SSH** | Enabled | SSH access to the head node |
 | **VS Code Server** | Disabled | Browser-based VS Code on the head node |
-| **Tutorials** | Disabled | Bundled tutorial notebooks |
 
 Services are configured via the `services` section of `ClusterConfig` or the YAML file:
 
@@ -170,7 +169,6 @@ services:
   notebook: true
   vscode_server: true
   ssh: true
-  tutorials: false
 ```
 
 ---

@@ -80,7 +80,6 @@ worker_groups:
 services:
   notebook: true
   vscode_server: true
-  tutorials: true
 ```
 
 ```bash
