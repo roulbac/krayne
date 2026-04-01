@@ -10,6 +10,7 @@ from prism.api import (
     describe_cluster,
     get_cluster,
     list_clusters,
+    managed_cluster,
     scale_cluster,
     wait_until_ready,
 )
@@ -156,6 +157,34 @@ class TestWaitUntilReady:
             wait_until_ready(
                 "test", "default", client=mock_client, timeout=1, _poll_interval=0.1
             )
+
+
+class TestManagedCluster:
+    def test_creates_and_deletes(self, mock_client):
+        cfg = ClusterConfig(name="test")
+        with managed_cluster(cfg, client=mock_client) as info:
+            assert isinstance(info, ClusterInfo)
+            assert info.name == "test"
+            assert info.status == "ready"
+        mock_client.create_ray_cluster.assert_called_once()
+        mock_client.delete_ray_cluster.assert_called_once_with("test", "default")
+
+    def test_deletes_on_exception(self, mock_client):
+        cfg = ClusterConfig(name="test")
+        with pytest.raises(RuntimeError, match="boom"):
+            with managed_cluster(cfg, client=mock_client) as info:
+                assert info.name == "test"
+                raise RuntimeError("boom")
+        mock_client.delete_ray_cluster.assert_called_once_with("test", "default")
+
+    def test_custom_namespace(self, mock_client):
+        obj = {**_SAMPLE_OBJ, "metadata": {**_SAMPLE_OBJ["metadata"], "namespace": "ml"}}
+        mock_client.create_ray_cluster.return_value = obj
+        mock_client.get_ray_cluster.return_value = obj
+        cfg = ClusterConfig(name="test", namespace="ml")
+        with managed_cluster(cfg, client=mock_client):
+            pass
+        mock_client.delete_ray_cluster.assert_called_once_with("test", "ml")
 
 
 class TestKubeconfigPassthrough:

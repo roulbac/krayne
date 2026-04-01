@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import time
+from collections.abc import Generator
 from typing import Any
 
 from prism.api.types import (
@@ -138,6 +140,32 @@ def delete_cluster(
     """Delete a Ray cluster."""
     kube = _resolve_client(client, kubeconfig)
     kube.delete_ray_cluster(name, namespace)
+
+
+@contextlib.contextmanager
+def managed_cluster(
+    config: ClusterConfig,
+    *,
+    client: KubeClient | None = None,
+    kubeconfig: str | None = None,
+    timeout: int = 300,
+) -> Generator[ClusterInfo, None, None]:
+    """Context manager that creates a Ray cluster, waits for readiness, and deletes it on exit.
+
+    Usage::
+
+        with managed_cluster(config) as info:
+            # info is a ClusterInfo with a ready cluster
+            ray.init(info.client_url)
+            ...
+        # cluster is deleted here
+    """
+    kube = _resolve_client(client, kubeconfig)
+    info = create_cluster(config, client=kube, wait=True, timeout=timeout)
+    try:
+        yield info
+    finally:
+        delete_cluster(config.name, config.namespace, client=kube)
 
 
 def wait_until_ready(

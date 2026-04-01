@@ -18,18 +18,30 @@ Create a Ray cluster with a single command:
 prism create my-cluster --gpus-per-worker 1 --workers 2
 ```
 
-Or use the Python SDK:
+Or use the Python SDK to define code and infrastructure together:
 
 ```python
-from prism.api import create_cluster
+import ray
+from prism.api import managed_cluster
 from prism.config import ClusterConfig, WorkerGroupConfig
 
 config = ClusterConfig(
-    name="my-cluster",
-    worker_groups=[WorkerGroupConfig(replicas=2, gpus=1, gpu_type="a100")],
+    name="hello-world",
+    worker_groups=[WorkerGroupConfig(replicas=2)],
 )
-info = create_cluster(config, wait=True)
-print(info.dashboard_url)
+
+with managed_cluster(config) as cluster:
+    ray.init(cluster.client_url)
+
+    @ray.remote
+    def hello(x):
+        return f"Hello from worker, {x}!"
+
+    futures = [hello.remote(i) for i in range(4)]
+    print(ray.get(futures))
+
+    ray.shutdown()
+# Cluster is automatically deleted when the context exits
 ```
 
 ## Features
@@ -75,13 +87,13 @@ Full documentation is available at the [Prism docs site](https://roulbac.github.
 # Clone and install
 git clone https://github.com/roulbac/prism.git
 cd prism
-pip install -e ".[dev]"
+uv sync
 
 # Run tests
-pytest
+uv run pytest
 
-# Run integration tests (requires a K8s cluster)
-pytest -m integration
+# Run integration tests (sandbox is provisioned automatically by test fixtures)
+uv run pytest -m integration
 ```
 
 ## License

@@ -10,6 +10,7 @@ from prism.api import (
     describe_cluster,
     scale_cluster,
     delete_cluster,
+    managed_cluster,
     wait_until_ready,
 )
 ```
@@ -220,6 +221,61 @@ def delete_cluster(
 | `kubeconfig` | `str \| None` | `None` | Path to kubeconfig file |
 
 **Raises:** `ClusterNotFoundError`, `KubeConnectionError`
+
+---
+
+### `managed_cluster`
+
+Context manager that creates a cluster, waits for readiness, and deletes it on exit.
+
+```python
+def managed_cluster(
+    config: ClusterConfig,
+    *,
+    client: KubeClient | None = None,
+    kubeconfig: str | None = None,
+    timeout: int = 300,
+) -> ContextManager[ClusterInfo]
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `config` | `ClusterConfig` | — | Cluster configuration (required) |
+| `client` | `KubeClient \| None` | `None` | Kubernetes client |
+| `kubeconfig` | `str \| None` | `None` | Path to kubeconfig file |
+| `timeout` | `int` | `300` | Timeout in seconds for cluster readiness |
+
+**Yields:** [`ClusterInfo`](#clusterinfo) once the cluster is ready
+
+**Raises:**
+
+- `ClusterAlreadyExistsError` — cluster name already in use
+- `NamespaceNotFoundError` — namespace does not exist
+- `ClusterTimeoutError` — cluster not ready within timeout
+- `KubeConnectionError` — cannot reach the Kubernetes API
+
+The cluster is always deleted on exit, even if an exception occurs inside the `with` block.
+
+**Example:**
+
+```python
+import ray
+from prism.api import managed_cluster
+from prism.config import ClusterConfig, WorkerGroupConfig
+
+config = ClusterConfig(
+    name="experiment",
+    worker_groups=[WorkerGroupConfig(replicas=2, gpus=1, gpu_type="a100")],
+)
+
+with managed_cluster(config, timeout=600) as cluster:
+    ray.init(cluster.client_url)
+    # ... run distributed work ...
+    ray.shutdown()
+# Cluster is automatically deleted here
+```
 
 ---
 

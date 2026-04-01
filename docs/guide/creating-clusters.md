@@ -139,6 +139,29 @@ config = ClusterConfig(
 info = create_cluster(config, wait=True, timeout=600)
 ```
 
+### Managed cluster (automatic cleanup)
+
+Use `managed_cluster` as a context manager to create a cluster that is automatically deleted when you're done:
+
+```python
+import ray
+from prism.api import managed_cluster
+from prism.config import ClusterConfig, WorkerGroupConfig
+
+config = ClusterConfig(
+    name="experiment",
+    worker_groups=[WorkerGroupConfig(replicas=2, gpus=1, gpu_type="a100")],
+)
+
+with managed_cluster(config, timeout=600) as cluster:
+    ray.init(cluster.client_url)
+    # ... run distributed work ...
+    ray.shutdown()
+# Cluster is automatically deleted here, even if an exception occurs
+```
+
+This is useful for scripts, CI pipelines, and notebooks where you want guaranteed cleanup.
+
 ### Loading from YAML
 
 ```python
