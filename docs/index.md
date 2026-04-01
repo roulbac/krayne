@@ -19,6 +19,18 @@ Managing Ray clusters on Kubernetes typically means writing verbose YAML manifes
 
 ---
 
+## How it works
+
+```mermaid
+graph LR
+  User["You"] -->|"CLI or Python"| Prism["Prism"]
+  Prism -->|"builds manifest"| KubeRay["KubeRay CRD"]
+  KubeRay -->|"reconciles"| Ray["Ray Cluster"]
+  Ray -->|"serves"| Services["Dashboard\nNotebook\nSSH"]
+```
+
+---
+
 ## Quick example
 
 === "CLI"
@@ -82,13 +94,21 @@ Managing Ray clusters on Kubernetes typically means writing verbose YAML manifes
 
 <div class="grid cards" markdown>
 
--   :material-rocket-launch:{ .lg .middle } **Getting Started**
+-   :material-rocket-launch:{ .lg .middle } **Quickstart**
 
     ---
 
     Install Prism and create your first cluster in under 5 minutes.
 
-    [:octicons-arrow-right-24: Getting Started](getting-started.md)
+    [:octicons-arrow-right-24: Quickstart](guide/quickstart.md)
+
+-   :material-book-open-variant:{ .lg .middle } **User Guide**
+
+    ---
+
+    Learn core concepts, configuration, and cluster management.
+
+    [:octicons-arrow-right-24: User Guide](guide/overview.md)
 
 -   :material-console:{ .lg .middle } **CLI Reference**
 
@@ -96,7 +116,7 @@ Managing Ray clusters on Kubernetes typically means writing verbose YAML manifes
 
     Full reference for every `prism` command, flag, and option.
 
-    [:octicons-arrow-right-24: CLI Reference](cli.md)
+    [:octicons-arrow-right-24: CLI Reference](reference/cli.md)
 
 -   :material-language-python:{ .lg .middle } **Python SDK**
 
@@ -104,14 +124,6 @@ Managing Ray clusters on Kubernetes typically means writing verbose YAML manifes
 
     Use Prism programmatically in scripts, notebooks, and pipelines.
 
-    [:octicons-arrow-right-24: SDK Reference](sdk.md)
-
--   :material-cog:{ .lg .middle } **Configuration**
-
-    ---
-
-    Understand the configuration model, defaults, and YAML overrides.
-
-    [:octicons-arrow-right-24: Configuration](configuration.md)
+    [:octicons-arrow-right-24: SDK Reference](reference/sdk.md)
 
 </div>

@@ -4,26 +4,18 @@ Prism is organized into five modules with a clear dependency direction. This pag
 
 ## Module overview
 
-```
-┌─────────────────────────────────────────────┐
-│                  CLI (cli/)                  │
-│          Typer commands + Rich output        │
-└──────────────────┬──────────────────────────┘
-                   │ calls
-┌──────────────────▼──────────────────────────┐
-│                 SDK (api/)                   │
-│        Functional API — all business logic   │
-└──────┬───────────────────────────┬──────────┘
-       │ reads                     │ calls
-┌──────▼──────────┐    ┌──────────▼───────────┐
-│  Config (config/)│    │  K8s Client (kube/)  │
-│  Pydantic models │    │  Protocol + manifest │
-└─────────────────┘    └──────────────────────┘
+```mermaid
+graph TD
+  CLI["<b>CLI</b> (cli/)<br/>Typer commands + Rich output"]
+  SDK["<b>SDK</b> (api/)<br/>Functional API — all business logic"]
+  Config["<b>Config</b> (config/)<br/>Pydantic models + YAML loading"]
+  Kube["<b>K8s Client</b> (kube/)<br/>Protocol + manifest builder"]
+  Output["<b>Output</b> (output/)<br/>Rich formatters"]
 
-┌─────────────────────────────────────────────┐
-│             Output (output/)                 │
-│     Rich formatters (used only by CLI)       │
-└─────────────────────────────────────────────┘
+  CLI -->|"calls"| SDK
+  CLI -->|"uses"| Output
+  SDK -->|"reads"| Config
+  SDK -->|"calls"| Kube
 ```
 
 **Dependency rule:** `cli/` depends on `api/`. `api/` depends on `config/` and `kube/`. Nothing depends on `cli/`. The `output/` module is used only by `cli/`.
@@ -81,6 +73,36 @@ Rich formatters for CLI display:
 
 ---
 
+## Request flow
+
+This sequence diagram shows what happens when you run `prism create my-cluster`:
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant CLI as CLI (Typer)
+  participant SDK as SDK (api/)
+  participant Config as Config (Pydantic)
+  participant Manifest as Manifest Builder
+  participant Client as KubeClient
+  participant K8s as Kubernetes API
+
+  User->>CLI: prism create my-cluster
+  CLI->>Config: Build ClusterConfig from flags
+  Config-->>CLI: Validated config
+  CLI->>SDK: create_cluster(config)
+  SDK->>Manifest: build_manifest(config)
+  Manifest-->>SDK: RayCluster CRD dict
+  SDK->>Client: create_ray_cluster(manifest)
+  Client->>K8s: POST /apis/ray.io/v1/rayclusters
+  K8s-->>Client: 201 Created
+  Client-->>SDK: Cluster object
+  SDK-->>CLI: ClusterInfo dataclass
+  CLI->>User: Rich panel output
+```
+
+---
+
 ## Design principles
 
 ### Functional-first
@@ -119,6 +141,13 @@ All configuration input is validated by Pydantic models. Return types are plain 
 
 The `build_manifest()` function is a **pure function** that converts a `ClusterConfig` into a KubeRay `RayCluster` custom resource dict. It has no side effects and no I/O — it's deterministic and easy to snapshot-test.
 
+```mermaid
+flowchart LR
+  Config["ClusterConfig"] --> Build["build_manifest()"]
+  Build --> CRD["RayCluster CRD dict"]
+  CRD --> K8s["Kubernetes API"]
+```
+
 **CRD mapping:**
 
 | Prism Config | KubeRay CRD Path |
@@ -133,6 +162,25 @@ The `build_manifest()` function is a **pure function** that converts a `ClusterC
 
 ---
 
+## Error handling
+
+All exceptions inherit from `PrismError`:
+
+```mermaid
+classDiagram
+  PrismError <|-- ClusterNotFoundError
+  PrismError <|-- ClusterAlreadyExistsError
+  PrismError <|-- ConfigValidationError
+  PrismError <|-- ClusterTimeoutError
+  PrismError <|-- KubeConnectionError
+  PrismError <|-- NamespaceNotFoundError
+  PrismError <|-- SandboxError
+```
+
+The CLI catches `PrismError` and renders a Rich panel. SDK users catch specific subtypes for fine-grained handling.
+
+---
+
 ## Testing strategy
 
 | Layer | Approach |
@@ -142,3 +190,5 @@ The `build_manifest()` function is a **pure function** that converts a `ClusterC
 | **SDK** | Inject mock `KubeClient`. Test full lifecycle independently. |
 | **CLI** | Typer `CliRunner` snapshot tests for output formatting and flag parsing. |
 | **Integration** | End-to-end against a real or kind cluster. Full create/scale/delete lifecycle. |
+
+The `KubeClient` protocol is the key enabler: unit tests inject a `MagicMock`, integration tests use `DefaultKubeClient` against a real cluster.

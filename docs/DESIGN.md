@@ -52,7 +52,7 @@ See [Architecture](architecture.md) for the full module overview and dependency 
 
 ## Error Handling
 
-All exceptions inherit from `PrismError`. See [Error Handling](errors.md) for the full hierarchy.
+All exceptions inherit from `PrismError`. See [Error Handling](reference/errors.md) for the full hierarchy.
 
 The CLI catches `PrismError` and renders a Rich panel. `--debug` shows the full traceback.
 

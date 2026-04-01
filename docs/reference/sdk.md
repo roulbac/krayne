@@ -34,6 +34,7 @@ def create_cluster(
     config: ClusterConfig,
     *,
     client: KubeClient | None = None,
+    kubeconfig: str | None = None,
     wait: bool = False,
     timeout: int = 300,
 ) -> ClusterInfo
@@ -45,6 +46,7 @@ def create_cluster(
 |---|---|---|---|
 | `config` | `ClusterConfig` | — | Cluster configuration (required) |
 | `client` | `KubeClient \| None` | `None` | Kubernetes client. Uses default kubeconfig if `None`. |
+| `kubeconfig` | `str \| None` | `None` | Path to kubeconfig file |
 | `wait` | `bool` | `False` | Block until the cluster is ready |
 | `timeout` | `int` | `300` | Timeout in seconds when `wait=True` |
 
@@ -86,6 +88,7 @@ def get_cluster(
     namespace: str = "default",
     *,
     client: KubeClient | None = None,
+    kubeconfig: str | None = None,
 ) -> ClusterInfo
 ```
 
@@ -96,6 +99,7 @@ def get_cluster(
 | `name` | `str` | — | Cluster name (required) |
 | `namespace` | `str` | `"default"` | Kubernetes namespace |
 | `client` | `KubeClient \| None` | `None` | Kubernetes client |
+| `kubeconfig` | `str \| None` | `None` | Path to kubeconfig file |
 
 **Returns:** [`ClusterInfo`](#clusterinfo)
 
@@ -112,6 +116,7 @@ def list_clusters(
     namespace: str = "default",
     *,
     client: KubeClient | None = None,
+    kubeconfig: str | None = None,
 ) -> list[ClusterInfo]
 ```
 
@@ -121,6 +126,7 @@ def list_clusters(
 |---|---|---|---|
 | `namespace` | `str` | `"default"` | Kubernetes namespace |
 | `client` | `KubeClient \| None` | `None` | Kubernetes client |
+| `kubeconfig` | `str \| None` | `None` | Path to kubeconfig file |
 
 **Returns:** `list[ClusterInfo]`
 
@@ -138,6 +144,7 @@ def describe_cluster(
     namespace: str = "default",
     *,
     client: KubeClient | None = None,
+    kubeconfig: str | None = None,
 ) -> ClusterDetails
 ```
 
@@ -148,6 +155,7 @@ def describe_cluster(
 | `name` | `str` | — | Cluster name (required) |
 | `namespace` | `str` | `"default"` | Kubernetes namespace |
 | `client` | `KubeClient \| None` | `None` | Kubernetes client |
+| `kubeconfig` | `str \| None` | `None` | Path to kubeconfig file |
 
 **Returns:** [`ClusterDetails`](#clusterdetails)
 
@@ -167,6 +175,7 @@ def scale_cluster(
     replicas: int,
     *,
     client: KubeClient | None = None,
+    kubeconfig: str | None = None,
 ) -> ClusterInfo
 ```
 
@@ -179,6 +188,7 @@ def scale_cluster(
 | `worker_group` | `str` | — | Name of the worker group to scale (required) |
 | `replicas` | `int` | — | Target replica count (required) |
 | `client` | `KubeClient \| None` | `None` | Kubernetes client |
+| `kubeconfig` | `str \| None` | `None` | Path to kubeconfig file |
 
 **Returns:** [`ClusterInfo`](#clusterinfo)
 
@@ -196,6 +206,7 @@ def delete_cluster(
     namespace: str = "default",
     *,
     client: KubeClient | None = None,
+    kubeconfig: str | None = None,
 ) -> None
 ```
 
@@ -206,6 +217,7 @@ def delete_cluster(
 | `name` | `str` | — | Cluster name (required) |
 | `namespace` | `str` | `"default"` | Kubernetes namespace |
 | `client` | `KubeClient \| None` | `None` | Kubernetes client |
+| `kubeconfig` | `str \| None` | `None` | Path to kubeconfig file |
 
 **Raises:** `ClusterNotFoundError`, `KubeConnectionError`
 
@@ -221,6 +233,7 @@ def wait_until_ready(
     namespace: str = "default",
     *,
     client: KubeClient | None = None,
+    kubeconfig: str | None = None,
     timeout: int = 300,
     _poll_interval: float = 2.0,
 ) -> ClusterInfo
@@ -233,6 +246,7 @@ def wait_until_ready(
 | `name` | `str` | — | Cluster name (required) |
 | `namespace` | `str` | `"default"` | Kubernetes namespace |
 | `client` | `KubeClient \| None` | `None` | Kubernetes client |
+| `kubeconfig` | `str \| None` | `None` | Path to kubeconfig file |
 | `timeout` | `int` | `300` | Maximum seconds to wait |
 
 **Returns:** [`ClusterInfo`](#clusterinfo) once the cluster is ready
@@ -254,9 +268,10 @@ Summary information about a Ray cluster.
 class ClusterInfo:
     name: str                    # Cluster name
     namespace: str               # Kubernetes namespace
-    status: str                  # Cluster status (e.g. "ready", "suspended")
+    status: str                  # Cluster status (e.g. "ready", "creating")
     head_ip: str | None          # Head node pod/service IP
     dashboard_url: str | None    # Ray dashboard URL
+    client_url: str | None       # Ray client URL
     notebook_url: str | None     # Jupyter notebook URL
     vscode_url: str | None       # VS Code server URL
     num_workers: int             # Total worker replicas
@@ -284,7 +299,7 @@ Head node resource details.
 ```python
 @dataclass(frozen=True)
 class HeadNodeInfo:
-    cpus: int       # CPU count
+    cpus: str       # CPU count
     memory: str     # Memory (e.g. "48Gi")
     gpus: int       # GPU count
     image: str      # Container image
@@ -299,7 +314,7 @@ Worker group resource details.
 class WorkerGroupInfo:
     name: str            # Worker group name
     replicas: int        # Number of replicas
-    cpus: int            # CPUs per worker
+    cpus: str            # CPUs per worker
     memory: str          # Memory per worker
     gpus: int            # GPUs per worker
     gpu_type: str | None # GPU accelerator type
@@ -322,6 +337,8 @@ class KubeClient(Protocol):
     def patch_ray_cluster(self, name: str, namespace: str, patch: dict) -> dict: ...
     def delete_ray_cluster(self, name: str, namespace: str) -> None: ...
     def get_cluster_status(self, name: str, namespace: str) -> str: ...
+    def list_pods(self, cluster_name: str, namespace: str) -> list[dict]: ...
+    def get_head_node_port(self, cluster_name: str, namespace: str, port_name: str) -> int | None: ...
 ```
 
 Any object that implements these methods satisfies the protocol — no inheritance required.

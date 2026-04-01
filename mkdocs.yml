@@ -27,6 +27,8 @@ theme:
     - navigation.sections
     - navigation.expand
     - navigation.top
+    - navigation.tabs
+    - navigation.tabs.sticky
     - content.code.copy
     - content.code.annotate
     - toc.follow
@@ -36,7 +38,11 @@ theme:
 markdown_extensions:
   - admonition
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
@@ -51,9 +57,18 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Getting Started: getting-started.md
-  - CLI Reference: cli.md
-  - Python SDK Reference: sdk.md
-  - Configuration: configuration.md
+  - User Guide:
+    - Overview: guide/overview.md
+    - Quickstart: guide/quickstart.md
+    - Core Concepts: guide/core-concepts.md
+    - Local Sandbox: guide/sandbox.md
+    - Creating Clusters: guide/creating-clusters.md
+    - Managing Clusters: guide/managing-clusters.md
+    - Configuration: guide/configuration.md
+    - Error Handling: guide/error-handling.md
+  - API Reference:
+    - CLI Reference: reference/cli.md
+    - Python SDK: reference/sdk.md
+    - Configuration Models: reference/configuration.md
+    - Error Types: reference/errors.md
   - Architecture: architecture.md
-  - Error Handling: errors.md

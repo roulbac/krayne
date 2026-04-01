@@ -1,4 +1,4 @@
-# Error Handling
+# Error Types
 
 Prism defines a flat exception hierarchy rooted at `PrismError`. All exceptions are importable from `prism.errors`.
 
@@ -16,14 +16,50 @@ from prism.errors import (
 
 ## Exception hierarchy
 
-```
-PrismError
-├── ClusterNotFoundError
-├── ClusterAlreadyExistsError
-├── ConfigValidationError
-├── ClusterTimeoutError
-├── KubeConnectionError
-└── NamespaceNotFoundError
+```mermaid
+classDiagram
+  class PrismError {
+    Base exception for all Prism errors
+  }
+  class ClusterNotFoundError {
+    +name: str
+    +namespace: str
+  }
+  class ClusterAlreadyExistsError {
+    +name: str
+    +namespace: str
+  }
+  class ConfigValidationError {
+    Wraps Pydantic ValidationError
+  }
+  class ClusterTimeoutError {
+    +name: str
+    +namespace: str
+    +timeout: int
+  }
+  class KubeConnectionError {
+    K8s API unreachable
+  }
+  class NamespaceNotFoundError {
+    +namespace: str
+  }
+  class SandboxError {
+    Base for sandbox errors
+  }
+  class DockerNotFoundError
+  class SandboxAlreadyExistsError
+  class SandboxNotFoundError
+
+  PrismError <|-- ClusterNotFoundError
+  PrismError <|-- ClusterAlreadyExistsError
+  PrismError <|-- ConfigValidationError
+  PrismError <|-- ClusterTimeoutError
+  PrismError <|-- KubeConnectionError
+  PrismError <|-- NamespaceNotFoundError
+  PrismError <|-- SandboxError
+  SandboxError <|-- DockerNotFoundError
+  SandboxError <|-- SandboxAlreadyExistsError
+  SandboxError <|-- SandboxNotFoundError
 ```
 
 All exceptions inherit from `PrismError`, so you can catch all Prism errors with a single handler.
@@ -141,21 +177,46 @@ Raised when the specified Kubernetes namespace does not exist.
 
 ---
 
-## CLI error display
+### `SandboxError`
 
-The CLI catches all `PrismError` subclasses and renders them as Rich panels:
+Base exception for sandbox-related errors.
 
-```
-╭──── Error ────╮
-│ Cluster 'foo' │
-│ not found in  │
-│ namespace     │
-│ 'default'     │
-╰───────────────╯
-```
+---
 
-Use `--debug` to see the full Python traceback instead:
+### `DockerNotFoundError`
 
-```bash
-prism describe foo --debug
-```
+Raised when Docker CLI is not available or the Docker daemon is not running.
+
+**Raised by:** `setup_sandbox`
+
+---
+
+### `SandboxAlreadyExistsError`
+
+Raised when a sandbox container already exists.
+
+**Raised by:** `setup_sandbox`
+
+---
+
+### `SandboxNotFoundError`
+
+Raised when attempting to tear down a sandbox that doesn't exist.
+
+**Raised by:** `teardown_sandbox`
+
+---
+
+## Which functions raise which errors
+
+| Function | Possible Errors |
+|---|---|
+| `create_cluster` | `ClusterAlreadyExistsError`, `NamespaceNotFoundError`, `ClusterTimeoutError`, `KubeConnectionError`, `ConfigValidationError` |
+| `get_cluster` | `ClusterNotFoundError`, `KubeConnectionError` |
+| `list_clusters` | `KubeConnectionError` |
+| `describe_cluster` | `ClusterNotFoundError`, `KubeConnectionError` |
+| `scale_cluster` | `ClusterNotFoundError`, `PrismError` (worker group not found), `KubeConnectionError` |
+| `delete_cluster` | `ClusterNotFoundError`, `KubeConnectionError` |
+| `wait_until_ready` | `ClusterTimeoutError`, `ClusterNotFoundError`, `KubeConnectionError` |
+| `setup_sandbox` | `DockerNotFoundError`, `SandboxAlreadyExistsError` |
+| `teardown_sandbox` | `SandboxNotFoundError` |
