@@ -98,13 +98,17 @@ prism create my-cluster --output json
 
 ```title="Terminal output"
 ╭─ Cluster Created ────────────────────────╮
-│  Name:         my-cluster                │
-│  Namespace:    default                   │
-│  Status:       ready                     │
-│  Dashboard:    http://10.0.0.1:8265      │
-│  Workers:      1                         │
+│  Name               my-cluster           │
+│  Namespace          default              │
+│  Status             ready                │
+│  Cluster Address    ray://10.0.0.1:10001 │
+│  Dashboard          http://10.0.0.1:8265 │
+│  Workers            1                    │
 ╰──────────────────────────────────────────╯
 ```
+
+!!! tip "Sandbox URLs"
+    In the sandbox, URLs use `localhost` with NodePort mappings (e.g. `ray://localhost:30064`, `http://localhost:30078`) so they work directly from your machine.
 
 !!! note
     When using `--file`, the `name` argument and any CLI flags override the corresponding values in the YAML file.
@@ -298,21 +302,28 @@ prism sandbox setup
 Requires Docker with at least 2 CPUs and 4 GB RAM. Creates a k3s container named `prism-sandbox` and installs the KubeRay operator.
 
 ```title="Terminal output"
-┌─────────────────────────────┬───────────────────┐
-│ Step                        │ Status            │
-├─────────────────────────────┼───────────────────┤
-│ Docker availability         │ ✓ ready           │
-│ K3S container               │ ✓ ready           │
-│ K3S node readiness          │ ✓ ready           │
-│ Kubeconfig extraction       │ ✓ ready           │
-│ KubeRay Helm chart          │ ✓ ready           │
-│ RayCluster CRD              │ ✓ ready           │
-│ KubeRay operator            │ ✓ ready           │
-└─────────────────────────────┴───────────────────┘
+          Sandbox Setup
+  Component             Status
+  Docker                ✓ ready
+  K3S Container         ✓ ready
+  K3S Node              ✓ ready
+  Kubeconfig            ✓ ready
+  KubeRay Helm Chart    ✓ ready
+  RayCluster CRD        ✓ ready
+  Operator Ready        ✓ ready
 ╭─ Sandbox Ready ─────────────────────────────────╮
-│ Kubeconfig: ~/.prism/sandbox-kubeconfig         │
+│  Status        running                          │
+│  Kubeconfig    ~/.prism/sandbox-kubeconfig       │
+╰─────────────────────────────────────────────────╯
+╭─ Next Steps ────────────────────────────────────╮
+│  1.  prism init — select the sandbox            │
+│      kubeconfig and context                     │
+│  2.  prism create my-cluster — launch your      │
+│      first Ray cluster                          │
 ╰─────────────────────────────────────────────────╯
 ```
+
+After setup, run `prism init` to select the sandbox kubeconfig and context.
 
 ---
 
