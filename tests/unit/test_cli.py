@@ -56,6 +56,20 @@ class TestCreate:
         assert result.exit_code == 0
         assert "test" in result.output
 
+    @patch("prism.cli.app._get_cluster")
+    @patch("prism.cli.app._create_cluster")
+    def test_create_timeout_stops_polling(self, mock_create, mock_get):
+        pending = ClusterInfo(
+            name="test", namespace="default", status="pending",
+            head_ip=None, dashboard_url=None, client_url=None,
+            notebook_url=None, vscode_url=None, num_workers=0,
+            created_at="2026-01-01T00:00:00Z",
+        )
+        mock_create.return_value = pending
+        mock_get.return_value = pending
+        result = runner.invoke(app, ["create", "my-cluster", "--timeout", "1"])
+        assert result.exit_code == 0
+
 
 class TestGet:
     @patch("prism.cli.app._list_clusters", return_value=[_INFO])

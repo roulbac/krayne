@@ -133,12 +133,15 @@ def create(
             return
 
         try:
+            deadline = time.monotonic() + timeout
             with Live(
                 format_cluster_created(info, console, live=True),
                 console=console,
                 refresh_per_second=2,
             ) as live:
                 while info.status not in ("ready", "running"):
+                    if time.monotonic() >= deadline:
+                        break
                     time.sleep(2)
                     info = _get_cluster(
                         name, namespace, kubeconfig=_kubeconfig
