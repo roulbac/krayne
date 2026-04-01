@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -53,10 +53,10 @@ class TestSetupSandbox:
         return side_effect
 
     @patch("prism.sandbox.manager.subprocess.run")
-    @patch("prism.sandbox.manager._async_container_exists", new_callable=AsyncMock, return_value=False)
-    @patch("prism.sandbox.manager._async_wait_for_k3s", new_callable=AsyncMock)
-    @patch("prism.sandbox.manager._async_wait_for_crds", new_callable=AsyncMock)
-    @patch("prism.sandbox.manager._async_wait_for_deployment", new_callable=AsyncMock)
+    @patch("prism.sandbox.manager._container_exists", return_value=False)
+    @patch("prism.sandbox.manager._wait_for_k3s")
+    @patch("prism.sandbox.manager._wait_for_crds")
+    @patch("prism.sandbox.manager._wait_for_deployment")
     def test_setup_success(
         self, mock_deploy, mock_crds, mock_k3s, mock_exists, mock_run, tmp_path
     ):
@@ -67,10 +67,10 @@ class TestSetupSandbox:
         assert Path(path).exists()
 
     @patch("prism.sandbox.manager.subprocess.run")
-    @patch("prism.sandbox.manager._async_container_exists", new_callable=AsyncMock, return_value=False)
-    @patch("prism.sandbox.manager._async_wait_for_k3s", new_callable=AsyncMock)
-    @patch("prism.sandbox.manager._async_wait_for_crds", new_callable=AsyncMock)
-    @patch("prism.sandbox.manager._async_wait_for_deployment", new_callable=AsyncMock)
+    @patch("prism.sandbox.manager._container_exists", return_value=False)
+    @patch("prism.sandbox.manager._wait_for_k3s")
+    @patch("prism.sandbox.manager._wait_for_crds")
+    @patch("prism.sandbox.manager._wait_for_deployment")
     def test_setup_progress_callback(
         self, mock_deploy, mock_crds, mock_k3s, mock_exists, mock_run, tmp_path
     ):
@@ -93,24 +93,23 @@ class TestSetupSandbox:
         assert docker_calls[0] == "in_progress"
         assert docker_calls[-1] == "done"
 
-    @patch("prism.sandbox.manager._async_run", new_callable=AsyncMock)
+    @patch("prism.sandbox.manager._run")
     def test_docker_not_found(self, mock_run):
         mock_run.side_effect = SandboxError("Command not found: docker")
         with pytest.raises(DockerNotFoundError):
             setup_sandbox()
 
-    @patch("prism.sandbox.manager._async_run", new_callable=AsyncMock)
-    @patch("prism.sandbox.manager._async_container_exists", new_callable=AsyncMock, return_value=True)
+    @patch("prism.sandbox.manager._run")
+    @patch("prism.sandbox.manager._container_exists", return_value=True)
     def test_already_exists(self, mock_exists, mock_run):
-        # _async_run for docker info should succeed with enough resources
         mock_run.return_value = MagicMock(returncode=0, stdout="8 8589934592")
         with pytest.raises(SandboxAlreadyExistsError):
             setup_sandbox()
 
 
 class TestTeardownSandbox:
-    @patch("prism.sandbox.manager._async_run", new_callable=AsyncMock)
-    @patch("prism.sandbox.manager._async_container_exists", new_callable=AsyncMock, return_value=True)
+    @patch("prism.sandbox.manager._run")
+    @patch("prism.sandbox.manager._container_exists", return_value=True)
     def test_teardown_success(self, mock_exists, mock_run, tmp_path):
         # Create a sandbox kubeconfig to verify cleanup
         import prism.sandbox.manager as mgr_mod
@@ -120,7 +119,7 @@ class TestTeardownSandbox:
         mock_run.assert_called_once()
         assert not mgr_mod.SANDBOX_KUBECONFIG.exists()
 
-    @patch("prism.sandbox.manager._async_container_exists", new_callable=AsyncMock, return_value=False)
+    @patch("prism.sandbox.manager._container_exists", return_value=False)
     def test_teardown_not_found(self, mock_exists):
         with pytest.raises(SandboxNotFoundError):
             teardown_sandbox()

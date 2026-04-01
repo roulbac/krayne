@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import anyio
 import yaml
 
 
@@ -49,40 +48,3 @@ def clear_prism_settings() -> None:
     """Remove the settings file if it exists."""
     if PRISM_CONFIG_FILE.exists():
         PRISM_CONFIG_FILE.unlink()
-
-
-# ---------------------------------------------------------------------------
-# Async variants (used by async internal implementations)
-# ---------------------------------------------------------------------------
-
-
-async def _async_load_prism_settings() -> PrismSettings:
-    """Async version of :func:`load_prism_settings`."""
-    config_path = anyio.Path(PRISM_CONFIG_FILE)
-    if not await config_path.exists():
-        return PrismSettings()
-    raw = yaml.safe_load(await config_path.read_text()) or {}
-    return PrismSettings(
-        kubeconfig=raw.get("kubeconfig"),
-        kube_context=raw.get("kube_context"),
-    )
-
-
-async def _async_save_prism_settings(settings: PrismSettings) -> None:
-    """Async version of :func:`save_prism_settings`."""
-    await anyio.Path(PRISM_DIR).mkdir(parents=True, exist_ok=True)
-    data: dict[str, Any] = {}
-    if settings.kubeconfig is not None:
-        data["kubeconfig"] = settings.kubeconfig
-    if settings.kube_context is not None:
-        data["kube_context"] = settings.kube_context
-    await anyio.Path(PRISM_CONFIG_FILE).write_text(
-        yaml.safe_dump(data, default_flow_style=False)
-    )
-
-
-async def _async_clear_prism_settings() -> None:
-    """Async version of :func:`clear_prism_settings`."""
-    config_path = anyio.Path(PRISM_CONFIG_FILE)
-    if await config_path.exists():
-        await config_path.unlink()

@@ -9,13 +9,10 @@ from pathlib import Path
 
 import anyio
 
-from prism._async_utils import _run_sync
+from prism._async_utils import _run_async
 from prism.config.settings import (
     PRISM_DIR,
     PrismSettings,
-    _async_clear_prism_settings,
-    _async_load_prism_settings,
-    _async_save_prism_settings,
     clear_prism_settings,
     load_prism_settings,
     save_prism_settings,
@@ -67,11 +64,6 @@ class SandboxStatus:
     created_at: str | None = None
 
 
-# ---------------------------------------------------------------------------
-# Low-level helpers (sync, used by async wrappers via thread offload)
-# ---------------------------------------------------------------------------
-
-
 def _run(cmd: list[str], check: bool = True, **kwargs) -> subprocess.CompletedProcess:
     try:
         return subprocess.run(
@@ -99,102 +91,94 @@ def _notify(on_progress: ProgressCallback, step: str, status: str) -> None:
         on_progress(step, status)
 
 
-# ---------------------------------------------------------------------------
-# Async internal implementations
-# ---------------------------------------------------------------------------
-
-
-async def _async_run(
-    cmd: list[str], check: bool = True, **kwargs
-) -> subprocess.CompletedProcess:
-    return await anyio.to_thread.run_sync(
-        functools.partial(_run, cmd, check=check, **kwargs)
-    )
-
-
-async def _async_container_exists() -> bool:
-    return await anyio.to_thread.run_sync(_container_exists)
-
-
-async def _async_wait_for_k3s(
+def _wait_for_k3s(
     timeout: int = 120, on_progress: ProgressCallback = None
 ) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        _notify(on_progress, STEP_K3S_NODE, "in_progress")
-        result = await anyio.to_thread.run_sync(
-            functools.partial(
-                subprocess.run,
-                [
-                    "docker", "exec", SANDBOX_CONTAINER_NAME,
-                    "kubectl", "get", "nodes",
-                    "-o", "jsonpath={.items[0].status.conditions[-1].type}",
-                ],
-                capture_output=True,
-                text=True,
+    async def _poll():
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            _notify(on_progress, STEP_K3S_NODE, "in_progress")
+            result = await anyio.to_thread.run_sync(
+                functools.partial(
+                    subprocess.run,
+                    [
+                        "docker", "exec", SANDBOX_CONTAINER_NAME,
+                        "kubectl", "get", "nodes",
+                        "-o", "jsonpath={.items[0].status.conditions[-1].type}",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
             )
-        )
-        if result.returncode == 0 and "Ready" in result.stdout:
-            return
-        await anyio.sleep(3)
-    raise SandboxError(f"K3S node not ready within {timeout}s")
+            if result.returncode == 0 and "Ready" in result.stdout:
+                return
+            await anyio.sleep(3)
+        raise SandboxError(f"K3S node not ready within {timeout}s")
+
+    _run_async(_poll)
 
 
-async def _async_wait_for_crds(
+def _wait_for_crds(
     kubeconfig: str, timeout: int = 120, on_progress: ProgressCallback = None
 ) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        _notify(on_progress, STEP_CRD, "in_progress")
-        result = await anyio.to_thread.run_sync(
-            functools.partial(
-                subprocess.run,
-                ["kubectl", "--kubeconfig", kubeconfig, "get", "crd", "rayclusters.ray.io"],
-                capture_output=True,
-                text=True,
+    async def _poll():
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            _notify(on_progress, STEP_CRD, "in_progress")
+            result = await anyio.to_thread.run_sync(
+                functools.partial(
+                    subprocess.run,
+                    ["kubectl", "--kubeconfig", kubeconfig, "get", "crd", "rayclusters.ray.io"],
+                    capture_output=True,
+                    text=True,
+                )
             )
-        )
-        if result.returncode == 0:
-            return
-        await anyio.sleep(3)
-    raise SandboxError("RayCluster CRD not registered within timeout")
+            if result.returncode == 0:
+                return
+            await anyio.sleep(3)
+        raise SandboxError("RayCluster CRD not registered within timeout")
+
+    _run_async(_poll)
 
 
-async def _async_wait_for_deployment(
+def _wait_for_deployment(
     name: str,
     kubeconfig: str,
     namespace: str = "default",
     timeout: int = 180,
     on_progress: ProgressCallback = None,
 ) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        _notify(on_progress, STEP_OPERATOR, "in_progress")
-        result = await anyio.to_thread.run_sync(
-            functools.partial(
-                subprocess.run,
-                [
-                    "kubectl", "--kubeconfig", kubeconfig,
-                    "get", "deployment", name,
-                    "-n", namespace,
-                    "-o", "jsonpath={.status.availableReplicas}",
-                ],
-                capture_output=True,
-                text=True,
+    async def _poll():
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            _notify(on_progress, STEP_OPERATOR, "in_progress")
+            result = await anyio.to_thread.run_sync(
+                functools.partial(
+                    subprocess.run,
+                    [
+                        "kubectl", "--kubeconfig", kubeconfig,
+                        "get", "deployment", name,
+                        "-n", namespace,
+                        "-o", "jsonpath={.status.availableReplicas}",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
             )
-        )
-        if result.returncode == 0 and result.stdout.strip() not in ("", "0", "null"):
-            return
-        await anyio.sleep(5)
-    raise SandboxError(f"Deployment {name} not available within {timeout}s")
+            if result.returncode == 0 and result.stdout.strip() not in ("", "0", "null"):
+                return
+            await anyio.sleep(5)
+        raise SandboxError(f"Deployment {name} not available within {timeout}s")
+
+    _run_async(_poll)
 
 
-async def _async_setup_sandbox(on_progress: ProgressCallback = None) -> str:
-    """Async implementation of :func:`setup_sandbox`."""
+def setup_sandbox(on_progress: ProgressCallback = None) -> str:
+    """Create a local k3s container with KubeRay and return the kubeconfig path."""
     # 1. Check Docker
     _notify(on_progress, STEP_DOCKER, "in_progress")
     try:
-        result = await _async_run(["docker", "info", "--format", "{{.NCPU}} {{.MemTotal}}"])
+        result = _run(["docker", "info", "--format", "{{.NCPU}} {{.MemTotal}}"])
     except SandboxError:
         _notify(on_progress, STEP_DOCKER, "failed")
         raise DockerNotFoundError()
@@ -216,13 +200,13 @@ async def _async_setup_sandbox(on_progress: ProgressCallback = None) -> str:
     _notify(on_progress, STEP_DOCKER, "done")
 
     # 2. Check for existing sandbox
-    if await _async_container_exists():
+    if _container_exists():
         _notify(on_progress, STEP_K3S_CONTAINER, "failed")
         raise SandboxAlreadyExistsError()
 
     # 3. Start k3s
     _notify(on_progress, STEP_K3S_CONTAINER, "in_progress")
-    await _async_run([
+    _run([
         "docker", "run", "-d",
         "--name", SANDBOX_CONTAINER_NAME,
         "--privileged",
@@ -240,28 +224,28 @@ async def _async_setup_sandbox(on_progress: ProgressCallback = None) -> str:
     try:
         # 4. Wait for k3s node
         _notify(on_progress, STEP_K3S_NODE, "in_progress")
-        await _async_wait_for_k3s(on_progress=on_progress)
+        _wait_for_k3s(on_progress=on_progress)
         _notify(on_progress, STEP_K3S_NODE, "done")
 
         # 5. Extract kubeconfig
         _notify(on_progress, STEP_KUBECONFIG, "in_progress")
-        result = await _async_run([
+        result = _run([
             "docker", "exec", SANDBOX_CONTAINER_NAME,
             "cat", "/etc/rancher/k3s/k3s.yaml",
         ])
         raw_kubeconfig = result.stdout
 
         # Write host kubeconfig (127.0.0.1:6443 reachable via port mapping)
-        await anyio.Path(PRISM_DIR).mkdir(parents=True, exist_ok=True)
-        await anyio.Path(SANDBOX_KUBECONFIG).write_text(raw_kubeconfig)
+        PRISM_DIR.mkdir(parents=True, exist_ok=True)
+        SANDBOX_KUBECONFIG.write_text(raw_kubeconfig)
         _notify(on_progress, STEP_KUBECONFIG, "done")
 
         # 6. Install KubeRay via Helm (shares k3s container network)
         _notify(on_progress, STEP_HELM_INSTALL, "in_progress")
         internal_kubeconfig = str(PRISM_DIR / "sandbox-kubeconfig-internal")
-        await anyio.Path(internal_kubeconfig).write_text(raw_kubeconfig)
+        Path(internal_kubeconfig).write_text(raw_kubeconfig)
         try:
-            await _async_run([
+            _run([
                 "docker", "run", "--rm",
                 "--network", f"container:{SANDBOX_CONTAINER_NAME}",
                 "-v", f"{internal_kubeconfig}:/root/.kube/config:ro",
@@ -271,69 +255,60 @@ async def _async_setup_sandbox(on_progress: ProgressCallback = None) -> str:
                 "--namespace", "default",
             ])
         finally:
-            await anyio.Path(internal_kubeconfig).unlink(missing_ok=True)
+            Path(internal_kubeconfig).unlink(missing_ok=True)
         _notify(on_progress, STEP_HELM_INSTALL, "done")
 
         # 7. Wait for CRD + operator
         kubeconfig_path = str(SANDBOX_KUBECONFIG)
 
         _notify(on_progress, STEP_CRD, "in_progress")
-        await _async_wait_for_crds(kubeconfig_path, on_progress=on_progress)
+        _wait_for_crds(kubeconfig_path, on_progress=on_progress)
         _notify(on_progress, STEP_CRD, "done")
 
         _notify(on_progress, STEP_OPERATOR, "in_progress")
-        await _async_wait_for_deployment(
+        _wait_for_deployment(
             "kuberay-operator", kubeconfig_path, on_progress=on_progress
         )
         _notify(on_progress, STEP_OPERATOR, "done")
 
         # 8. Save as active config
-        await _async_save_prism_settings(PrismSettings(kubeconfig=kubeconfig_path))
+        save_prism_settings(PrismSettings(kubeconfig=kubeconfig_path))
 
         return kubeconfig_path
 
     except Exception:
         # Clean up the container on any setup failure
-        await anyio.to_thread.run_sync(
-            functools.partial(
-                subprocess.run,
-                ["docker", "rm", "-f", SANDBOX_CONTAINER_NAME],
-                capture_output=True,
-                text=True,
-            )
+        subprocess.run(
+            ["docker", "rm", "-f", SANDBOX_CONTAINER_NAME],
+            capture_output=True,
+            text=True,
         )
         raise
 
 
-async def _async_teardown_sandbox() -> None:
-    """Async implementation of :func:`teardown_sandbox`."""
-    if not await _async_container_exists():
+def teardown_sandbox() -> None:
+    if not _container_exists():
         raise SandboxNotFoundError()
 
-    await _async_run(["docker", "rm", "-f", SANDBOX_CONTAINER_NAME])
+    _run(["docker", "rm", "-f", SANDBOX_CONTAINER_NAME])
 
     # Remove sandbox kubeconfig
-    kube_path = anyio.Path(SANDBOX_KUBECONFIG)
-    if await kube_path.exists():
-        await kube_path.unlink()
+    if SANDBOX_KUBECONFIG.exists():
+        SANDBOX_KUBECONFIG.unlink()
 
     # Clear prism settings if they point to the sandbox
-    settings = await _async_load_prism_settings()
+    settings = load_prism_settings()
     if settings.kubeconfig == str(SANDBOX_KUBECONFIG):
-        await _async_clear_prism_settings()
+        clear_prism_settings()
 
 
-async def _async_sandbox_status() -> SandboxStatus:
-    """Async implementation of :func:`sandbox_status`."""
+def sandbox_status() -> SandboxStatus:
     import json as _json
 
-    result = await anyio.to_thread.run_sync(
-        functools.partial(
-            subprocess.run,
-            ["docker", "inspect", SANDBOX_CONTAINER_NAME],
-            capture_output=True,
-            text=True,
-        )
+    result = subprocess.run(
+        ["docker", "inspect", SANDBOX_CONTAINER_NAME],
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
         return SandboxStatus(running=False)
@@ -348,8 +323,7 @@ async def _async_sandbox_status() -> SandboxStatus:
     created_at = info.get("Created")
     image = info.get("Config", {}).get("Image", "")
 
-    kube_path = anyio.Path(SANDBOX_KUBECONFIG)
-    kubeconfig_str = str(SANDBOX_KUBECONFIG) if await kube_path.exists() else None
+    kubeconfig_str = str(SANDBOX_KUBECONFIG) if SANDBOX_KUBECONFIG.exists() else None
 
     return SandboxStatus(
         running=running,
@@ -358,21 +332,3 @@ async def _async_sandbox_status() -> SandboxStatus:
         k3s_version=image,
         created_at=created_at,
     )
-
-
-# ---------------------------------------------------------------------------
-# Public sync API (unchanged signatures)
-# ---------------------------------------------------------------------------
-
-
-def setup_sandbox(on_progress: ProgressCallback = None) -> str:
-    """Create a local k3s container with KubeRay and return the kubeconfig path."""
-    return _run_sync(_async_setup_sandbox, on_progress=on_progress)
-
-
-def teardown_sandbox() -> None:
-    _run_sync(_async_teardown_sandbox)
-
-
-def sandbox_status() -> SandboxStatus:
-    return _run_sync(_async_sandbox_status)

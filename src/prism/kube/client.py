@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import functools
 import time
 from typing import Any, Protocol, runtime_checkable
-
-import anyio
 
 from kubernetes import client as k8s_client  # type: ignore[import-untyped]
 from kubernetes import config as k8s_config  # type: ignore[import-untyped]
@@ -167,127 +164,6 @@ class DefaultKubeClient:
             if exc.status == 404:
                 raise NamespaceNotFoundError(namespace) from exc
             raise KubeConnectionError(str(exc)) from exc
-
-
-# ---------------------------------------------------------------------------
-# Async KubeClient
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class AsyncKubeClient(Protocol):
-    """Async structural interface for Kubernetes operations on RayCluster CRDs."""
-
-    async def create_ray_cluster(self, manifest: dict) -> dict: ...
-    async def get_ray_cluster(self, name: str, namespace: str) -> dict: ...
-    async def list_ray_clusters(self, namespace: str) -> list[dict]: ...
-    async def patch_ray_cluster(self, name: str, namespace: str, patch: dict) -> dict: ...
-    async def delete_ray_cluster(self, name: str, namespace: str) -> None: ...
-    async def get_cluster_status(self, name: str, namespace: str) -> str: ...
-    async def list_pods(self, cluster_name: str, namespace: str) -> list[dict]: ...
-    async def get_head_node_port(self, cluster_name: str, namespace: str, port_name: str) -> int | None: ...
-
-
-class DefaultAsyncKubeClient:
-    """Async KubeClient that delegates blocking calls to a thread via anyio."""
-
-    def __init__(
-        self,
-        kubeconfig: str | None = None,
-        context: str | None = None,
-    ) -> None:
-        self._sync = DefaultKubeClient(kubeconfig=kubeconfig, context=context)
-
-    async def create_ray_cluster(self, manifest: dict) -> dict:
-        return await anyio.to_thread.run_sync(
-            functools.partial(self._sync.create_ray_cluster, manifest)
-        )
-
-    async def get_ray_cluster(self, name: str, namespace: str) -> dict:
-        return await anyio.to_thread.run_sync(
-            functools.partial(self._sync.get_ray_cluster, name, namespace)
-        )
-
-    async def list_ray_clusters(self, namespace: str) -> list[dict]:
-        return await anyio.to_thread.run_sync(
-            functools.partial(self._sync.list_ray_clusters, namespace)
-        )
-
-    async def patch_ray_cluster(self, name: str, namespace: str, patch: dict) -> dict:
-        return await anyio.to_thread.run_sync(
-            functools.partial(self._sync.patch_ray_cluster, name, namespace, patch)
-        )
-
-    async def delete_ray_cluster(self, name: str, namespace: str) -> None:
-        await anyio.to_thread.run_sync(
-            functools.partial(self._sync.delete_ray_cluster, name, namespace)
-        )
-
-    async def get_cluster_status(self, name: str, namespace: str) -> str:
-        return await anyio.to_thread.run_sync(
-            functools.partial(self._sync.get_cluster_status, name, namespace)
-        )
-
-    async def list_pods(self, cluster_name: str, namespace: str) -> list[dict]:
-        return await anyio.to_thread.run_sync(
-            functools.partial(self._sync.list_pods, cluster_name, namespace)
-        )
-
-    async def get_head_node_port(
-        self, cluster_name: str, namespace: str, port_name: str
-    ) -> int | None:
-        return await anyio.to_thread.run_sync(
-            functools.partial(self._sync.get_head_node_port, cluster_name, namespace, port_name)
-        )
-
-
-class _SyncToAsyncClientAdapter:
-    """Wraps any sync ``KubeClient`` (including ``MagicMock``) for async use."""
-
-    def __init__(self, sync_client: KubeClient) -> None:
-        self._sync = sync_client
-
-    async def create_ray_cluster(self, manifest: dict) -> dict:
-        return await anyio.to_thread.run_sync(
-            functools.partial(self._sync.create_ray_cluster, manifest)
-        )
-
-    async def get_ray_cluster(self, name: str, namespace: str) -> dict:
-        return await anyio.to_thread.run_sync(
-            functools.partial(self._sync.get_ray_cluster, name, namespace)
-        )
-
-    async def list_ray_clusters(self, namespace: str) -> list[dict]:
-        return await anyio.to_thread.run_sync(
-            functools.partial(self._sync.list_ray_clusters, namespace)
-        )
-
-    async def patch_ray_cluster(self, name: str, namespace: str, patch: dict) -> dict:
-        return await anyio.to_thread.run_sync(
-            functools.partial(self._sync.patch_ray_cluster, name, namespace, patch)
-        )
-
-    async def delete_ray_cluster(self, name: str, namespace: str) -> None:
-        await anyio.to_thread.run_sync(
-            functools.partial(self._sync.delete_ray_cluster, name, namespace)
-        )
-
-    async def get_cluster_status(self, name: str, namespace: str) -> str:
-        return await anyio.to_thread.run_sync(
-            functools.partial(self._sync.get_cluster_status, name, namespace)
-        )
-
-    async def list_pods(self, cluster_name: str, namespace: str) -> list[dict]:
-        return await anyio.to_thread.run_sync(
-            functools.partial(self._sync.list_pods, cluster_name, namespace)
-        )
-
-    async def get_head_node_port(
-        self, cluster_name: str, namespace: str, port_name: str
-    ) -> int | None:
-        return await anyio.to_thread.run_sync(
-            functools.partial(self._sync.get_head_node_port, cluster_name, namespace, port_name)
-        )
 
 
 def _extract_status(obj: dict, pods: list[dict] | None = None) -> str:
