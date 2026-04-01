@@ -12,7 +12,6 @@ class ServicesConfig(BaseModel):
     notebook: bool = True
     vscode_server: bool = False
     ssh: bool = True
-    tutorials: bool = False
 
 
 class HeadNodeConfig(BaseModel):

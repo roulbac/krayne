@@ -76,7 +76,6 @@ Services to enable on the cluster head node.
 | `notebook` | `bool` | `True` | Jupyter notebook server |
 | `vscode_server` | `bool` | `False` | VS Code server |
 | `ssh` | `bool` | `True` | SSH access |
-| `tutorials` | `bool` | `False` | Bundled tutorial notebooks |
 
 ---
 
