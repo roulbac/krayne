@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import functools
 import subprocess
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-import anyio
+from tenacity import retry, retry_if_result, stop_after_delay, wait_fixed
 
-from prism._async_utils import _run_async
 from prism.config.settings import (
     PRISM_DIR,
     PrismSettings,
@@ -94,51 +91,41 @@ def _notify(on_progress: ProgressCallback, step: str, status: str) -> None:
 def _wait_for_k3s(
     timeout: int = 120, on_progress: ProgressCallback = None
 ) -> None:
-    async def _poll():
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            _notify(on_progress, STEP_K3S_NODE, "in_progress")
-            result = await anyio.to_thread.run_sync(
-                functools.partial(
-                    subprocess.run,
-                    [
-                        "docker", "exec", SANDBOX_CONTAINER_NAME,
-                        "kubectl", "get", "nodes",
-                        "-o", "jsonpath={.items[0].status.conditions[-1].type}",
-                    ],
-                    capture_output=True,
-                    text=True,
-                )
-            )
-            if result.returncode == 0 and "Ready" in result.stdout:
-                return
-            await anyio.sleep(3)
-        raise SandboxError(f"K3S node not ready within {timeout}s")
+    @retry(stop=stop_after_delay(timeout), wait=wait_fixed(3), retry=retry_if_result(lambda r: r is False), reraise=True)
+    def _poll():
+        _notify(on_progress, STEP_K3S_NODE, "in_progress")
+        result = subprocess.run(
+            [
+                "docker", "exec", SANDBOX_CONTAINER_NAME,
+                "kubectl", "get", "nodes",
+                "-o", "jsonpath={.items[0].status.conditions[-1].type}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and "Ready" in result.stdout:
+            return True
+        return False
 
-    _run_async(_poll)
+    if not _poll():
+        raise SandboxError(f"K3S node not ready within {timeout}s")
 
 
 def _wait_for_crds(
     kubeconfig: str, timeout: int = 120, on_progress: ProgressCallback = None
 ) -> None:
-    async def _poll():
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            _notify(on_progress, STEP_CRD, "in_progress")
-            result = await anyio.to_thread.run_sync(
-                functools.partial(
-                    subprocess.run,
-                    ["kubectl", "--kubeconfig", kubeconfig, "get", "crd", "rayclusters.ray.io"],
-                    capture_output=True,
-                    text=True,
-                )
-            )
-            if result.returncode == 0:
-                return
-            await anyio.sleep(3)
-        raise SandboxError("RayCluster CRD not registered within timeout")
+    @retry(stop=stop_after_delay(timeout), wait=wait_fixed(3), retry=retry_if_result(lambda r: r is False), reraise=True)
+    def _poll():
+        _notify(on_progress, STEP_CRD, "in_progress")
+        result = subprocess.run(
+            ["kubectl", "--kubeconfig", kubeconfig, "get", "crd", "rayclusters.ray.io"],
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0
 
-    _run_async(_poll)
+    if not _poll():
+        raise SandboxError("RayCluster CRD not registered within timeout")
 
 
 def _wait_for_deployment(
@@ -148,29 +135,23 @@ def _wait_for_deployment(
     timeout: int = 180,
     on_progress: ProgressCallback = None,
 ) -> None:
-    async def _poll():
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            _notify(on_progress, STEP_OPERATOR, "in_progress")
-            result = await anyio.to_thread.run_sync(
-                functools.partial(
-                    subprocess.run,
-                    [
-                        "kubectl", "--kubeconfig", kubeconfig,
-                        "get", "deployment", name,
-                        "-n", namespace,
-                        "-o", "jsonpath={.status.availableReplicas}",
-                    ],
-                    capture_output=True,
-                    text=True,
-                )
-            )
-            if result.returncode == 0 and result.stdout.strip() not in ("", "0", "null"):
-                return
-            await anyio.sleep(5)
-        raise SandboxError(f"Deployment {name} not available within {timeout}s")
+    @retry(stop=stop_after_delay(timeout), wait=wait_fixed(5), retry=retry_if_result(lambda r: r is False), reraise=True)
+    def _poll():
+        _notify(on_progress, STEP_OPERATOR, "in_progress")
+        result = subprocess.run(
+            [
+                "kubectl", "--kubeconfig", kubeconfig,
+                "get", "deployment", name,
+                "-n", namespace,
+                "-o", "jsonpath={.status.availableReplicas}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0 and result.stdout.strip() not in ("", "0", "null")
 
-    _run_async(_poll)
+    if not _poll():
+        raise SandboxError(f"Deployment {name} not available within {timeout}s")
 
 
 def setup_sandbox(on_progress: ProgressCallback = None) -> str:

@@ -12,7 +12,7 @@ dependencies = [
     "kubernetes>=28,<32",
     "pyyaml>=6,<7",
     "questionary>=2,<3",
-    "anyio>=4,<5",
+    "tenacity>=8,<10",
 ]
 
 [project.scripts]
@@ -41,4 +41,3 @@ testpaths = ["tests"]
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
 ]
-anyio_mode = "asyncio"

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import functools
-import time
 from typing import Any
 
-import anyio
+from tenacity import RetryError, retry, retry_if_result, stop_after_delay, wait_fixed
 
+from prism._parallel import _gather
 from prism.api.types import (
     ClusterDetails,
     ClusterInfo,
@@ -17,8 +17,6 @@ from prism.config.settings import load_prism_settings
 from prism.errors import ClusterTimeoutError
 from prism.kube.client import DefaultKubeClient, KubeClient, _extract_status
 from prism.kube.manifest import RAY_IMAGE, build_manifest
-
-from prism._async_utils import _gather, _run_async
 
 
 def _resolve_client(
@@ -169,20 +167,23 @@ def wait_until_ready(
     """Poll until the cluster reaches *ready* state or *timeout* expires."""
     kube = _resolve_client(client, kubeconfig)
 
-    async def _poll():
-        deadline = time.monotonic() + timeout
-        while True:
-            obj = await anyio.to_thread.run_sync(
-                functools.partial(kube.get_ray_cluster, name, namespace)
-            )
-            status = _extract_status(obj)
-            if status == "ready":
-                return _obj_to_info(obj, client=kube)
-            if time.monotonic() >= deadline:
-                raise ClusterTimeoutError(name, namespace, timeout)
-            await anyio.sleep(_poll_interval)
+    @retry(
+        stop=stop_after_delay(timeout),
+        wait=wait_fixed(_poll_interval),
+        retry=retry_if_result(lambda r: r is None),
+        reraise=True,
+    )
+    def _poll():
+        obj = kube.get_ray_cluster(name, namespace)
+        if _extract_status(obj) == "ready":
+            return _obj_to_info(obj, client=kube)
+        return None
 
-    return _run_async(_poll)
+    try:
+        result = _poll()
+    except RetryError:
+        raise ClusterTimeoutError(name, namespace, timeout)
+    return result
 
 
 def _is_sandbox() -> bool:
