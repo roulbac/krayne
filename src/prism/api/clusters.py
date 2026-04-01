@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import functools
 from typing import Any
 
 from tenacity import RetryError, retry, retry_if_result, stop_after_delay, wait_fixed
 
-from prism._parallel import _gather
 from prism.api.types import (
     ClusterDetails,
     ClusterInfo,
@@ -63,10 +61,8 @@ def get_cluster(
 ) -> ClusterInfo:
     """Return summary info for a single cluster."""
     kube = _resolve_client(client, kubeconfig)
-    obj, pods = _gather(
-        functools.partial(kube.get_ray_cluster, name, namespace),
-        functools.partial(kube.list_pods, name, namespace),
-    )
+    obj = kube.get_ray_cluster(name, namespace)
+    pods = kube.list_pods(name, namespace)
     return _obj_to_info(obj, pods=pods, client=kube)
 
 
@@ -79,20 +75,12 @@ def list_clusters(
     """List all Ray clusters in *namespace*."""
     kube = _resolve_client(client, kubeconfig)
     items = kube.list_ray_clusters(namespace)
-    if not items:
-        return []
-    pod_lists = _gather(*(
-        functools.partial(
-            kube.list_pods,
-            obj.get("metadata", {}).get("name", ""),
-            namespace,
-        )
-        for obj in items
-    ))
-    return [
-        _obj_to_info(obj, pods=pods, client=kube)
-        for obj, pods in zip(items, pod_lists)
-    ]
+    results: list[ClusterInfo] = []
+    for obj in items:
+        cluster_name = obj.get("metadata", {}).get("name", "")
+        pods = kube.list_pods(cluster_name, namespace)
+        results.append(_obj_to_info(obj, pods=pods, client=kube))
+    return results
 
 
 def describe_cluster(
@@ -104,10 +92,8 @@ def describe_cluster(
 ) -> ClusterDetails:
     """Return extended details for a cluster."""
     kube = _resolve_client(client, kubeconfig)
-    obj, pods = _gather(
-        functools.partial(kube.get_ray_cluster, name, namespace),
-        functools.partial(kube.list_pods, name, namespace),
-    )
+    obj = kube.get_ray_cluster(name, namespace)
+    pods = kube.list_pods(name, namespace)
     return _obj_to_details(obj, pods=pods, client=kube)
 
 
