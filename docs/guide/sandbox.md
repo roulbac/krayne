@@ -23,19 +23,24 @@ prism sandbox setup
 This runs through 7 automated steps:
 
 ```title="Terminal output"
-┌─────────────────────────────┬───────────────────┐
-│ Step                        │ Status            │
-├─────────────────────────────┼───────────────────┤
-│ Docker availability         │ ✓ ready           │
-│ K3S container               │ ✓ ready           │
-│ K3S node readiness          │ ✓ ready           │
-│ Kubeconfig extraction       │ ✓ ready           │
-│ KubeRay Helm chart          │ ✓ ready           │
-│ RayCluster CRD              │ ✓ ready           │
-│ KubeRay operator            │ ✓ ready           │
-└─────────────────────────────┴───────────────────┘
+          Sandbox Setup
+  Component             Status
+  Docker                ✓ ready
+  K3S Container         ✓ ready
+  K3S Node              ✓ ready
+  Kubeconfig            ✓ ready
+  KubeRay Helm Chart    ✓ ready
+  RayCluster CRD        ✓ ready
+  Operator Ready        ✓ ready
 ╭─ Sandbox Ready ─────────────────────────────────╮
-│ Kubeconfig: ~/.prism/sandbox-kubeconfig         │
+│  Status        running                          │
+│  Kubeconfig    ~/.prism/sandbox-kubeconfig       │
+╰─────────────────────────────────────────────────╯
+╭─ Next Steps ────────────────────────────────────╮
+│  1.  prism init — select the sandbox            │
+│      kubeconfig and context                     │
+│  2.  prism create my-cluster — launch your      │
+│      first Ray cluster                          │
 ╰─────────────────────────────────────────────────╯
 ```
 
@@ -57,7 +62,13 @@ graph LR
 6. Waits for the `RayCluster` CRD to be registered
 7. Waits for the KubeRay operator deployment to be ready
 
-Prism automatically saves the sandbox kubeconfig path and context to `~/.prism/config.yaml`, so all subsequent commands use the sandbox cluster.
+After setup completes, run `prism init` to select the sandbox kubeconfig and context:
+
+```bash
+prism init
+```
+
+Select "Sandbox kubeconfig" when prompted. This saves the kubeconfig path and context to `~/.prism/config.yaml`, so all subsequent commands use the sandbox cluster.
 
 ---
 

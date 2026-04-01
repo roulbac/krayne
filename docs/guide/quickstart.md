@@ -37,23 +37,45 @@ Choose one of two paths:
     ```
 
     ```title="Terminal output"
-    ┌─────────────────────────────┬───────────────────┐
-    │ Step                        │ Status            │
-    ├─────────────────────────────┼───────────────────┤
-    │ Docker availability         │ ✓ ready           │
-    │ K3S container               │ ✓ ready           │
-    │ K3S node readiness          │ ✓ ready           │
-    │ Kubeconfig extraction       │ ✓ ready           │
-    │ KubeRay Helm chart          │ ✓ ready           │
-    │ RayCluster CRD              │ ✓ ready           │
-    │ KubeRay operator            │ ✓ ready           │
-    └─────────────────────────────┴───────────────────┘
+              Sandbox Setup
+      Component             Status
+      Docker                ✓ ready
+      K3S Container         ✓ ready
+      K3S Node              ✓ ready
+      Kubeconfig            ✓ ready
+      KubeRay Helm Chart    ✓ ready
+      RayCluster CRD        ✓ ready
+      Operator Ready        ✓ ready
     ╭─ Sandbox Ready ─────────────────────────────────╮
-    │ Kubeconfig: ~/.prism/sandbox-kubeconfig         │
+    │  Status        running                          │
+    │  Kubeconfig    ~/.prism/sandbox-kubeconfig       │
+    ╰─────────────────────────────────────────────────╯
+    ╭─ Next Steps ────────────────────────────────────╮
+    │  1.  prism init — select the sandbox            │
+    │      kubeconfig and context                     │
+    │  2.  prism create my-cluster — launch your      │
+    │      first Ray cluster                          │
     ╰─────────────────────────────────────────────────╯
     ```
 
     The sandbox requires Docker with at least 2 CPUs and 4 GB RAM.
+
+    Then run `prism init` to select the sandbox kubeconfig:
+
+    ```bash
+    prism init
+    ```
+
+    Select **"Sandbox kubeconfig"** when prompted. Prism auto-selects the `default` context:
+
+    ```title="Terminal output"
+    ? Select kubeconfig source: Sandbox kubeconfig (~/.prism/sandbox-kubeconfig)
+    Auto-selected context: default
+    ╭─ Prism Initialized ────────────────────────────╮
+    │  Kubeconfig    ~/.prism/sandbox-kubeconfig      │
+    │  Context       default                          │
+    ╰─────────────────────────────────────────────────╯
+    ```
 
 === "Existing Kubernetes Cluster"
 
@@ -78,15 +100,37 @@ prism create my-first-cluster --wait
 
 The `--wait` flag blocks until all pods are running:
 
-```title="Terminal output"
-╭─ Cluster Created ────────────────────────╮
-│  Name:         my-first-cluster          │
-│  Namespace:    default                   │
-│  Status:       ready                     │
-│  Dashboard:    http://10.0.0.1:8265      │
-│  Workers:      1                         │
-╰──────────────────────────────────────────╯
-```
+The output depends on your environment:
+
+=== "Sandbox"
+
+    ```title="Terminal output"
+    ╭─ Cluster Creating... ────────────────────────╮
+    │  Name               my-first-cluster         │
+    │  Namespace          default                  │
+    │  Status             pods-pending             │
+    │  Cluster Address    ray://localhost:30064     │
+    │  Dashboard          http://localhost:30078    │
+    │  Workers            1                        │
+    ╰──────────────────────────────────────────────╯
+    ```
+
+    In the sandbox, URLs use `localhost` with NodePort mappings so they work directly from your machine.
+
+=== "Kubernetes Cluster"
+
+    ```title="Terminal output"
+    ╭─ Cluster Created ────────────────────────────╮
+    │  Name               my-first-cluster         │
+    │  Namespace          default                  │
+    │  Status             ready                    │
+    │  Cluster Address    ray://10.0.0.1:10001     │
+    │  Dashboard          http://10.0.0.1:8265     │
+    │  Workers            1                        │
+    ╰──────────────────────────────────────────────╯
+    ```
+
+    On a real Kubernetes cluster, URLs use pod/service IPs.
 
 This creates a cluster with sensible defaults:
 
@@ -116,12 +160,12 @@ Get detailed information:
 $ prism describe my-first-cluster
 ```
 
-```title="Terminal output"
+```title="Terminal output (sandbox)"
 ╭─ Cluster: my-first-cluster ──────────────╮
 │  Namespace:    default                   │
 │  Status:       ready                     │
-│  Dashboard:    http://10.0.0.1:8265      │
-│  Client URL:   ray://10.0.0.1:10001     │
+│  Dashboard:    http://localhost:30078     │
+│  Client URL:   ray://localhost:30064     │
 │  Workers:      1                         │
 │  Created:      2026-04-01 10:30:00       │
 ╰──────────────────────────────────────────╯
