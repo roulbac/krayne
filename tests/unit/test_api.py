@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -159,15 +159,17 @@ class TestWaitUntilReady:
 
 
 class TestKubeconfigPassthrough:
-    """Verify that kubeconfig= reaches DefaultKubeClient when no client is provided."""
+    """Verify that kubeconfig= reaches DefaultAsyncKubeClient when no client is provided."""
 
     @pytest.fixture(autouse=True)
     def _patch_client(self):
-        with patch("prism.api.clusters.DefaultKubeClient") as mock_cls:
-            mock_instance = MagicMock()
+        with patch("prism.api.clusters.DefaultAsyncKubeClient") as mock_cls:
+            mock_instance = AsyncMock()
             mock_instance.list_ray_clusters.return_value = [_SAMPLE_OBJ]
             mock_instance.get_ray_cluster.return_value = _SAMPLE_OBJ
             mock_instance.create_ray_cluster.return_value = _SAMPLE_OBJ
+            mock_instance.list_pods.return_value = []
+            mock_instance.get_head_node_port.return_value = None
             mock_cls.return_value = mock_instance
             self.mock_cls = mock_cls
             self.mock_instance = mock_instance
@@ -175,7 +177,7 @@ class TestKubeconfigPassthrough:
 
     @pytest.fixture(autouse=True)
     def _patch_settings(self):
-        with patch("prism.api.clusters.load_prism_settings") as mock_settings:
+        with patch("prism.api.clusters._async_load_prism_settings", new_callable=AsyncMock) as mock_settings:
             from prism.config.settings import PrismSettings
 
             mock_settings.return_value = PrismSettings()
@@ -190,7 +192,7 @@ class TestKubeconfigPassthrough:
     def test_no_kubeconfig_uses_settings(self):
         from prism.config.settings import PrismSettings
 
-        with patch("prism.api.clusters.load_prism_settings") as mock_settings:
+        with patch("prism.api.clusters._async_load_prism_settings", new_callable=AsyncMock) as mock_settings:
             mock_settings.return_value = PrismSettings(kubeconfig="/from/settings")
             list_clusters("default")
             self.mock_cls.assert_called_with(
