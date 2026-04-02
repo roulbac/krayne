@@ -101,10 +101,28 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
             "args": ["--auth", "none", "--bind-addr", "0.0.0.0:8443"],
         })
 
+    # Build explicit head Service ports so KubeRay creates a regular
+    # ClusterIP service (not headless) with all required ports.
+    svc_ports: list[dict] = [
+        {"name": "gcs-server", "port": 6379, "targetPort": 6379, "protocol": "TCP"},
+        {"name": "dashboard", "port": 8265, "targetPort": 8265, "protocol": "TCP"},
+        {"name": "client", "port": 10001, "targetPort": 10001, "protocol": "TCP"},
+    ]
+    if services.notebook:
+        svc_ports.append({"name": "notebook", "port": 8888, "targetPort": 8888, "protocol": "TCP"})
+    if services.ssh:
+        svc_ports.append({"name": "ssh", "port": 22, "targetPort": 22, "protocol": "TCP"})
+    if services.vscode_server:
+        svc_ports.append({"name": "vscode", "port": 8443, "targetPort": 8443, "protocol": "TCP"})
+
     return {
-        "serviceType": "ClusterIP",
-        "enableIngress": False,
         "rayStartParams": {"dashboard-host": "0.0.0.0"},
+        "headService": {
+            "spec": {
+                "type": "ClusterIP",
+                "ports": svc_ports,
+            },
+        },
         "template": {
             "spec": {
                 "containers": containers,
