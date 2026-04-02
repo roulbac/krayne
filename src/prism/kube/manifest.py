@@ -56,30 +56,66 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
         {"containerPort": 10001, "name": "client"},
     ]
 
-    containers: list[dict] = [
-        {
-            "name": "ray-head",
-            "image": image,
-            "resources": resources,
-            "ports": ports,
-        }
-    ]
+    ray_head: dict = {
+        "name": "ray-head",
+        "image": image,
+        "resources": resources,
+        "ports": ports,
+    }
 
-    # Build a postStart lifecycle hook to start optional services.
+    # --- init container: install services into a shared volume ----------
+    # Heavy installs (pip, curl | sh) run in an init container so they
+    # complete *before* ray-head starts.  Binaries land in /opt/services
+    # which is mounted into the ray-head container.
+    init_containers: list[dict] = []
+    install_cmds: list[str] = []
+    volumes: list[dict] = []
+    volume_mounts: list[dict] = []
+
+    if services.notebook or services.code_server:
+        volumes.append({
+            "name": "services-bin",
+            "emptyDir": {},
+        })
+        volume_mounts.append({
+            "name": "services-bin",
+            "mountPath": "/opt/services",
+        })
+
+    if services.notebook:
+        install_cmds.append(
+            "pip install --target /opt/services notebook"
+        )
+    if services.code_server:
+        install_cmds.append(
+            "wget -qO- https://code-server.dev/install.sh"
+            " | sh -s -- --prefix /opt/services"
+        )
+
+    if install_cmds:
+        init_containers.append({
+            "name": "install-services",
+            "image": image,
+            "command": ["/bin/sh", "-c", " && ".join(install_cmds)],
+            "volumeMounts": [vm.copy() for vm in volume_mounts],
+        })
+
+    if volume_mounts:
+        ray_head["volumeMounts"] = volume_mounts
+
+    # --- postStart hook: start the (already-installed) services ---------
     startup_cmds: list[str] = []
     if services.notebook:
         startup_cmds.append(
-            "(uv pip install --system notebook"
-            " && nohup jupyter notebook"
+            "(PYTHONPATH=/opt/services nohup"
+            " /opt/services/bin/jupyter notebook"
             " --ip=0.0.0.0 --port=8888 --no-browser --allow-root"
             " --NotebookApp.token=''"
             " > /tmp/jupyter.log 2>&1) &"
         )
     if services.code_server:
         startup_cmds.append(
-            "(sudo apt-get update -qq && sudo apt-get install -y -qq curl > /dev/null"
-            " && curl -fsSL https://code-server.dev/install.sh | sh"
-            " && nohup code-server"
+            "(nohup /opt/services/bin/code-server"
             " --auth none --bind-addr 0.0.0.0:8443"
             " > /tmp/code-server.log 2>&1) &"
         )
@@ -88,7 +124,7 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
             "(which sshd && mkdir -p /run/sshd && /usr/sbin/sshd) || true"
         )
     if startup_cmds:
-        containers[0]["lifecycle"] = {
+        ray_head["lifecycle"] = {
             "postStart": {
                 "exec": {
                     "command": [
@@ -97,6 +133,8 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
                 }
             }
         }
+
+    containers: list[dict] = [ray_head]
 
     # KubeRay auto-adds ports from the ray-head container to the Service,
     # so only declare extra (non-Ray) service ports here to avoid duplicates.
@@ -112,13 +150,19 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
     if extra_svc_ports:
         head_service["spec"]["ports"] = extra_svc_ports
 
+    pod_spec: dict = {
+        "containers": containers,
+    }
+    if init_containers:
+        pod_spec["initContainers"] = init_containers
+    if volumes:
+        pod_spec["volumes"] = volumes
+
     return {
         "rayStartParams": {"dashboard-host": "0.0.0.0"},
         "headService": head_service,
         "template": {
-            "spec": {
-                "containers": containers,
-            }
+            "spec": pod_spec,
         },
     }
 
