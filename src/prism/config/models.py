@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
-DEFAULT_CPUS = "1"
-DEFAULT_MEMORY = "2Gi"
+DEFAULT_CPUS = "2"
+DEFAULT_MEMORY = "4Gi"
 
 
 class ServicesConfig(BaseModel):
