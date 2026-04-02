@@ -60,19 +60,20 @@ class TestDetectServices:
                                         {"containerPort": 6379, "name": "gcs-server"},
                                         {"containerPort": 8265, "name": "dashboard"},
                                         {"containerPort": 10001, "name": "client"},
-                                        {"containerPort": 8888, "name": "notebook"},
-                                        {"containerPort": 22, "name": "ssh"},
-                                    ],
-                                },
-                                {
-                                    "name": "vscode",
-                                    "ports": [
-                                        {"containerPort": 8443, "name": "vscode"},
                                     ],
                                 },
                             ]
                         }
-                    }
+                    },
+                    "headService": {
+                        "spec": {
+                            "ports": [
+                                {"name": "notebook", "port": 8888},
+                                {"name": "ssh", "port": 22},
+                                {"name": "vscode", "port": 8443},
+                            ]
+                        }
+                    },
                 }
             }
         }

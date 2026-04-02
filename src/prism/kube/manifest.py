@@ -11,8 +11,6 @@ RAY_IMAGE = (
     if platform.machine() == "arm64"
     else f"rayproject/ray:{_RAY_VERSION}"
 )
-_VSCODE_VERSION = os.environ.get("PRISM_VSCODE_VERSION", "latest")
-VSCODE_IMAGE = f"codercom/code-server:{_VSCODE_VERSION}"
 RAYCLUSTER_API_VERSION = "ray.io/v1"
 RAYCLUSTER_KIND = "RayCluster"
 
@@ -77,6 +75,13 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
             " --NotebookApp.token=''"
             " > /tmp/jupyter.log 2>&1) &"
         )
+    if services.vscode_server:
+        startup_cmds.append(
+            "(uv pip install --system code-server"
+            " && nohup code-server"
+            " --auth none --bind-addr 0.0.0.0:8443"
+            " > /tmp/code-server.log 2>&1) &"
+        )
     if services.ssh:
         startup_cmds.append(
             "(which sshd && mkdir -p /run/sshd && /usr/sbin/sshd) || true"
@@ -91,14 +96,6 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
                 }
             }
         }
-
-    if services.vscode_server:
-        containers.append({
-            "name": "vscode",
-            "image": VSCODE_IMAGE,
-            "ports": [{"containerPort": 8443, "name": "vscode"}],
-            "args": ["--auth", "none", "--bind-addr", "0.0.0.0:8443"],
-        })
 
     # KubeRay auto-adds ports from the ray-head container to the Service,
     # so only declare extra (non-Ray) service ports here to avoid duplicates.

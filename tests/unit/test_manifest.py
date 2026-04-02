@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from prism.config import ClusterConfig, HeadNodeConfig, WorkerGroupConfig
 from prism.config.models import ServicesConfig
-from prism.kube.manifest import RAY_IMAGE, VSCODE_IMAGE, build_manifest
+from prism.kube.manifest import RAY_IMAGE, build_manifest
 
 
 class TestBuildManifest:
@@ -118,27 +118,26 @@ class TestBuildManifest:
         port_names = {p["name"] for p in svc_ports}
         assert port_names == {"notebook", "ssh", "vscode"}
 
-    def test_vscode_sidecar_added(self):
-        """When vscode_server is enabled, a sidecar container is added."""
+    def test_vscode_in_lifecycle_hook(self):
+        """When vscode_server is enabled, code-server is started via lifecycle hook."""
         cfg = ClusterConfig(
             name="vs",
             services=ServicesConfig(vscode_server=True),
         )
         m = build_manifest(cfg)
         containers = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"]
-        assert len(containers) == 2
-        sidecar = containers[1]
-        assert sidecar["name"] == "vscode"
-        assert sidecar["image"] == VSCODE_IMAGE
-        assert sidecar["ports"] == [{"containerPort": 8443, "name": "vscode"}]
+        assert len(containers) == 1  # no sidecar
+        hook_cmd = containers[0]["lifecycle"]["postStart"]["exec"]["command"][2]
+        assert "code-server" in hook_cmd
+        assert "8443" in hook_cmd
 
-    def test_vscode_sidecar_absent(self):
-        """When vscode_server is disabled (default), only one container."""
+    def test_no_vscode_in_hook_when_disabled(self):
+        """When vscode_server is disabled (default), no code-server in hook."""
         cfg = ClusterConfig(name="novs")
         m = build_manifest(cfg)
-        containers = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"]
-        assert len(containers) == 1
-        assert containers[0]["name"] == "ray-head"
+        container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]
+        hook_cmd = container["lifecycle"]["postStart"]["exec"]["command"][2]
+        assert "code-server" not in hook_cmd
 
     def test_lifecycle_hook_default_services(self):
         """Default services (notebook + ssh) produce a postStart lifecycle hook."""
