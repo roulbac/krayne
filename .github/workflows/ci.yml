@@ -45,10 +45,6 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
 
-      - name: Install k3d
-        run: |
-          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-
       - name: Install Helm
         uses: azure/setup-helm@v4
 

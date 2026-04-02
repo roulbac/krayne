@@ -15,7 +15,7 @@ uv run prism <command>             # Run the CLI
 uv run pytest tests/unit                              # Unit tests only
 uv run pytest tests/unit/test_manifest.py             # Single test file
 uv run pytest tests/unit/test_manifest.py::test_name  # Single test
-uv run pytest tests/integration -m integration        # Integration tests (requires k3d, kubectl, helm, Docker)
+uv run pytest tests/integration -m integration        # Integration tests (requires kubectl, helm, Docker)
 ```
 
 Unit test timeout: 60s. Integration test timeout: 600s. CI runs against Python 3.10, 3.11, 3.12.
