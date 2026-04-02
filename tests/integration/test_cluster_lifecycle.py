@@ -21,7 +21,7 @@ from prism.api import (
     list_clusters,
     scale_cluster,
 )
-from prism.config import DEFAULT_CPUS, ClusterConfig
+from prism.config import ClusterConfig
 from prism.config.models import HeadNodeConfig, WorkerGroupConfig
 from prism.errors import ClusterNotFoundError
 
@@ -53,8 +53,8 @@ class TestClusterLifecycle:
         config = ClusterConfig(
             name=self.CLUSTER_NAME,
             namespace=self.NAMESPACE,
-            head=HeadNodeConfig(memory="4Gi"),
-            worker_groups=[WorkerGroupConfig(memory="1Gi")],
+            head=HeadNodeConfig(cpus="500m", memory="4Gi"),
+            worker_groups=[WorkerGroupConfig(cpus="500m", memory="1Gi")],
         )
 
         try:
@@ -77,7 +77,7 @@ class TestClusterLifecycle:
                 self.CLUSTER_NAME, self.NAMESPACE, client=kube_client
             )
             assert details.info.name == self.CLUSTER_NAME
-            assert details.head.cpus == DEFAULT_CPUS
+            assert details.head.cpus == "500m"
             assert len(details.worker_groups) == 1
 
             # SCALE

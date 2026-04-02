@@ -62,8 +62,8 @@ class TestServicesDisabled:
         config = ClusterConfig(
             name=self.CLUSTER_NAME,
             namespace=self.NAMESPACE,
-            head=HeadNodeConfig(memory="4Gi"),
-            worker_groups=[WorkerGroupConfig(memory="1Gi")],
+            head=HeadNodeConfig(cpus="500m", memory="4Gi"),
+            worker_groups=[WorkerGroupConfig(cpus="500m", memory="1Gi")],
             services=ServicesConfig(notebook=False, code_server=False, ssh=False),
         )
         try:
