@@ -225,6 +225,9 @@ def delete(
             typer.confirm(
                 f"Delete cluster '{name}' in namespace '{namespace}'?", abort=True
             )
+        from prism.tunnel import stop_tunnels
+
+        stop_tunnels(name, namespace)
         _delete_cluster(name, namespace, kubeconfig=_kubeconfig)
         console.print(f"Cluster '{name}' deleted.", style="green")
     except PrismError as exc:
