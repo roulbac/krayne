@@ -23,7 +23,7 @@ def sandbox_kubeconfig() -> str:
     teardown_sandbox()
 
 
-@pytest.fixture()
+@pytest.fixture(scope="session")
 def kube_client(sandbox_kubeconfig: str) -> DefaultKubeClient:
     """Return a DefaultKubeClient connected to the sandbox cluster."""
     return DefaultKubeClient(kubeconfig=sandbox_kubeconfig)

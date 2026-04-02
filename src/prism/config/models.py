@@ -4,13 +4,14 @@ from pydantic import BaseModel, Field, field_validator
 
 DEFAULT_CPUS = "1"
 DEFAULT_MEMORY = "2Gi"
+DEFAULT_HEAD_MEMORY = "4Gi"
 
 
 class ServicesConfig(BaseModel):
     """Services to enable on the cluster."""
 
     notebook: bool = True
-    vscode_server: bool = False
+    code_server: bool = True
     ssh: bool = True
 
 
@@ -18,7 +19,7 @@ class HeadNodeConfig(BaseModel):
     """Head node resource configuration."""
 
     cpus: str = DEFAULT_CPUS
-    memory: str = DEFAULT_MEMORY
+    memory: str = DEFAULT_HEAD_MEMORY
     gpus: int = 0
     image: str | None = None
 

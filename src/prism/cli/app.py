@@ -62,6 +62,7 @@ from prism.api import (  # noqa: E402
     delete_cluster as _delete_cluster,
     describe_cluster as _describe_cluster,
     get_cluster as _get_cluster,
+    get_cluster_services as _get_cluster_services,
     list_clusters as _list_clusters,
     scale_cluster as _scale_cluster,
 )
@@ -71,7 +72,7 @@ from prism.config import (  # noqa: E402
     WorkerGroupConfig,
     load_config_from_yaml,
     DEFAULT_CPUS,
-    DEFAULT_MEMORY,
+    DEFAULT_HEAD_MEMORY,
     save_prism_settings,
 )
 from prism.output import (  # noqa: E402
@@ -83,6 +84,7 @@ from prism.output import (  # noqa: E402
     format_json,
     format_sandbox_setup_success,
     format_sandbox_status,
+    format_tunnel_panel,
 )
 from prism.sandbox import (  # noqa: E402
     setup_sandbox as _setup_sandbox,
@@ -98,7 +100,7 @@ def create(
     gpus_per_worker: int = typer.Option(0, "--gpus-per-worker"),
     worker_gpu_type: str = typer.Option("t4", "--worker-gpu-type"),
     cpus_in_head: str = typer.Option(DEFAULT_CPUS, "--cpus-in-head"),
-    memory_in_head: str = typer.Option(DEFAULT_MEMORY, "--memory-in-head"),
+    memory_in_head: str = typer.Option(DEFAULT_HEAD_MEMORY, "--memory-in-head"),
     workers: int = typer.Option(1, "--workers"),
     timeout: int = typer.Option(300, "--timeout"),
     file: Optional[str] = typer.Option(None, "--file", "-f", help="YAML config file."),
@@ -178,12 +180,17 @@ def describe(
     namespace: str = typer.Option("default", "-n", "--namespace"),
 ) -> None:
     """Show detailed information about a cluster."""
+    from prism.tunnel import is_tunnel_active, load_tunnel_state
+
     try:
         details = _describe_cluster(name, namespace, kubeconfig=_kubeconfig)
         if _output_json:
             format_json(details, console)
         else:
-            format_cluster_details(details, console)
+            tunnel_state = None
+            if is_tunnel_active(name, namespace):
+                tunnel_state = load_tunnel_state(name, namespace)
+            format_cluster_details(details, console, tunnel_state=tunnel_state)
     except PrismError as exc:
         _handle_error(exc)
 
@@ -218,6 +225,9 @@ def delete(
             typer.confirm(
                 f"Delete cluster '{name}' in namespace '{namespace}'?", abort=True
             )
+        from prism.tunnel import stop_tunnels
+
+        stop_tunnels(name, namespace)
         _delete_cluster(name, namespace, kubeconfig=_kubeconfig)
         console.print(f"Cluster '{name}' deleted.", style="green")
     except PrismError as exc:
@@ -323,6 +333,78 @@ def init(
             PrismSettings(kubeconfig=str(resolved), kube_context=context)
         )
         format_init_success(str(resolved), context, console)
+    except PrismError as exc:
+        _handle_error(exc)
+
+
+@app.command("tun-open")
+def tun_open(
+    name: str = typer.Argument(..., help="Cluster name."),
+    namespace: str = typer.Option("default", "-n", "--namespace"),
+) -> None:
+    """Open tunnels for cluster services to localhost."""
+    from prism.tunnel import is_tunnel_active, start_tunnels
+
+    try:
+        if is_tunnel_active(name, namespace):
+            from prism.tunnel import load_tunnel_state
+
+            state = load_tunnel_state(name, namespace)
+            assert state is not None
+            if _output_json:
+                format_json(state.tunnels, console)
+            else:
+                console.print(
+                    format_tunnel_panel(name, state.tunnels),
+                )
+                console.print("Tunnel already active.", style="dim")
+            return
+
+        info = _get_cluster(name, namespace, kubeconfig=_kubeconfig)
+        if info.status not in ("ready", "running"):
+            err_console.print(
+                Panel(
+                    f"Cluster '{name}' is not ready (status: {info.status}). "
+                    "Wait for it to be ready before tunnelling.",
+                    title="Error",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(1)
+
+        services = _get_cluster_services(name, namespace, kubeconfig=_kubeconfig)
+        if not services:
+            err_console.print(
+                Panel("No services detected on this cluster.", title="Error", border_style="red")
+            )
+            raise typer.Exit(1)
+
+        tunnels = start_tunnels(
+            name, namespace, services, kubeconfig=_kubeconfig
+        )
+
+        if _output_json:
+            format_json(tunnels, console)
+        else:
+            console.print(format_tunnel_panel(name, tunnels))
+    except PrismError as exc:
+        _handle_error(exc)
+
+
+@app.command("tun-close")
+def tun_close(
+    name: str = typer.Argument(..., help="Cluster name."),
+    namespace: str = typer.Option("default", "-n", "--namespace"),
+) -> None:
+    """Stop tunnels for a cluster."""
+    from prism.tunnel import stop_tunnels
+
+    try:
+        stopped = stop_tunnels(name, namespace)
+        if stopped:
+            console.print(f"Tunnel for '{name}' stopped.", style="green")
+        else:
+            console.print(f"No active tunnel for '{name}'.", style="dim")
     except PrismError as exc:
         _handle_error(exc)
 

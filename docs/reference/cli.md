@@ -97,18 +97,20 @@ prism create my-cluster --output json
 ```
 
 ```title="Terminal output"
-╭─ Cluster Created ────────────────────────╮
-│  Name               my-cluster           │
-│  Namespace          default              │
-│  Status             ready                │
-│  Cluster Address    ray://10.0.0.1:10001 │
-│  Dashboard          http://10.0.0.1:8265 │
-│  Workers            1                    │
-╰──────────────────────────────────────────╯
+╭─ Cluster Created ────────────────────────────╮
+│  Name               my-cluster               │
+│  Namespace          default                  │
+│  Status             ready                    │
+│  Cluster Address    ray://10.0.0.1:10001     │
+│  Dashboard          http://10.0.0.1:8265     │
+│  Notebook           http://10.0.0.1:8888     │
+│  SSH                ssh://10.0.0.1:22        │
+│  Workers            1                        │
+╰──────────────────────────────────────────────╯
 ```
 
-!!! tip "Sandbox URLs"
-    In the sandbox, URLs use `localhost` with NodePort mappings (e.g. `ray://localhost:30064`, `http://localhost:30078`) so they work directly from your machine.
+!!! tip "Local access"
+    Use `prism tun-open <cluster-name>` to create localhost mirrors of all cluster services via `kubectl port-forward`. Use `prism tun-close <cluster-name>` to stop.
 
 !!! note
     When using `--file`, the `name` argument and any CLI flags override the corresponding values in the YAML file.
@@ -181,13 +183,14 @@ prism describe my-cluster -n ml-team --output json
 ```
 
 ```title="Terminal output"
-╭─ Cluster: my-cluster ────────────────────╮
+╭─ Cluster Details ────────────────────────╮
 │  Namespace:    default                   │
 │  Status:       ready                     │
+│  Client:       ray://10.0.0.1:10001     │
 │  Dashboard:    http://10.0.0.1:8265      │
-│  Client URL:   ray://10.0.0.1:10001     │
-│  Workers:      1                         │
-│  Created:      2026-04-01 10:30:00       │
+│  Notebook:     http://10.0.0.1:8888      │
+│  SSH:          ssh://10.0.0.1:22         │
+│  Ray Version:  unknown                   │
 ╰──────────────────────────────────────────╯
 
 Head Node
@@ -291,6 +294,89 @@ Cluster 'my-cluster' deleted.
 
 ---
 
+## `prism tun-open`
+
+Start tunnels for cluster services to localhost via `kubectl port-forward`. Processes run in the background — use `tun-close` to stop them.
+
+Both commands are **idempotent**: starting an already-active tunnel is a no-op (shows the existing tunnel info), and closing a non-existent tunnel is a no-op.
+
+```
+prism tun-open <name> [OPTIONS]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|---|---|
+| `name` | Cluster name (required) |
+
+**Options:**
+
+| Option | Default | Description |
+|---|---|---|
+| `-n`, `--namespace` | `default` | Kubernetes namespace |
+
+Local ports are deterministically assigned from the cluster name and namespace, so the same cluster always gets the same local ports.
+
+**Examples:**
+
+```bash
+# Start tunnels for all services on a cluster
+prism tun-open my-cluster
+
+# Start tunnels in a specific namespace
+prism tun-open my-cluster -n ml-team
+
+# Get tunnel info as JSON
+prism tun-open my-cluster --output json
+```
+
+```title="Terminal output"
+╭─ Tunnel Active — my-cluster ────────────────────────────╮
+│  Service      Local URL                   Remote Port   │
+│  dashboard    http://localhost:34821       8265          │
+│  client       ray://localhost:28190        10001         │
+│  notebook     http://localhost:41337       8888          │
+│  ssh          ssh://localhost:19022        22            │
+│                                                         │
+│  Run tun-close to stop                                  │
+╰─────────────────────────────────────────────────────────╯
+```
+
+!!! note
+    The cluster must be in `ready` or `running` state. Tunnels forward to the head Service (`svc/<name>-head-svc`), which survives pod restarts.
+
+---
+
+## `prism tun-close`
+
+Stop tunnels for a cluster. Terminates all background `kubectl port-forward` processes.
+
+```
+prism tun-close <name> [OPTIONS]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|---|---|
+| `name` | Cluster name (required) |
+
+**Options:**
+
+| Option | Default | Description |
+|---|---|---|
+| `-n`, `--namespace` | `default` | Kubernetes namespace |
+
+**Examples:**
+
+```bash
+prism tun-close my-cluster
+prism tun-close my-cluster -n ml-team
+```
+
+---
+
 ## `prism sandbox setup`
 
 Set up a local k3s cluster with KubeRay for development.
@@ -299,7 +385,7 @@ Set up a local k3s cluster with KubeRay for development.
 prism sandbox setup
 ```
 
-Requires Docker with at least 2 CPUs and 4 GB RAM. Creates a k3s container named `prism-sandbox` and installs the KubeRay operator.
+Requires Docker with at least 2 CPUs and 6 GB RAM. Creates a k3s container named `prism-sandbox` and installs the KubeRay operator.
 
 ```title="Terminal output"
           Sandbox Setup

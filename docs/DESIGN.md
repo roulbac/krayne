@@ -14,7 +14,7 @@
 - **Python SDK (`prism.api`):** Programmatic API that mirrors the CLI
 - **Cluster lifecycle:** Create, describe, list, scale, and delete Ray clusters
 - **Config model:** Pydantic-based cluster configuration with sensible defaults and YAML override support
-- **Developer experience:** Pre-installed notebook server, VS Code server, SSH access
+- **Developer experience:** Pre-installed notebook server, Code Server, SSH access
 
 ### Out of Scope
 

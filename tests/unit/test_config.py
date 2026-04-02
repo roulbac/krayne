@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from prism.config import (
     DEFAULT_CPUS,
+    DEFAULT_HEAD_MEMORY,
     DEFAULT_MEMORY,
     ClusterConfig,
     HeadNodeConfig,
@@ -24,7 +25,7 @@ class TestClusterConfigDefaults:
         assert cfg.name == "test"
         assert cfg.namespace == "default"
         assert cfg.head.cpus == DEFAULT_CPUS
-        assert cfg.head.memory == DEFAULT_MEMORY
+        assert cfg.head.memory == DEFAULT_HEAD_MEMORY
         assert cfg.head.gpus == 0
         assert len(cfg.worker_groups) == 1
         assert cfg.worker_groups[0].replicas == 1
@@ -32,7 +33,7 @@ class TestClusterConfigDefaults:
     def test_services_defaults(self):
         cfg = ClusterConfig(name="test")
         assert cfg.services.notebook is True
-        assert cfg.services.vscode_server is False
+        assert cfg.services.code_server is True
         assert cfg.services.ssh is True
 
     def test_custom_worker_groups(self):
@@ -108,7 +109,7 @@ class TestRoundTrip:
             namespace="ns",
             head=HeadNodeConfig(cpus=4, memory="16Gi"),
             worker_groups=[WorkerGroupConfig(name="w", replicas=3, gpus=2)],
-            services=ServicesConfig(vscode_server=True),
+            services=ServicesConfig(code_server=True),
         )
         data = cfg.model_dump()
         reloaded = ClusterConfig(**data)

@@ -17,8 +17,9 @@ _INFO = ClusterInfo(
     head_ip="10.0.0.1",
     dashboard_url="http://10.0.0.1:8265",
     client_url="ray://10.0.0.1:10001",
-    notebook_url=None,
-    vscode_url=None,
+    notebook_url="http://10.0.0.1:8888",
+    code_server_url=None,
+    ssh_url="ssh://10.0.0.1:22",
     num_workers=2,
     created_at="2026-01-01T00:00:00Z",
 )
@@ -62,7 +63,7 @@ class TestCreate:
         pending = ClusterInfo(
             name="test", namespace="default", status="pending",
             head_ip=None, dashboard_url=None, client_url=None,
-            notebook_url=None, vscode_url=None, num_workers=0,
+            notebook_url=None, code_server_url=None, ssh_url=None, num_workers=0,
             created_at="2026-01-01T00:00:00Z",
         )
         mock_create.return_value = pending
@@ -221,3 +222,66 @@ class TestSandboxStatusCli:
         result = runner.invoke(app, ["sandbox", "status"])
         assert result.exit_code == 0
         assert "Sandbox Status" in result.output
+
+
+class TestTunOpen:
+    @patch("prism.tunnel.is_tunnel_active", return_value=False)
+    @patch("prism.tunnel.start_tunnels")
+    @patch("prism.cli.app._get_cluster_services", return_value=["dashboard", "client"])
+    @patch("prism.cli.app._get_cluster", return_value=_INFO)
+    def test_tun_open_not_ready(self, mock_get, mock_services, mock_tunnels, mock_active):
+        not_ready = ClusterInfo(
+            name="test", namespace="default", status="pending",
+            head_ip=None, dashboard_url=None, client_url=None,
+            notebook_url=None, code_server_url=None, ssh_url=None, num_workers=0,
+            created_at="2026-01-01T00:00:00Z",
+        )
+        mock_get.return_value = not_ready
+        result = runner.invoke(app, ["tun-open", "test"])
+        assert result.exit_code == 1
+        assert "not ready" in result.output.lower()
+        mock_tunnels.assert_not_called()
+
+    @patch("prism.tunnel.is_tunnel_active", return_value=False)
+    @patch("prism.tunnel.start_tunnels")
+    @patch("prism.cli.app._get_cluster_services", return_value=["dashboard", "client"])
+    @patch("prism.cli.app._get_cluster", return_value=_INFO)
+    def test_tun_open_json_output(self, mock_get, mock_services, mock_tunnels, mock_active):
+        from prism.tunnel import TunnelInfo
+
+        tunnels = [
+            TunnelInfo(service="dashboard", remote_port=8265, local_port=12345, local_url="http://localhost:12345"),
+        ]
+        mock_tunnels.return_value = tunnels
+        result = runner.invoke(app, ["--output", "json", "tun-open", "test"])
+        assert result.exit_code == 0
+        assert "dashboard" in result.output
+
+    @patch("prism.tunnel.load_tunnel_state")
+    @patch("prism.tunnel.is_tunnel_active", return_value=True)
+    def test_tun_open_idempotent(self, mock_active, mock_load):
+        from prism.tunnel import TunnelInfo, TunnelState
+
+        state = TunnelState(
+            cluster_name="test", namespace="default",
+            tunnels=[TunnelInfo(service="dashboard", remote_port=8265, local_port=12345, local_url="http://localhost:12345")],
+            pids=[123],
+        )
+        mock_load.return_value = state
+        result = runner.invoke(app, ["tun-open", "test"])
+        assert result.exit_code == 0
+        assert "already active" in result.output.lower()
+
+
+class TestTunClose:
+    @patch("prism.tunnel.stop_tunnels", return_value=True)
+    def test_tun_close_active(self, mock_stop):
+        result = runner.invoke(app, ["tun-close", "test"])
+        assert result.exit_code == 0
+        assert "stopped" in result.output.lower()
+
+    @patch("prism.tunnel.stop_tunnels", return_value=False)
+    def test_tun_close_noop(self, mock_stop):
+        result = runner.invoke(app, ["tun-close", "test"])
+        assert result.exit_code == 0
+        assert "no active tunnel" in result.output.lower()

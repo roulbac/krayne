@@ -7,4 +7,5 @@ from prism.output.formatters import (
     format_json,
     format_sandbox_setup_success,
     format_sandbox_status,
+    format_tunnel_panel,
 )

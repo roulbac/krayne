@@ -10,6 +10,7 @@ from rich.table import Table
 
 from prism.api.types import ClusterDetails, ClusterInfo
 from prism.sandbox.manager import SandboxStatus
+from prism.tunnel import TunnelInfo, TunnelState
 
 
 def _style_status(status: str) -> str:
@@ -32,6 +33,12 @@ def _build_cluster_panel(info: ClusterInfo) -> Panel:
     table.add_row("Status", _style_status(info.status))
     table.add_row("Cluster Address", info.client_url or "pending")
     table.add_row("Dashboard", info.dashboard_url or "pending")
+    if info.notebook_url:
+        table.add_row("Notebook", info.notebook_url)
+    if info.code_server_url:
+        table.add_row("Code Server", info.code_server_url)
+    if info.ssh_url:
+        table.add_row("SSH", info.ssh_url)
     table.add_row("Workers", str(info.num_workers))
     title = "Cluster Ready" if ready else "Cluster Creating..."
     style = "green" if ready else "yellow"
@@ -65,7 +72,12 @@ def format_cluster_list(clusters: list[ClusterInfo], console: Console) -> None:
     console.print(table)
 
 
-def format_cluster_details(details: ClusterDetails, console: Console) -> None:
+def format_cluster_details(
+    details: ClusterDetails,
+    console: Console,
+    *,
+    tunnel_state: TunnelState | None = None,
+) -> None:
     info = details.info
 
     # Header
@@ -77,7 +89,13 @@ def format_cluster_details(details: ClusterDetails, console: Console) -> None:
     header.add_row("Status", _style_status(info.status))
     header.add_row("Client", info.client_url or "pending")
     header.add_row("Dashboard", info.dashboard_url or "pending")
-    header.add_row("Ray Version", details.ray_version)
+    if info.notebook_url:
+        header.add_row("Notebook", info.notebook_url)
+    if info.code_server_url:
+        header.add_row("Code Server", info.code_server_url)
+    if info.ssh_url:
+        header.add_row("SSH", info.ssh_url)
+    header.add_row("Ray Image", details.head.image)
     console.print(Panel(header, title="Cluster Details", border_style="blue"))
 
     # Head node
@@ -113,6 +131,17 @@ def format_cluster_details(details: ClusterDetails, console: Console) -> None:
                 wg.gpu_type or "-",
             )
         console.print(wg_table)
+
+    # Tunnels
+    if tunnel_state is not None:
+        console.print(format_tunnel_panel(info.name, tunnel_state.tunnels))
+    else:
+        tun_table = Table(show_header=False, box=None, padding=(0, 2))
+        tun_table.add_column("Field", style="bold cyan")
+        tun_table.add_column("Value")
+        tun_table.add_row("Tunnels", "[dim]closed[/dim]")
+        tun_table.add_row("", "[dim]Run tun-open to connect[/dim]")
+        console.print(Panel(tun_table, title="Tunnels", border_style="dim"))
 
 
 def format_json(data: Any, console: Console) -> None:
@@ -183,3 +212,19 @@ def format_sandbox_status(status: SandboxStatus, console: Console) -> None:
     table.add_row("Created", status.created_at or "-")
     style = "green" if status.running else "dim"
     console.print(Panel(table, title="Sandbox Status", border_style=style))
+
+
+def format_tunnel_panel(cluster_name: str, tunnels: list[TunnelInfo]) -> Panel:
+    """Build a panel showing active tunnel URLs."""
+    table = Table(show_header=True, box=None, padding=(0, 2))
+    table.add_column("Service", style="bold")
+    table.add_column("Local URL", style="green")
+    table.add_column("Remote Port", justify="right", style="dim")
+    for t in tunnels:
+        table.add_row(t.service, t.local_url, str(t.remote_port))
+    return Panel(
+        table,
+        title=f"Tunnel Active \u2014 {cluster_name}",
+        subtitle="Run tun-close to stop",
+        border_style="green",
+    )

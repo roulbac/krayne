@@ -69,13 +69,13 @@ Configuration for a worker group.
 
 ## `ServicesConfig`
 
-Services to enable on the cluster head node.
+Services to enable on the cluster head node. Each enabled service adds its port to the head pod spec and populates the corresponding URL in `ClusterInfo`.
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `notebook` | `bool` | `True` | Jupyter notebook server |
-| `vscode_server` | `bool` | `False` | VS Code server |
-| `ssh` | `bool` | `True` | SSH access |
+| Field | Type | Default | Port | Description |
+|---|---|---|---|---|
+| `notebook` | `bool` | `True` | 8888 | Jupyter notebook server (runs on ray-head container) |
+| `code_server` | `bool` | `True` | 8443 | Code Server, installed from a [standalone pre-built binary](https://github.com/coder/code-server/releases) at container startup |
+| `ssh` | `bool` | `True` | 22 | SSH access to the head node |
 
 ---
 

@@ -35,7 +35,7 @@ graph TB
 |---|---|
 | **Head node** | Runs the Global Control Service (GCS), Ray dashboard, and scheduling. Does not typically run user workloads. |
 | **Worker group** | A set of identically configured worker pods. A cluster can have multiple worker groups (e.g., CPU workers and GPU workers). |
-| **Services** | Jupyter notebook, VS Code server, and SSH are optionally exposed on the head node. |
+| **Services** | Jupyter notebook, Code Server, and SSH are optionally exposed on the head node. |
 
 ---
 
@@ -154,21 +154,32 @@ See [Configuration](configuration.md) for the full config model and defaults.
 
 ## Services
 
-Prism can enable several services on the head node:
+Prism exposes several services on the head node, each mapped to a container port:
 
-| Service | Default | Description |
-|---|---|---|
-| **Jupyter Notebook** | Enabled | Web-based notebook environment on the head node |
-| **SSH** | Enabled | SSH access to the head node |
-| **VS Code Server** | Disabled | Browser-based VS Code on the head node |
+| Service | Default | Port | Description |
+|---|---|---|---|
+| **Jupyter Notebook** | Enabled | 8888 | Web-based notebook environment on the head node |
+| **SSH** | Enabled | 22 | SSH access to the head node |
+| **Code Server** | Enabled | 8443 | Browser-based [code-server](https://github.com/coder/code-server), installed at container startup |
+
+When enabled, service URLs appear in `ClusterInfo` (e.g. `notebook_url`, `code_server_url`, `ssh_url`) and in the CLI output.
+
+All services are installed and started via a `postStart` lifecycle hook on the ray-head container. Jupyter is installed with `pip install notebook`, and Code Server is installed from a [standalone pre-built binary](https://github.com/coder/code-server/releases) (no apt-get or curl required).
 
 Services are configured via the `services` section of `ClusterConfig` or the YAML file:
 
 ```yaml
 services:
   notebook: true
-  vscode_server: true
+  code_server: true
   ssh: true
+```
+
+To access services from your local machine, use `prism tun-open` / `prism tun-close`:
+
+```bash
+prism tun-open my-cluster   # start tunnels (idempotent)
+prism tun-close my-cluster   # stop tunnels (idempotent)
 ```
 
 ---

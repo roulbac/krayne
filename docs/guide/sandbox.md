@@ -7,7 +7,7 @@ Prism includes a built-in **sandbox** — a local [k3s](https://k3s.io/) Kuberne
 ## Prerequisites
 
 - **Docker** installed and running
-- At least **2 CPUs** and **4 GB RAM** allocated to Docker
+- At least **2 CPUs** and **6 GB RAM** allocated to Docker
 
 !!! tip "Check Docker resources"
     On Docker Desktop, go to **Settings → Resources** to verify CPU and memory allocation.
@@ -108,14 +108,16 @@ prism describe my-cluster
 prism delete my-cluster --force
 ```
 
-### Sandbox URL rewriting
+### Accessing services locally
 
-In a sandbox environment, Prism automatically rewrites cluster URLs to use `localhost` with NodePort mappings. This means dashboard and client URLs work directly from your machine:
+Cluster URLs always show the real pod/service IPs. To access services from your local machine, use `prism tun-open` to create localhost port-forwards:
 
-| URL Type | Standard Cluster | Sandbox |
-|---|---|---|
-| Dashboard | `http://<pod-ip>:8265` | `http://localhost:<nodeport>` |
-| Ray Client | `ray://<pod-ip>:10001` | `ray://localhost:<nodeport>` |
+```bash
+prism tun-open my-cluster   # start tunnels
+prism tun-close my-cluster   # stop tunnels
+```
+
+This forwards all enabled services (dashboard, client, notebook, SSH, Code Server) to deterministic localhost ports via `kubectl port-forward`. Both commands are idempotent.
 
 ---
 

@@ -37,6 +37,13 @@ _SAMPLE_OBJ = {
                             "resources": {
                                 "requests": {"cpu": 2, "memory": "2Gi"},
                             },
+                            "ports": [
+                                {"containerPort": 6379, "name": "gcs-server"},
+                                {"containerPort": 8265, "name": "dashboard"},
+                                {"containerPort": 10001, "name": "client"},
+                                {"containerPort": 8888, "name": "notebook"},
+                                {"containerPort": 22, "name": "ssh"},
+                            ],
                         }
                     ]
                 }
@@ -101,7 +108,43 @@ class TestGetCluster:
         assert info.name == "test"
         assert info.head_ip == "10.0.0.1"
         assert info.dashboard_url == "http://10.0.0.1:8265"
+        assert info.client_url == "ray://10.0.0.1:10001"
+        assert info.notebook_url == "http://10.0.0.1:8888"
+        assert info.ssh_url == "ssh://10.0.0.1:22"
+        assert info.code_server_url is None  # no code-server port in sample obj
         mock_client.get_ray_cluster.assert_called_once_with("test", "default")
+
+    def test_service_urls_absent_when_no_ports(self, mock_client):
+        """When head container has no ports, service URLs are None."""
+        obj_no_ports = {
+            **_SAMPLE_OBJ,
+            "spec": {
+                **_SAMPLE_OBJ["spec"],
+                "headGroupSpec": {
+                    "template": {
+                        "spec": {
+                            "containers": [
+                                {
+                                    "name": "ray-head",
+                                    "image": "rayproject/ray:2.41.0",
+                                    "resources": {"requests": {"cpu": 2, "memory": "2Gi"}},
+                                    "ports": [
+                                        {"containerPort": 6379, "name": "gcs-server"},
+                                        {"containerPort": 8265, "name": "dashboard"},
+                                        {"containerPort": 10001, "name": "client"},
+                                    ],
+                                }
+                            ]
+                        }
+                    }
+                },
+            },
+        }
+        mock_client.get_ray_cluster.return_value = obj_no_ports
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.notebook_url is None
+        assert info.code_server_url is None
+        assert info.ssh_url is None
 
 
 class TestListClusters:

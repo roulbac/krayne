@@ -58,7 +58,7 @@ Choose one of two paths:
     ╰─────────────────────────────────────────────────╯
     ```
 
-    The sandbox requires Docker with at least 2 CPUs and 4 GB RAM.
+    The sandbox requires Docker with at least 2 CPUs and 6 GB RAM.
 
     Then run `prism init` to select the sandbox kubeconfig:
 
@@ -100,37 +100,21 @@ prism create my-first-cluster --wait
 
 The `--wait` flag blocks until all pods are running:
 
-The output depends on your environment:
+```title="Terminal output"
+╭─ Cluster Ready ──────────────────────────────╮
+│  Name               my-first-cluster         │
+│  Namespace          default                  │
+│  Status             ready                    │
+│  Cluster Address    ray://10.0.0.1:10001     │
+│  Dashboard          http://10.0.0.1:8265     │
+│  Notebook           http://10.0.0.1:8888     │
+│  SSH                ssh://10.0.0.1:22        │
+│  Workers            1                        │
+╰──────────────────────────────────────────────╯
+```
 
-=== "Sandbox"
-
-    ```title="Terminal output"
-    ╭─ Cluster Creating... ────────────────────────╮
-    │  Name               my-first-cluster         │
-    │  Namespace          default                  │
-    │  Status             pods-pending             │
-    │  Cluster Address    ray://localhost:30064     │
-    │  Dashboard          http://localhost:30078    │
-    │  Workers            1                        │
-    ╰──────────────────────────────────────────────╯
-    ```
-
-    In the sandbox, URLs use `localhost` with NodePort mappings so they work directly from your machine.
-
-=== "Kubernetes Cluster"
-
-    ```title="Terminal output"
-    ╭─ Cluster Created ────────────────────────────╮
-    │  Name               my-first-cluster         │
-    │  Namespace          default                  │
-    │  Status             ready                    │
-    │  Cluster Address    ray://10.0.0.1:10001     │
-    │  Dashboard          http://10.0.0.1:8265     │
-    │  Workers            1                        │
-    ╰──────────────────────────────────────────────╯
-    ```
-
-    On a real Kubernetes cluster, URLs use pod/service IPs.
+!!! tip "Local access"
+    To access cluster services from your machine, use `prism tun-open my-first-cluster` to create localhost port-forwards. Use `prism tun-close my-first-cluster` to stop.
 
 This creates a cluster with sensible defaults:
 
