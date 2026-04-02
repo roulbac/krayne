@@ -311,6 +311,35 @@ def wait_until_ready(
 
 ---
 
+### `get_cluster_services()`
+
+Return the list of service names exposed on the cluster head node (e.g. `["dashboard", "client", "notebook", "ssh"]`).
+
+```python
+get_cluster_services(
+    name: str,
+    namespace: str = "default",
+    *,
+    client: KubeClient | None = None,
+    kubeconfig: str | None = None,
+) -> list[str]
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `name` | `str` | — | Cluster name (required) |
+| `namespace` | `str` | `"default"` | Kubernetes namespace |
+| `client` | `KubeClient \| None` | `None` | Kubernetes client |
+| `kubeconfig` | `str \| None` | `None` | Path to kubeconfig file |
+
+**Returns:** List of service name strings
+
+**Raises:** `ClusterNotFoundError`, `KubeConnectionError`
+
+---
+
 ## Return types
 
 All return types are immutable frozen dataclasses defined in `prism.api.types`.
@@ -328,8 +357,9 @@ class ClusterInfo:
     head_ip: str | None          # Head node pod/service IP
     dashboard_url: str | None    # Ray dashboard URL
     client_url: str | None       # Ray client URL
-    notebook_url: str | None     # Jupyter notebook URL
-    vscode_url: str | None       # VS Code server URL
+    notebook_url: str | None     # Jupyter notebook URL (if enabled)
+    vscode_url: str | None       # VS Code server URL (if enabled)
+    ssh_url: str | None          # SSH URL (if enabled)
     num_workers: int             # Total worker replicas
     created_at: str              # Creation timestamp
 ```

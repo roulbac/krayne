@@ -69,13 +69,15 @@ Configuration for a worker group.
 
 ## `ServicesConfig`
 
-Services to enable on the cluster head node.
+Services to enable on the cluster head node. Each enabled service adds its port to the head pod spec and populates the corresponding URL in `ClusterInfo`.
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `notebook` | `bool` | `True` | Jupyter notebook server |
-| `vscode_server` | `bool` | `False` | VS Code server |
-| `ssh` | `bool` | `True` | SSH access |
+| Field | Type | Default | Port | Description |
+|---|---|---|---|---|
+| `notebook` | `bool` | `True` | 8888 | Jupyter notebook server (runs on ray-head container) |
+| `vscode_server` | `bool` | `False` | 8080 | VS Code server (runs as a `codercom/code-server` sidecar container) |
+| `ssh` | `bool` | `True` | 22 | SSH access to the head node |
+
+The VS Code server image version can be overridden with the `PRISM_VSCODE_VERSION` environment variable.
 
 ---
 

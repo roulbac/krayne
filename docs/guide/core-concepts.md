@@ -154,13 +154,17 @@ See [Configuration](configuration.md) for the full config model and defaults.
 
 ## Services
 
-Prism can enable several services on the head node:
+Prism exposes several services on the head node, each mapped to a container port:
 
-| Service | Default | Description |
-|---|---|---|
-| **Jupyter Notebook** | Enabled | Web-based notebook environment on the head node |
-| **SSH** | Enabled | SSH access to the head node |
-| **VS Code Server** | Disabled | Browser-based VS Code on the head node |
+| Service | Default | Port | Description |
+|---|---|---|---|
+| **Jupyter Notebook** | Enabled | 8888 | Web-based notebook environment on the head node |
+| **SSH** | Enabled | 22 | SSH access to the head node |
+| **VS Code Server** | Disabled | 8080 | Browser-based VS Code via a [code-server](https://github.com/coder/code-server) sidecar container |
+
+When enabled, service URLs appear in `ClusterInfo` (e.g. `notebook_url`, `vscode_url`, `ssh_url`) and in the CLI output.
+
+VS Code Server runs as a **sidecar container** (`codercom/code-server`) alongside the Ray head container. The image can be overridden via the `PRISM_VSCODE_VERSION` environment variable.
 
 Services are configured via the `services` section of `ClusterConfig` or the YAML file:
 
@@ -169,6 +173,12 @@ services:
   notebook: true
   vscode_server: true
   ssh: true
+```
+
+To access services from your local machine, use `prism tunnel`:
+
+```bash
+prism tunnel my-cluster
 ```
 
 ---

@@ -98,6 +98,21 @@ def describe_cluster(
     return _obj_to_details(obj, pods=pods, client=kube)
 
 
+def get_cluster_services(
+    name: str,
+    namespace: str = "default",
+    *,
+    client: KubeClient | None = None,
+    kubeconfig: str | None = None,
+) -> list[str]:
+    """Return the list of service names exposed on the cluster head node."""
+    from prism.tunnel import detect_services
+
+    kube = _resolve_client(client, kubeconfig)
+    obj = kube.get_ray_cluster(name, namespace)
+    return detect_services(obj)
+
+
 def scale_cluster(
     name: str,
     namespace: str,
@@ -190,11 +205,22 @@ def wait_until_ready(
         time.sleep(_poll_interval)
 
 
-def _is_sandbox() -> bool:
-    from prism.sandbox.manager import SANDBOX_KUBECONFIG
-
-    settings = load_prism_settings()
-    return settings.kubeconfig == str(SANDBOX_KUBECONFIG)
+def _head_port_names(obj: dict) -> set[str]:
+    """Collect port names from all containers in the head pod spec."""
+    containers = (
+        obj.get("spec", {})
+        .get("headGroupSpec", {})
+        .get("template", {})
+        .get("spec", {})
+        .get("containers", [])
+    )
+    names: set[str] = set()
+    for container in containers:
+        for port in container.get("ports", []):
+            name = port.get("name")
+            if name:
+                names.add(name)
+    return names
 
 
 def _obj_to_info(
@@ -214,26 +240,22 @@ def _obj_to_info(
         wg.get("replicas", 0) for wg in spec.get("workerGroupSpecs", [])
     )
 
+    port_names = _head_port_names(obj)
+
     dashboard_url = None
     client_url = None
+    notebook_url = None
+    vscode_url = None
+    ssh_url = None
     if head_ip:
         dashboard_url = f"http://{head_ip}:8265"
         client_url = f"ray://{head_ip}:10001"
-
-    # On sandbox, rewrite URLs to use localhost + NodePort
-    if client is not None and head_ip and _is_sandbox():
-        cluster_name = metadata.get("name", "")
-        namespace = metadata.get("namespace", "")
-        dashboard_np = client.get_head_node_port(
-            cluster_name, namespace, "dashboard"
-        )
-        client_np = client.get_head_node_port(
-            cluster_name, namespace, "client"
-        )
-        if dashboard_np:
-            dashboard_url = f"http://localhost:{dashboard_np}"
-        if client_np:
-            client_url = f"ray://localhost:{client_np}"
+        if "notebook" in port_names:
+            notebook_url = f"http://{head_ip}:8888"
+        if "vscode" in port_names:
+            vscode_url = f"http://{head_ip}:8080"
+        if "ssh" in port_names:
+            ssh_url = f"ssh://{head_ip}:22"
 
     return ClusterInfo(
         name=metadata.get("name", ""),
@@ -242,8 +264,9 @@ def _obj_to_info(
         head_ip=head_ip,
         dashboard_url=dashboard_url,
         client_url=client_url,
-        notebook_url=None,
-        vscode_url=None,
+        notebook_url=notebook_url,
+        vscode_url=vscode_url,
+        ssh_url=ssh_url,
         num_workers=num_workers,
         created_at=metadata.get("creationTimestamp", ""),
     )

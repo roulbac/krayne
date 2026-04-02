@@ -97,18 +97,20 @@ prism create my-cluster --output json
 ```
 
 ```title="Terminal output"
-╭─ Cluster Created ────────────────────────╮
-│  Name               my-cluster           │
-│  Namespace          default              │
-│  Status             ready                │
-│  Cluster Address    ray://10.0.0.1:10001 │
-│  Dashboard          http://10.0.0.1:8265 │
-│  Workers            1                    │
-╰──────────────────────────────────────────╯
+╭─ Cluster Created ────────────────────────────╮
+│  Name               my-cluster               │
+│  Namespace          default                  │
+│  Status             ready                    │
+│  Cluster Address    ray://10.0.0.1:10001     │
+│  Dashboard          http://10.0.0.1:8265     │
+│  Notebook           http://10.0.0.1:8888     │
+│  SSH                ssh://10.0.0.1:22        │
+│  Workers            1                        │
+╰──────────────────────────────────────────────╯
 ```
 
-!!! tip "Sandbox URLs"
-    In the sandbox, URLs use `localhost` with NodePort mappings (e.g. `ray://localhost:30064`, `http://localhost:30078`) so they work directly from your machine.
+!!! tip "Local access"
+    Use `prism tunnel <cluster-name>` to create localhost mirrors of all cluster services via `kubectl port-forward`.
 
 !!! note
     When using `--file`, the `name` argument and any CLI flags override the corresponding values in the YAML file.
@@ -181,13 +183,14 @@ prism describe my-cluster -n ml-team --output json
 ```
 
 ```title="Terminal output"
-╭─ Cluster: my-cluster ────────────────────╮
+╭─ Cluster Details ────────────────────────╮
 │  Namespace:    default                   │
 │  Status:       ready                     │
+│  Client:       ray://10.0.0.1:10001     │
 │  Dashboard:    http://10.0.0.1:8265      │
-│  Client URL:   ray://10.0.0.1:10001     │
-│  Workers:      1                         │
-│  Created:      2026-04-01 10:30:00       │
+│  Notebook:     http://10.0.0.1:8888      │
+│  SSH:          ssh://10.0.0.1:22         │
+│  Ray Version:  unknown                   │
 ╰──────────────────────────────────────────╯
 
 Head Node
@@ -288,6 +291,58 @@ prism delete my-cluster -n ml-team --force
 Are you sure you want to delete cluster 'my-cluster'? [y/N]: y
 Cluster 'my-cluster' deleted.
 ```
+
+---
+
+## `prism tunnel`
+
+Forward cluster services to localhost via `kubectl port-forward`. Runs as a long-lived foreground process — press Ctrl+C to stop.
+
+```
+prism tunnel <name> [OPTIONS]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|---|---|
+| `name` | Cluster name (required) |
+
+**Options:**
+
+| Option | Default | Description |
+|---|---|---|
+| `-n`, `--namespace` | `default` | Kubernetes namespace |
+
+Local ports are deterministically assigned from the cluster name and namespace, so the same cluster always gets the same local ports.
+
+**Examples:**
+
+```bash
+# Tunnel all services on a cluster
+prism tunnel my-cluster
+
+# Tunnel a cluster in a specific namespace
+prism tunnel my-cluster -n ml-team
+
+# Get tunnel info as JSON (prints and exits)
+prism tunnel my-cluster --output json
+```
+
+```title="Terminal output"
+╭─ Tunnel Active — my-cluster ────────────────────────────╮
+│  Service      Local URL                   Remote Port   │
+│  dashboard    http://localhost:34821       8265          │
+│  client       ray://localhost:28190        10001         │
+│  notebook     http://localhost:41337       8888          │
+│  ssh          ssh://localhost:19022        22            │
+│                                                         │
+│  Press Ctrl+C to stop                                   │
+╰─────────────────────────────────────────────────────────╯
+```
+
+!!! note
+    The cluster must be in `ready` or `running` state. Tunnels forward to the head Service (`svc/<name>-head-svc`), which survives pod restarts.
 
 ---
 

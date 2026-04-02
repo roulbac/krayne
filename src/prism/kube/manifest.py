@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import platform
 
-from prism.config.models import ClusterConfig, HeadNodeConfig, WorkerGroupConfig
+from prism.config.models import ClusterConfig, HeadNodeConfig, ServicesConfig, WorkerGroupConfig
 
 _RAY_VERSION = os.environ.get("PRISM_RAY_VERSION", "latest")
 RAY_IMAGE = (
@@ -11,6 +11,8 @@ RAY_IMAGE = (
     if platform.machine() == "arm64"
     else f"rayproject/ray:{_RAY_VERSION}"
 )
+_VSCODE_VERSION = os.environ.get("PRISM_VSCODE_VERSION", "latest")
+VSCODE_IMAGE = f"codercom/code-server:{_VSCODE_VERSION}"
 RAYCLUSTER_API_VERSION = "ray.io/v1"
 RAYCLUSTER_KIND = "RayCluster"
 
@@ -29,7 +31,7 @@ def build_manifest(config: ClusterConfig) -> dict:
             },
         },
         "spec": {
-            "headGroupSpec": _build_head_spec(config.head),
+            "headGroupSpec": _build_head_spec(config.head, config.services),
             "workerGroupSpecs": [
                 _build_worker_spec(wg) for wg in config.worker_groups
             ],
@@ -37,7 +39,7 @@ def build_manifest(config: ClusterConfig) -> dict:
     }
 
 
-def _build_head_spec(head: HeadNodeConfig) -> dict:
+def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
     image = head.image or RAY_IMAGE
     resources: dict[str, dict[str, str | int]] = {
         "requests": {"cpu": head.cpus, "memory": head.memory},
@@ -47,23 +49,38 @@ def _build_head_spec(head: HeadNodeConfig) -> dict:
         resources["limits"]["nvidia.com/gpu"] = head.gpus
         resources["requests"]["nvidia.com/gpu"] = head.gpus
 
+    ports: list[dict] = [
+        {"containerPort": 6379, "name": "gcs-server"},
+        {"containerPort": 8265, "name": "dashboard"},
+        {"containerPort": 10001, "name": "client"},
+    ]
+    if services.notebook:
+        ports.append({"containerPort": 8888, "name": "notebook"})
+    if services.ssh:
+        ports.append({"containerPort": 22, "name": "ssh"})
+
+    containers: list[dict] = [
+        {
+            "name": "ray-head",
+            "image": image,
+            "resources": resources,
+            "ports": ports,
+        }
+    ]
+    if services.vscode_server:
+        containers.append({
+            "name": "vscode",
+            "image": VSCODE_IMAGE,
+            "ports": [{"containerPort": 8080, "name": "vscode"}],
+            "args": ["--auth", "none", "--bind-addr", "0.0.0.0:8080"],
+        })
+
     return {
         "serviceType": "NodePort",
         "rayStartParams": {"dashboard-host": "0.0.0.0"},
         "template": {
             "spec": {
-                "containers": [
-                    {
-                        "name": "ray-head",
-                        "image": image,
-                        "resources": resources,
-                        "ports": [
-                            {"containerPort": 6379, "name": "gcs-server"},
-                            {"containerPort": 8265, "name": "dashboard"},
-                            {"containerPort": 10001, "name": "client"},
-                        ],
-                    }
-                ],
+                "containers": containers,
             }
         },
     }

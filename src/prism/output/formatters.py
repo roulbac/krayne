@@ -10,6 +10,7 @@ from rich.table import Table
 
 from prism.api.types import ClusterDetails, ClusterInfo
 from prism.sandbox.manager import SandboxStatus
+from prism.tunnel import TunnelInfo
 
 
 def _style_status(status: str) -> str:
@@ -32,6 +33,12 @@ def _build_cluster_panel(info: ClusterInfo) -> Panel:
     table.add_row("Status", _style_status(info.status))
     table.add_row("Cluster Address", info.client_url or "pending")
     table.add_row("Dashboard", info.dashboard_url or "pending")
+    if info.notebook_url:
+        table.add_row("Notebook", info.notebook_url)
+    if info.vscode_url:
+        table.add_row("VS Code", info.vscode_url)
+    if info.ssh_url:
+        table.add_row("SSH", info.ssh_url)
     table.add_row("Workers", str(info.num_workers))
     title = "Cluster Ready" if ready else "Cluster Creating..."
     style = "green" if ready else "yellow"
@@ -77,6 +84,12 @@ def format_cluster_details(details: ClusterDetails, console: Console) -> None:
     header.add_row("Status", _style_status(info.status))
     header.add_row("Client", info.client_url or "pending")
     header.add_row("Dashboard", info.dashboard_url or "pending")
+    if info.notebook_url:
+        header.add_row("Notebook", info.notebook_url)
+    if info.vscode_url:
+        header.add_row("VS Code", info.vscode_url)
+    if info.ssh_url:
+        header.add_row("SSH", info.ssh_url)
     header.add_row("Ray Version", details.ray_version)
     console.print(Panel(header, title="Cluster Details", border_style="blue"))
 
@@ -183,3 +196,19 @@ def format_sandbox_status(status: SandboxStatus, console: Console) -> None:
     table.add_row("Created", status.created_at or "-")
     style = "green" if status.running else "dim"
     console.print(Panel(table, title="Sandbox Status", border_style=style))
+
+
+def format_tunnel_panel(cluster_name: str, tunnels: list[TunnelInfo]) -> Panel:
+    """Build a panel showing active tunnel URLs."""
+    table = Table(show_header=True, box=None, padding=(0, 2))
+    table.add_column("Service", style="bold")
+    table.add_column("Local URL", style="green")
+    table.add_column("Remote Port", justify="right", style="dim")
+    for t in tunnels:
+        table.add_row(t.service, t.local_url, str(t.remote_port))
+    return Panel(
+        table,
+        title=f"Tunnel Active \u2014 {cluster_name}",
+        subtitle="Press Ctrl+C to stop",
+        border_style="green",
+    )

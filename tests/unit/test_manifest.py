@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from prism.config import ClusterConfig, HeadNodeConfig, WorkerGroupConfig
-from prism.kube.manifest import RAY_IMAGE, build_manifest
+from prism.config.models import ServicesConfig
+from prism.kube.manifest import RAY_IMAGE, VSCODE_IMAGE, build_manifest
 
 
 class TestBuildManifest:
@@ -77,9 +78,60 @@ class TestBuildManifest:
         assert workers[1]["groupName"] == "gpu"
         assert workers[1]["replicas"] == 2
 
-    def test_head_ports(self):
+    def test_head_ports_default_services(self):
+        """Default config enables notebook + ssh, so 5 ports on ray-head."""
         cfg = ClusterConfig(name="ports")
         m = build_manifest(cfg)
         ports = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["ports"]
         port_names = {p["name"] for p in ports}
-        assert {"gcs-server", "dashboard", "client"} == port_names
+        assert port_names == {"gcs-server", "dashboard", "client", "notebook", "ssh"}
+
+    def test_head_ports_no_services(self):
+        """All services disabled leaves only the 3 base Ray ports."""
+        cfg = ClusterConfig(
+            name="bare",
+            services=ServicesConfig(notebook=False, vscode_server=False, ssh=False),
+        )
+        m = build_manifest(cfg)
+        ports = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["ports"]
+        port_names = {p["name"] for p in ports}
+        assert port_names == {"gcs-server", "dashboard", "client"}
+
+    def test_head_ports_all_services(self):
+        """All services enabled: 5 ports on ray-head + vscode sidecar."""
+        cfg = ClusterConfig(
+            name="all",
+            services=ServicesConfig(notebook=True, vscode_server=True, ssh=True),
+        )
+        m = build_manifest(cfg)
+        containers = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"]
+        # Collect all port names across all containers
+        all_port_names: set[str] = set()
+        for c in containers:
+            for p in c.get("ports", []):
+                all_port_names.add(p["name"])
+        assert all_port_names == {
+            "gcs-server", "dashboard", "client", "notebook", "ssh", "vscode",
+        }
+
+    def test_vscode_sidecar_added(self):
+        """When vscode_server is enabled, a sidecar container is added."""
+        cfg = ClusterConfig(
+            name="vs",
+            services=ServicesConfig(vscode_server=True),
+        )
+        m = build_manifest(cfg)
+        containers = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"]
+        assert len(containers) == 2
+        sidecar = containers[1]
+        assert sidecar["name"] == "vscode"
+        assert sidecar["image"] == VSCODE_IMAGE
+        assert sidecar["ports"] == [{"containerPort": 8080, "name": "vscode"}]
+
+    def test_vscode_sidecar_absent(self):
+        """When vscode_server is disabled (default), only one container."""
+        cfg = ClusterConfig(name="novs")
+        m = build_manifest(cfg)
+        containers = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"]
+        assert len(containers) == 1
+        assert containers[0]["name"] == "ray-head"

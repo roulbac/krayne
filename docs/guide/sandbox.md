@@ -108,14 +108,15 @@ prism describe my-cluster
 prism delete my-cluster --force
 ```
 
-### Sandbox URL rewriting
+### Accessing services locally
 
-In a sandbox environment, Prism automatically rewrites cluster URLs to use `localhost` with NodePort mappings. This means dashboard and client URLs work directly from your machine:
+Cluster URLs always show the real pod/service IPs. To access services from your local machine, use `prism tunnel` to create localhost port-forwards:
 
-| URL Type | Standard Cluster | Sandbox |
-|---|---|---|
-| Dashboard | `http://<pod-ip>:8265` | `http://localhost:<nodeport>` |
-| Ray Client | `ray://<pod-ip>:10001` | `ray://localhost:<nodeport>` |
+```bash
+prism tunnel my-cluster
+```
+
+This forwards all enabled services (dashboard, client, notebook, SSH, VS Code) to deterministic localhost ports via `kubectl port-forward`. Press Ctrl+C to stop.
 
 ---
 

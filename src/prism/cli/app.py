@@ -62,6 +62,7 @@ from prism.api import (  # noqa: E402
     delete_cluster as _delete_cluster,
     describe_cluster as _describe_cluster,
     get_cluster as _get_cluster,
+    get_cluster_services as _get_cluster_services,
     list_clusters as _list_clusters,
     scale_cluster as _scale_cluster,
 )
@@ -83,6 +84,7 @@ from prism.output import (  # noqa: E402
     format_json,
     format_sandbox_setup_success,
     format_sandbox_status,
+    format_tunnel_panel,
 )
 from prism.sandbox import (  # noqa: E402
     setup_sandbox as _setup_sandbox,
@@ -323,6 +325,67 @@ def init(
             PrismSettings(kubeconfig=str(resolved), kube_context=context)
         )
         format_init_success(str(resolved), context, console)
+    except PrismError as exc:
+        _handle_error(exc)
+
+
+@app.command("tunnel")
+def tunnel(
+    name: str = typer.Argument(..., help="Cluster name."),
+    namespace: str = typer.Option("default", "-n", "--namespace"),
+) -> None:
+    """Forward cluster services to localhost (Ctrl+C to stop)."""
+    import time
+
+    from rich.live import Live
+
+    from prism.tunnel import start_tunnels
+
+    try:
+        info = _get_cluster(name, namespace, kubeconfig=_kubeconfig)
+        if info.status not in ("ready", "running"):
+            err_console.print(
+                Panel(
+                    f"Cluster '{name}' is not ready (status: {info.status}). "
+                    "Wait for it to be ready before tunnelling.",
+                    title="Error",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(1)
+
+        services = _get_cluster_services(name, namespace, kubeconfig=_kubeconfig)
+        if not services:
+            err_console.print(
+                Panel("No services detected on this cluster.", title="Error", border_style="red")
+            )
+            raise typer.Exit(1)
+
+        tunnels, processes = start_tunnels(
+            name, namespace, services, kubeconfig=_kubeconfig
+        )
+
+        try:
+            if _output_json:
+                format_json(tunnels, console)
+                return
+
+            with Live(
+                format_tunnel_panel(name, tunnels),
+                console=console,
+                refresh_per_second=1,
+            ):
+                while True:
+                    time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            for proc in processes:
+                proc.terminate()
+            for proc in processes:
+                proc.wait()
+            if not _output_json:
+                console.print("Tunnel stopped.", style="dim")
     except PrismError as exc:
         _handle_error(exc)
 

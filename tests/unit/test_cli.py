@@ -17,8 +17,9 @@ _INFO = ClusterInfo(
     head_ip="10.0.0.1",
     dashboard_url="http://10.0.0.1:8265",
     client_url="ray://10.0.0.1:10001",
-    notebook_url=None,
+    notebook_url="http://10.0.0.1:8888",
     vscode_url=None,
+    ssh_url="ssh://10.0.0.1:22",
     num_workers=2,
     created_at="2026-01-01T00:00:00Z",
 )
@@ -62,7 +63,7 @@ class TestCreate:
         pending = ClusterInfo(
             name="test", namespace="default", status="pending",
             head_ip=None, dashboard_url=None, client_url=None,
-            notebook_url=None, vscode_url=None, num_workers=0,
+            notebook_url=None, vscode_url=None, ssh_url=None, num_workers=0,
             created_at="2026-01-01T00:00:00Z",
         )
         mock_create.return_value = pending
@@ -221,3 +222,37 @@ class TestSandboxStatusCli:
         result = runner.invoke(app, ["sandbox", "status"])
         assert result.exit_code == 0
         assert "Sandbox Status" in result.output
+
+
+class TestTunnel:
+    @patch("prism.tunnel.start_tunnels")
+    @patch("prism.cli.app._get_cluster_services", return_value=["dashboard", "client"])
+    @patch("prism.cli.app._get_cluster", return_value=_INFO)
+    def test_tunnel_not_ready(self, mock_get, mock_services, mock_tunnels):
+        not_ready = ClusterInfo(
+            name="test", namespace="default", status="pending",
+            head_ip=None, dashboard_url=None, client_url=None,
+            notebook_url=None, vscode_url=None, ssh_url=None, num_workers=0,
+            created_at="2026-01-01T00:00:00Z",
+        )
+        mock_get.return_value = not_ready
+        result = runner.invoke(app, ["tunnel", "test"])
+        assert result.exit_code == 1
+        assert "not ready" in result.output.lower()
+        mock_tunnels.assert_not_called()
+
+    @patch("prism.tunnel.start_tunnels")
+    @patch("prism.cli.app._get_cluster_services", return_value=["dashboard", "client"])
+    @patch("prism.cli.app._get_cluster", return_value=_INFO)
+    def test_tunnel_json_output(self, mock_get, mock_services, mock_tunnels):
+        from prism.tunnel import TunnelInfo
+
+        tunnels = [
+            TunnelInfo(service="dashboard", remote_port=8265, local_port=12345, local_url="http://localhost:12345"),
+        ]
+        mock_proc = MagicMock()
+        mock_tunnels.return_value = (tunnels, [mock_proc])
+        # JSON output mode exits after printing (no Live loop)
+        result = runner.invoke(app, ["--output", "json", "tunnel", "test"])
+        assert result.exit_code == 0
+        assert "dashboard" in result.output
