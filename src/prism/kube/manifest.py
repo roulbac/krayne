@@ -67,6 +67,31 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
             "ports": ports,
         }
     ]
+
+    # Build a postStart lifecycle hook to start optional services.
+    startup_cmds: list[str] = []
+    if services.notebook:
+        startup_cmds.append(
+            "nohup jupyter notebook"
+            " --ip=0.0.0.0 --port=8888 --no-browser --allow-root"
+            " --NotebookApp.token=''"
+            " > /tmp/jupyter.log 2>&1 &"
+        )
+    if services.ssh:
+        startup_cmds.append(
+            "(which sshd && mkdir -p /run/sshd && /usr/sbin/sshd) || true"
+        )
+    if startup_cmds:
+        containers[0]["lifecycle"] = {
+            "postStart": {
+                "exec": {
+                    "command": [
+                        "/bin/sh", "-c", " && ".join(startup_cmds),
+                    ]
+                }
+            }
+        }
+
     if services.vscode_server:
         containers.append({
             "name": "vscode",

@@ -135,3 +135,46 @@ class TestBuildManifest:
         containers = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"]
         assert len(containers) == 1
         assert containers[0]["name"] == "ray-head"
+
+    def test_lifecycle_hook_default_services(self):
+        """Default services (notebook + ssh) produce a postStart lifecycle hook."""
+        cfg = ClusterConfig(name="hooks")
+        m = build_manifest(cfg)
+        container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]
+        hook = container["lifecycle"]["postStart"]["exec"]["command"]
+        assert hook[0] == "/bin/sh"
+        assert hook[1] == "-c"
+        # Both notebook and ssh startup commands should be present
+        assert "jupyter notebook" in hook[2]
+        assert "sshd" in hook[2]
+
+    def test_lifecycle_hook_notebook_only(self):
+        cfg = ClusterConfig(
+            name="nb",
+            services=ServicesConfig(notebook=True, ssh=False),
+        )
+        m = build_manifest(cfg)
+        container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]
+        hook_cmd = container["lifecycle"]["postStart"]["exec"]["command"][2]
+        assert "jupyter notebook" in hook_cmd
+        assert "sshd" not in hook_cmd
+
+    def test_lifecycle_hook_ssh_only(self):
+        cfg = ClusterConfig(
+            name="sshonly",
+            services=ServicesConfig(notebook=False, ssh=True),
+        )
+        m = build_manifest(cfg)
+        container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]
+        hook_cmd = container["lifecycle"]["postStart"]["exec"]["command"][2]
+        assert "sshd" in hook_cmd
+        assert "jupyter" not in hook_cmd
+
+    def test_no_lifecycle_hook_when_no_services(self):
+        cfg = ClusterConfig(
+            name="bare",
+            services=ServicesConfig(notebook=False, vscode_server=False, ssh=False),
+        )
+        m = build_manifest(cfg)
+        container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]
+        assert "lifecycle" not in container
