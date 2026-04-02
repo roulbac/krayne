@@ -27,7 +27,8 @@ KUBERAY_HELM_REPO = "https://ray-project.github.io/kuberay-helm"
 SANDBOX_KUBECONFIG = PRISM_DIR / "sandbox-kubeconfig"
 
 MIN_CPUS = 2
-MIN_MEMORY_GB = 6
+MIN_MEMORY_GB = 4
+SANDBOX_MEMORY_GB = 7
 
 # Step names for progress reporting
 STEP_DOCKER = "Docker"
@@ -173,7 +174,7 @@ def setup_sandbox(on_progress: ProgressCallback = None) -> str:
                 f"Docker has {ncpu} CPUs and {mem_gb:.1f}GB memory, "
                 f"but the sandbox requires at least {MIN_CPUS} CPUs "
                 f"and {MIN_MEMORY_GB}GB memory. "
-                f"Increase resources in your Docker/Rancher Desktop settings."
+                "Increase resources in your Docker/Rancher Desktop settings."
             )
     _notify(on_progress, STEP_DOCKER, "done")
 
@@ -191,7 +192,7 @@ def setup_sandbox(on_progress: ProgressCallback = None) -> str:
         "-p", "6443:6443",
         "-p", "30000-30100:30000-30100",
         "--cpus", str(MIN_CPUS),
-        "--memory", f"{MIN_MEMORY_GB}g",
+        "--memory", f"{SANDBOX_MEMORY_GB}g",
         "-e", "K3S_KUBECONFIG_MODE=644",
         K3S_IMAGE,
         "server", "--disable=traefik",

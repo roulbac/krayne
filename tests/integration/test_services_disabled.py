@@ -15,7 +15,7 @@ import pytest
 
 from prism.api import create_cluster, delete_cluster, get_cluster, get_cluster_services
 from prism.config import ClusterConfig
-from prism.config.models import ServicesConfig
+from prism.config.models import HeadNodeConfig, ServicesConfig, WorkerGroupConfig
 
 pytestmark = pytest.mark.integration
 
@@ -37,17 +37,33 @@ def _wait_for_ready(name: str, namespace: str, client, timeout: int) -> None:
         time.sleep(_POLL_INTERVAL)
 
 
+def _wait_for_deleted(name: str, namespace: str, client, timeout: int = 60) -> None:
+    """Poll until the cluster no longer exists."""
+    from prism.errors import ClusterNotFoundError
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            get_cluster(name, namespace, client=client)
+        except ClusterNotFoundError:
+            return
+        time.sleep(_POLL_INTERVAL)
+
+
 class TestServicesDisabled:
     """Cluster with all optional services turned off."""
 
     CLUSTER_NAME = "integ-no-svc"
     NAMESPACE = "default"
 
-    @pytest.fixture(autouse=True)
+    @pytest.fixture(autouse=True, scope="class")
     def _cluster(self, kube_client, sandbox_kubeconfig):
+        self.__class__._client = kube_client
         config = ClusterConfig(
             name=self.CLUSTER_NAME,
             namespace=self.NAMESPACE,
+            head=HeadNodeConfig(memory="4Gi"),
+            worker_groups=[WorkerGroupConfig(memory="1Gi")],
             services=ServicesConfig(notebook=False, code_server=False, ssh=False),
         )
         try:
@@ -55,22 +71,22 @@ class TestServicesDisabled:
             _wait_for_ready(
                 self.CLUSTER_NAME, self.NAMESPACE, kube_client, _CLUSTER_READY_TIMEOUT
             )
-            self.client = kube_client
             yield
         finally:
             try:
                 delete_cluster(self.CLUSTER_NAME, self.NAMESPACE, client=kube_client)
+                _wait_for_deleted(self.CLUSTER_NAME, self.NAMESPACE, kube_client)
             except Exception:
                 pass
 
     def test_only_base_services_detected(self):
         services = get_cluster_services(
-            self.CLUSTER_NAME, self.NAMESPACE, client=self.client
+            self.CLUSTER_NAME, self.NAMESPACE, client=self._client
         )
         assert set(services) == {"dashboard", "client"}
 
     def test_optional_urls_are_none(self):
-        info = get_cluster(self.CLUSTER_NAME, self.NAMESPACE, client=self.client)
+        info = get_cluster(self.CLUSTER_NAME, self.NAMESPACE, client=self._client)
         assert info.notebook_url is None
         assert info.code_server_url is None
         assert info.ssh_url is None
