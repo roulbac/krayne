@@ -320,10 +320,17 @@ def _obj_to_details(
             )
         )
 
+    # Extract ray version from image tag (e.g. "rayproject/ray:2.41.0" → "2.41.0")
+    ray_version = "unknown"
+    if ":" in head_image:
+        tag = head_image.rsplit(":", 1)[1]
+        # Strip architecture suffixes like "-aarch64"
+        ray_version = tag.split("-")[0] if tag else "unknown"
+
     return ClusterDetails(
         info=info,
         head=head,
         worker_groups=worker_groups,
-        ray_version="unknown",
+        ray_version=ray_version,
         python_version="unknown",
     )
