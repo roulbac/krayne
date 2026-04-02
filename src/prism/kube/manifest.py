@@ -102,7 +102,7 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
         })
 
     return {
-        "serviceType": "NodePort",
+        "serviceType": "LoadBalancer",
         "rayStartParams": {"dashboard-host": "0.0.0.0"},
         "template": {
             "spec": {
