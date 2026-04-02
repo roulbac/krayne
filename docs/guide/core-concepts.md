@@ -164,7 +164,7 @@ Prism exposes several services on the head node, each mapped to a container port
 
 When enabled, service URLs appear in `ClusterInfo` (e.g. `notebook_url`, `code_server_url`, `ssh_url`) and in the CLI output.
 
-All services are started via a `postStart` lifecycle hook on the ray-head container. Jupyter is installed with `uv pip install --system notebook`, and Code Server is installed via the [official install script](https://code-server.dev/install.sh).
+All services are installed and started via a `postStart` lifecycle hook on the ray-head container. Jupyter is installed with `pip install notebook`, and Code Server is installed from a [standalone pre-built binary](https://github.com/coder/code-server/releases) (no apt-get or curl required).
 
 Services are configured via the `services` section of `ClusterConfig` or the YAML file:
 

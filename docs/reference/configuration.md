@@ -74,7 +74,7 @@ Services to enable on the cluster head node. Each enabled service adds its port 
 | Field | Type | Default | Port | Description |
 |---|---|---|---|---|
 | `notebook` | `bool` | `True` | 8888 | Jupyter notebook server (runs on ray-head container) |
-| `code_server` | `bool` | `True` | 8443 | Code Server, installed via the [official install script](https://code-server.dev/install.sh) at container startup |
+| `code_server` | `bool` | `True` | 8443 | Code Server, installed from a [standalone pre-built binary](https://github.com/coder/code-server/releases) at container startup |
 | `ssh` | `bool` | `True` | 22 | SSH access to the head node |
 
 ---
