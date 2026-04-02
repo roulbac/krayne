@@ -145,8 +145,8 @@ class TestBuildManifest:
         assert hook[0] == "/bin/sh"
         assert hook[1] == "-c"
         # Both notebook and ssh startup commands should be present
-        assert "uv pip install notebook" in hook[2]
-        assert "uv run jupyter notebook" in hook[2]
+        assert "uv pip install --system notebook" in hook[2]
+        assert "jupyter notebook" in hook[2]
         assert "sshd" in hook[2]
 
     def test_lifecycle_hook_notebook_only(self):
@@ -157,8 +157,8 @@ class TestBuildManifest:
         m = build_manifest(cfg)
         container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]
         hook_cmd = container["lifecycle"]["postStart"]["exec"]["command"][2]
-        assert "uv pip install notebook" in hook_cmd
-        assert "uv run jupyter notebook" in hook_cmd
+        assert "uv pip install --system notebook" in hook_cmd
+        assert "jupyter notebook" in hook_cmd
         assert "sshd" not in hook_cmd
 
     def test_lifecycle_hook_ssh_only(self):
