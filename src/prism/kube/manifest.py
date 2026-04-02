@@ -101,28 +101,23 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
             "args": ["--auth", "none", "--bind-addr", "0.0.0.0:8443"],
         })
 
-    # Build explicit head Service ports so KubeRay creates a regular
-    # ClusterIP service (not headless) with all required ports.
-    svc_ports: list[dict] = [
-        {"name": "gcs-server", "port": 6379, "targetPort": 6379, "protocol": "TCP"},
-        {"name": "dashboard", "port": 8265, "targetPort": 8265, "protocol": "TCP"},
-        {"name": "client", "port": 10001, "targetPort": 10001, "protocol": "TCP"},
-    ]
+    # KubeRay auto-adds ports from the ray-head container to the Service,
+    # so only declare extra (non-Ray) service ports here to avoid duplicates.
+    extra_svc_ports: list[dict] = []
     if services.notebook:
-        svc_ports.append({"name": "notebook", "port": 8888, "targetPort": 8888, "protocol": "TCP"})
+        extra_svc_ports.append({"name": "notebook", "port": 8888, "targetPort": 8888, "protocol": "TCP"})
     if services.ssh:
-        svc_ports.append({"name": "ssh", "port": 22, "targetPort": 22, "protocol": "TCP"})
+        extra_svc_ports.append({"name": "ssh", "port": 22, "targetPort": 22, "protocol": "TCP"})
     if services.vscode_server:
-        svc_ports.append({"name": "vscode", "port": 8443, "targetPort": 8443, "protocol": "TCP"})
+        extra_svc_ports.append({"name": "vscode", "port": 8443, "targetPort": 8443, "protocol": "TCP"})
+
+    head_service: dict = {"spec": {"type": "ClusterIP"}}
+    if extra_svc_ports:
+        head_service["spec"]["ports"] = extra_svc_ports
 
     return {
         "rayStartParams": {"dashboard-host": "0.0.0.0"},
-        "headService": {
-            "spec": {
-                "type": "ClusterIP",
-                "ports": svc_ports,
-            },
-        },
+        "headService": head_service,
         "template": {
             "spec": {
                 "containers": containers,
