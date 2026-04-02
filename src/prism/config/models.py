@@ -10,7 +10,7 @@ class ServicesConfig(BaseModel):
     """Services to enable on the cluster."""
 
     notebook: bool = True
-    code_server: bool = False
+    code_server: bool = True
     ssh: bool = True
 
 

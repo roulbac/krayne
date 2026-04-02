@@ -32,7 +32,7 @@ class TestClusterConfigDefaults:
     def test_services_defaults(self):
         cfg = ClusterConfig(name="test")
         assert cfg.services.notebook is True
-        assert cfg.services.code_server is False
+        assert cfg.services.code_server is True
         assert cfg.services.ssh is True
 
     def test_custom_worker_groups(self):

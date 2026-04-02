@@ -132,8 +132,8 @@ class TestBuildManifest:
         assert "8443" in hook_cmd
 
     def test_no_code_server_in_hook_when_disabled(self):
-        """When code_server is disabled (default), no code-server in hook."""
-        cfg = ClusterConfig(name="novs")
+        """When code_server is explicitly disabled, no code-server in hook."""
+        cfg = ClusterConfig(name="novs", services=ServicesConfig(code_server=False))
         m = build_manifest(cfg)
         container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]
         hook_cmd = container["lifecycle"]["postStart"]["exec"]["command"][2]
