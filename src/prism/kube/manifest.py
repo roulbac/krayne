@@ -103,6 +103,7 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
 
     return {
         "serviceType": "ClusterIP",
+        "enableIngress": False,
         "rayStartParams": {"dashboard-host": "0.0.0.0"},
         "template": {
             "spec": {
