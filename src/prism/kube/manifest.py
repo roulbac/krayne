@@ -72,7 +72,8 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
     startup_cmds: list[str] = []
     if services.notebook:
         startup_cmds.append(
-            "nohup jupyter notebook"
+            "uv pip install notebook --system"
+            " && nohup uv run jupyter notebook"
             " --ip=0.0.0.0 --port=8888 --no-browser --allow-root"
             " --NotebookApp.token=''"
             " > /tmp/jupyter.log 2>&1 &"
