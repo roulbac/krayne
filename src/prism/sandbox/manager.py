@@ -28,7 +28,7 @@ SANDBOX_KUBECONFIG = PRISM_DIR / "sandbox-kubeconfig"
 
 MIN_CPUS = 2
 MIN_MEMORY_GB = 4
-SANDBOX_MEMORY_GB = 7
+SANDBOX_MEMORY_GB = 6
 
 # Step names for progress reporting
 STEP_DOCKER = "Docker"
