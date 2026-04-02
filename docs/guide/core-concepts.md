@@ -160,11 +160,11 @@ Prism exposes several services on the head node, each mapped to a container port
 |---|---|---|---|
 | **Jupyter Notebook** | Enabled | 8888 | Web-based notebook environment on the head node |
 | **SSH** | Enabled | 22 | SSH access to the head node |
-| **Code Server** | Disabled | 8443 | Browser-based Code Server via a [code-server](https://github.com/coder/code-server) sidecar container |
+| **Code Server** | Enabled | 8443 | Browser-based [code-server](https://github.com/coder/code-server), installed at container startup |
 
 When enabled, service URLs appear in `ClusterInfo` (e.g. `notebook_url`, `code_server_url`, `ssh_url`) and in the CLI output.
 
-Code Server runs as a **sidecar container** (`codercom/code-server`) alongside the Ray head container. The image can be overridden via the `PRISM_VSCODE_VERSION` environment variable.
+All services are started via a `postStart` lifecycle hook on the ray-head container. Jupyter is installed with `uv pip install --system notebook`, and Code Server is installed via the [official install script](https://code-server.dev/install.sh).
 
 Services are configured via the `services` section of `ClusterConfig` or the YAML file:
 

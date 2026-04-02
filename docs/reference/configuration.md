@@ -74,10 +74,8 @@ Services to enable on the cluster head node. Each enabled service adds its port 
 | Field | Type | Default | Port | Description |
 |---|---|---|---|---|
 | `notebook` | `bool` | `True` | 8888 | Jupyter notebook server (runs on ray-head container) |
-| `code_server` | `bool` | `False` | 8443 | Code Server (runs as a `codercom/code-server` sidecar container) |
+| `code_server` | `bool` | `True` | 8443 | Code Server, installed via the [official install script](https://code-server.dev/install.sh) at container startup |
 | `ssh` | `bool` | `True` | 22 | SSH access to the head node |
-
-The Code Server image version can be overridden with the `PRISM_VSCODE_VERSION` environment variable.
 
 ---
 
