@@ -87,7 +87,7 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
             "postStart": {
                 "exec": {
                     "command": [
-                        "/bin/sh", "-c", " && ".join(startup_cmds),
+                        "/bin/sh", "-c", " ; ".join(startup_cmds),
                     ]
                 }
             }
