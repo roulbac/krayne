@@ -77,7 +77,8 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
         )
     if services.code_server:
         startup_cmds.append(
-            "(wget -qO- https://code-server.dev/install.sh | sh"
+            "(apt-get update -qq && apt-get install -y -qq curl > /dev/null"
+            " && curl -fsSL https://code-server.dev/install.sh | sh"
             " && nohup code-server"
             " --auth none --bind-addr 0.0.0.0:8443"
             " > /tmp/code-server.log 2>&1) &"
