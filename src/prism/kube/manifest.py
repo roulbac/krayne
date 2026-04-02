@@ -39,14 +39,12 @@ def build_manifest(config: ClusterConfig) -> dict:
 
 def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
     image = head.image or RAY_IMAGE
-    # Only set requests (not limits) for CPU/memory so the head can burst
-    # during service installation (notebook, code-server).  GPU limits are
-    # still set since they must be equal to requests.
     resources: dict[str, dict[str, str | int]] = {
         "requests": {"cpu": head.cpus, "memory": head.memory},
+        "limits": {"cpu": head.cpus, "memory": head.memory},
     }
     if head.gpus > 0:
-        resources["limits"] = {"nvidia.com/gpu": head.gpus}
+        resources["limits"]["nvidia.com/gpu"] = head.gpus
         resources["requests"]["nvidia.com/gpu"] = head.gpus
 
     # Only declare Ray-internal ports on the container. KubeRay auto-adds

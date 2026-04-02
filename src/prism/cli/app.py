@@ -72,7 +72,7 @@ from prism.config import (  # noqa: E402
     WorkerGroupConfig,
     load_config_from_yaml,
     DEFAULT_CPUS,
-    DEFAULT_MEMORY,
+    DEFAULT_HEAD_MEMORY,
     save_prism_settings,
 )
 from prism.output import (  # noqa: E402
@@ -100,7 +100,7 @@ def create(
     gpus_per_worker: int = typer.Option(0, "--gpus-per-worker"),
     worker_gpu_type: str = typer.Option("t4", "--worker-gpu-type"),
     cpus_in_head: str = typer.Option(DEFAULT_CPUS, "--cpus-in-head"),
-    memory_in_head: str = typer.Option(DEFAULT_MEMORY, "--memory-in-head"),
+    memory_in_head: str = typer.Option(DEFAULT_HEAD_MEMORY, "--memory-in-head"),
     workers: int = typer.Option(1, "--workers"),
     timeout: int = typer.Option(300, "--timeout"),
     file: Optional[str] = typer.Option(None, "--file", "-f", help="YAML config file."),

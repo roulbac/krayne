@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from prism.config import (
     DEFAULT_CPUS,
+    DEFAULT_HEAD_MEMORY,
     DEFAULT_MEMORY,
     ClusterConfig,
     HeadNodeConfig,
@@ -24,7 +25,7 @@ class TestClusterConfigDefaults:
         assert cfg.name == "test"
         assert cfg.namespace == "default"
         assert cfg.head.cpus == DEFAULT_CPUS
-        assert cfg.head.memory == DEFAULT_MEMORY
+        assert cfg.head.memory == DEFAULT_HEAD_MEMORY
         assert cfg.head.gpus == 0
         assert len(cfg.worker_groups) == 1
         assert cfg.worker_groups[0].replicas == 1
