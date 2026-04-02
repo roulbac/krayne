@@ -87,13 +87,14 @@ class TestBuildManifest:
         assert port_names == {"gcs-server", "dashboard", "client"}
 
     def test_head_service_extra_ports_default(self):
-        """Default services (notebook + ssh) appear on headService ports."""
+        """Default services (notebook + ssh + code-server) appear on headService ports."""
         cfg = ClusterConfig(name="svcports")
         m = build_manifest(cfg)
         svc_ports = m["spec"]["headGroupSpec"]["headService"]["spec"]["ports"]
         port_names = {p["name"] for p in svc_ports}
         assert "notebook" in port_names
         assert "ssh" in port_names
+        assert "code-server" in port_names
         assert "gcs-server" not in port_names  # Ray adds these itself
 
     def test_head_service_no_extra_ports(self):
@@ -118,66 +119,48 @@ class TestBuildManifest:
         port_names = {p["name"] for p in svc_ports}
         assert port_names == {"notebook", "ssh", "code-server"}
 
-    def test_init_container_installs_services(self):
-        """Default services create an init container that installs notebook + code-server."""
-        cfg = ClusterConfig(name="init")
-        m = build_manifest(cfg)
-        pod_spec = m["spec"]["headGroupSpec"]["template"]["spec"]
-        init = pod_spec["initContainers"]
-        assert len(init) == 1
-        assert init[0]["name"] == "install-services"
-        cmd = init[0]["command"][2]
-        assert "pip install --target /opt/services notebook" in cmd
-        assert "code-server.dev/install.sh" in cmd
-
-    def test_no_init_container_when_no_install_services(self):
-        """No init container when notebook and code-server are disabled."""
-        cfg = ClusterConfig(
-            name="noinit",
-            services=ServicesConfig(notebook=False, code_server=False),
-        )
+    def test_no_init_containers(self):
+        """No init containers regardless of services config."""
+        cfg = ClusterConfig(name="noinit")
         m = build_manifest(cfg)
         pod_spec = m["spec"]["headGroupSpec"]["template"]["spec"]
         assert "initContainers" not in pod_spec
 
-    def test_services_volume_mount(self):
-        """Head container mounts /opt/services when services are enabled."""
-        cfg = ClusterConfig(name="vol")
+    def test_no_volumes(self):
+        """No shared volumes regardless of services config."""
+        cfg = ClusterConfig(name="novol")
         m = build_manifest(cfg)
         pod_spec = m["spec"]["headGroupSpec"]["template"]["spec"]
-        assert any(v["name"] == "services-bin" for v in pod_spec["volumes"])
-        mounts = pod_spec["containers"][0].get("volumeMounts", [])
-        assert any(vm["mountPath"] == "/opt/services" for vm in mounts)
-
-    def test_code_server_in_lifecycle_hook(self):
-        """When code_server is enabled, postStart starts code-server from /opt/services."""
-        cfg = ClusterConfig(name="cs", services=ServicesConfig(code_server=True))
-        m = build_manifest(cfg)
-        hook_cmd = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["lifecycle"]["postStart"]["exec"]["command"][2]
-        assert "/opt/services/bin/code-server" in hook_cmd
-        assert "8443" in hook_cmd
-
-    def test_no_code_server_in_hook_when_disabled(self):
-        """When code_server is explicitly disabled, no code-server in hook."""
-        cfg = ClusterConfig(name="nocs", services=ServicesConfig(code_server=False))
-        m = build_manifest(cfg)
-        hook_cmd = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["lifecycle"]["postStart"]["exec"]["command"][2]
-        assert "code-server" not in hook_cmd
+        assert "volumes" not in pod_spec
 
     def test_lifecycle_hook_default_services(self):
-        """Default services produce a postStart hook that starts (not installs) services."""
+        """Default services produce a postStart hook that installs + starts services."""
         cfg = ClusterConfig(name="hooks")
         m = build_manifest(cfg)
         hook = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["lifecycle"]["postStart"]["exec"]["command"]
         assert hook[0] == "/bin/sh"
         assert hook[1] == "-c"
-        # PostStart starts pre-installed services
         assert "jupyter notebook" in hook[2]
         assert "code-server" in hook[2]
         assert "sshd" in hook[2]
-        # No installs in the hook — those happen in the init container
-        assert "pip install" not in hook[2]
-        assert "install.sh" not in hook[2]
+
+    def test_lifecycle_hook_installs_notebook(self):
+        """Notebook service installs via pip in postStart hook."""
+        cfg = ClusterConfig(name="nb", services=ServicesConfig(notebook=True, code_server=False, ssh=False))
+        m = build_manifest(cfg)
+        hook_cmd = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["lifecycle"]["postStart"]["exec"]["command"][2]
+        assert "pip install" in hook_cmd
+        assert "jupyter notebook" in hook_cmd
+
+    def test_lifecycle_hook_installs_code_server_standalone(self):
+        """Code-server installed via standalone tarball in postStart hook."""
+        cfg = ClusterConfig(name="cs", services=ServicesConfig(notebook=False, code_server=True, ssh=False))
+        m = build_manifest(cfg)
+        hook_cmd = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["lifecycle"]["postStart"]["exec"]["command"][2]
+        assert "wget -qO-" in hook_cmd
+        assert "code-server" in hook_cmd
+        assert "tar -xz" in hook_cmd
+        assert "8443" in hook_cmd
 
     def test_lifecycle_hook_notebook_only(self):
         cfg = ClusterConfig(

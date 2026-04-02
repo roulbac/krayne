@@ -14,6 +14,12 @@ RAY_IMAGE = (
 RAYCLUSTER_API_VERSION = "ray.io/v1"
 RAYCLUSTER_KIND = "RayCluster"
 
+CODE_SERVER_VERSION = "4.96.4"
+_CS_ARCH = "arm64" if platform.machine() in ("arm64", "aarch64") else "amd64"
+_CS_TARBALL = f"code-server-{CODE_SERVER_VERSION}-linux-{_CS_ARCH}.tar.gz"
+_CS_URL = f"https://github.com/coder/code-server/releases/download/v{CODE_SERVER_VERSION}/{_CS_TARBALL}"
+_CS_DIR = f"/tmp/code-server-{CODE_SERVER_VERSION}-linux-{_CS_ARCH}"
+
 
 def build_manifest(config: ClusterConfig) -> dict:
     """Convert a *ClusterConfig* into a KubeRay ``RayCluster`` custom-resource dict."""
@@ -63,59 +69,20 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
         "ports": ports,
     }
 
-    # --- init container: install services into a shared volume ----------
-    # Heavy installs (pip, curl | sh) run in an init container so they
-    # complete *before* ray-head starts.  Binaries land in /opt/services
-    # which is mounted into the ray-head container.
-    init_containers: list[dict] = []
-    install_cmds: list[str] = []
-    volumes: list[dict] = []
-    volume_mounts: list[dict] = []
-
-    if services.notebook or services.code_server:
-        volumes.append({
-            "name": "services-bin",
-            "emptyDir": {},
-        })
-        volume_mounts.append({
-            "name": "services-bin",
-            "mountPath": "/opt/services",
-        })
-
-    if services.notebook:
-        install_cmds.append(
-            "pip install --target /opt/services notebook"
-        )
-    if services.code_server:
-        install_cmds.append(
-            "wget -qO- https://code-server.dev/install.sh"
-            " | sh -s -- --prefix /opt/services"
-        )
-
-    if install_cmds:
-        init_containers.append({
-            "name": "install-services",
-            "image": image,
-            "command": ["/bin/sh", "-c", " && ".join(install_cmds)],
-            "volumeMounts": [vm.copy() for vm in volume_mounts],
-        })
-
-    if volume_mounts:
-        ray_head["volumeMounts"] = volume_mounts
-
-    # --- postStart hook: start the (already-installed) services ---------
+    # --- postStart hook: install + start services -----------------------
     startup_cmds: list[str] = []
     if services.notebook:
         startup_cmds.append(
-            "(PYTHONPATH=/opt/services nohup"
-            " /opt/services/bin/jupyter notebook"
+            "(pip install -q notebook"
+            " && nohup jupyter notebook"
             " --ip=0.0.0.0 --port=8888 --no-browser --allow-root"
             " --NotebookApp.token=''"
             " > /tmp/jupyter.log 2>&1) &"
         )
     if services.code_server:
         startup_cmds.append(
-            "(nohup /opt/services/bin/code-server"
+            f"(wget -qO- {_CS_URL} | tar -xz -C /tmp"
+            f" && nohup {_CS_DIR}/bin/code-server"
             " --auth none --bind-addr 0.0.0.0:8443"
             " > /tmp/code-server.log 2>&1) &"
         )
@@ -153,10 +120,6 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
     pod_spec: dict = {
         "containers": containers,
     }
-    if init_containers:
-        pod_spec["initContainers"] = init_containers
-    if volumes:
-        pod_spec["volumes"] = volumes
 
     return {
         "rayStartParams": {"dashboard-host": "0.0.0.0"},
