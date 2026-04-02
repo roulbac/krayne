@@ -97,8 +97,8 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
         containers.append({
             "name": "vscode",
             "image": VSCODE_IMAGE,
-            "ports": [{"containerPort": 8080, "name": "vscode"}],
-            "args": ["--auth", "none", "--bind-addr", "0.0.0.0:8080"],
+            "ports": [{"containerPort": 8443, "name": "vscode"}],
+            "args": ["--auth", "none", "--bind-addr", "0.0.0.0:8443"],
         })
 
     return {

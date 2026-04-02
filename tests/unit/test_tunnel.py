@@ -67,7 +67,7 @@ class TestDetectServices:
                                 {
                                     "name": "vscode",
                                     "ports": [
-                                        {"containerPort": 8080, "name": "vscode"},
+                                        {"containerPort": 8443, "name": "vscode"},
                                     ],
                                 },
                             ]

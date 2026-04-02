@@ -126,7 +126,7 @@ class TestBuildManifest:
         sidecar = containers[1]
         assert sidecar["name"] == "vscode"
         assert sidecar["image"] == VSCODE_IMAGE
-        assert sidecar["ports"] == [{"containerPort": 8080, "name": "vscode"}]
+        assert sidecar["ports"] == [{"containerPort": 8443, "name": "vscode"}]
 
     def test_vscode_sidecar_absent(self):
         """When vscode_server is disabled (default), only one container."""

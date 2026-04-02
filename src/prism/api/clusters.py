@@ -253,7 +253,7 @@ def _obj_to_info(
         if "notebook" in port_names:
             notebook_url = f"http://{head_ip}:8888"
         if "vscode" in port_names:
-            vscode_url = f"http://{head_ip}:8080"
+            vscode_url = f"http://{head_ip}:8443"
         if "ssh" in port_names:
             ssh_url = f"ssh://{head_ip}:22"
 
