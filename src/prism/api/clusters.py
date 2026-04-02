@@ -9,6 +9,7 @@ from prism.api.types import (
     ClusterDetails,
     ClusterInfo,
     HeadNodeInfo,
+    TunnelSession,
     WorkerGroupInfo,
 )
 from prism.config.models import ClusterConfig
@@ -181,6 +182,40 @@ def managed_cluster(
         yield info
     finally:
         delete_cluster(config.name, config.namespace, client=kube)
+
+
+@contextlib.contextmanager
+def open_tunnel(
+    name: str,
+    namespace: str = "default",
+    *,
+    client: KubeClient | None = None,
+    kubeconfig: str | None = None,
+) -> Generator[TunnelSession, None, None]:
+    """Context manager that opens port-forward tunnels to all cluster services.
+
+    Tunnels are automatically closed when the context exits.
+
+    Usage::
+
+        with open_tunnel("my-cluster") as session:
+            ray.init(session.client_url)
+            print(session.dashboard_url)
+        # tunnels are closed here
+    """
+    from prism.tunnel import start_tunnels, stop_tunnels
+
+    kube = _resolve_client(client, kubeconfig)
+    services = get_cluster_services(name, namespace, client=kube)
+    tunnels = start_tunnels(name, namespace, services, kubeconfig=kubeconfig)
+    try:
+        yield TunnelSession(
+            cluster_name=name,
+            namespace=namespace,
+            tunnels=tunnels,
+        )
+    finally:
+        stop_tunnels(name, namespace)
 
 
 def wait_until_ready(

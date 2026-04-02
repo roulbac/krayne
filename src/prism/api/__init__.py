@@ -6,6 +6,7 @@ from prism.api.clusters import (
     get_cluster_services,
     list_clusters,
     managed_cluster,
+    open_tunnel,
     scale_cluster,
     wait_until_ready,
 )

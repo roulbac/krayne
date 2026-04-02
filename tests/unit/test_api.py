@@ -11,10 +11,11 @@ from prism.api import (
     get_cluster,
     list_clusters,
     managed_cluster,
+    open_tunnel,
     scale_cluster,
     wait_until_ready,
 )
-from prism.api.types import ClusterDetails, ClusterInfo
+from prism.api.types import ClusterDetails, ClusterInfo, TunnelSession
 from prism.config import ClusterConfig, WorkerGroupConfig
 from prism.errors import ClusterTimeoutError, PrismError
 
@@ -379,3 +380,68 @@ class TestPodLevelStatus:
         ]
         clusters = list_clusters("default", client=mock_client)
         assert clusters[0].status == "pods-pending"
+
+
+class TestOpenTunnel:
+    @patch("prism.tunnel.stop_tunnels")
+    @patch("prism.tunnel.start_tunnels")
+    def test_opens_and_closes_tunnels(self, mock_start, mock_stop, mock_client):
+        from prism.tunnel import TunnelInfo
+
+        mock_start.return_value = [
+            TunnelInfo(service="dashboard", remote_port=8265, local_port=12345, local_url="http://localhost:12345"),
+            TunnelInfo(service="client", remote_port=10001, local_port=12346, local_url="ray://localhost:12346"),
+        ]
+        with open_tunnel("test", "default", client=mock_client) as session:
+            assert isinstance(session, TunnelSession)
+            assert session.cluster_name == "test"
+            assert session.namespace == "default"
+            assert len(session.tunnels) == 2
+        mock_start.assert_called_once_with("test", "default", ["dashboard", "client", "notebook", "ssh"], kubeconfig=None)
+        mock_stop.assert_called_once_with("test", "default")
+
+    @patch("prism.tunnel.stop_tunnels")
+    @patch("prism.tunnel.start_tunnels")
+    def test_closes_on_exception(self, mock_start, mock_stop, mock_client):
+        mock_start.return_value = []
+        with pytest.raises(RuntimeError, match="boom"):
+            with open_tunnel("test", "default", client=mock_client):
+                raise RuntimeError("boom")
+        mock_stop.assert_called_once_with("test", "default")
+
+
+class TestTunnelSession:
+    def test_url_properties(self):
+        from prism.tunnel import TunnelInfo
+
+        tunnels = [
+            TunnelInfo(service="dashboard", remote_port=8265, local_port=11111, local_url="http://localhost:11111"),
+            TunnelInfo(service="client", remote_port=10001, local_port=22222, local_url="ray://localhost:22222"),
+            TunnelInfo(service="notebook", remote_port=8888, local_port=33333, local_url="http://localhost:33333"),
+            TunnelInfo(service="code-server", remote_port=8443, local_port=44444, local_url="http://localhost:44444"),
+            TunnelInfo(service="ssh", remote_port=22, local_port=55555, local_url="ssh://localhost:55555"),
+        ]
+        session = TunnelSession(cluster_name="c", namespace="ns", tunnels=tunnels)
+        assert session.dashboard_url == "http://localhost:11111"
+        assert session.client_url == "ray://localhost:22222"
+        assert session.notebook_url == "http://localhost:33333"
+        assert session.code_server_url == "http://localhost:44444"
+        assert session.ssh_url == "ssh://localhost:55555"
+
+    def test_missing_service_returns_none(self):
+        from prism.tunnel import TunnelInfo
+
+        tunnels = [
+            TunnelInfo(service="dashboard", remote_port=8265, local_port=11111, local_url="http://localhost:11111"),
+        ]
+        session = TunnelSession(cluster_name="c", namespace="ns", tunnels=tunnels)
+        assert session.dashboard_url == "http://localhost:11111"
+        assert session.client_url is None
+        assert session.notebook_url is None
+        assert session.code_server_url is None
+        assert session.ssh_url is None
+
+    def test_empty_tunnels(self):
+        session = TunnelSession(cluster_name="c", namespace="ns", tunnels=[])
+        assert session.dashboard_url is None
+        assert session.client_url is None

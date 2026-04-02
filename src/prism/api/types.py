@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from prism.tunnel import TunnelInfo
 
 
 @dataclass(frozen=True)
@@ -51,3 +55,38 @@ class ClusterDetails:
     worker_groups: list[WorkerGroupInfo]
     ray_version: str
     python_version: str
+
+
+@dataclass(frozen=True)
+class TunnelSession:
+    """Active tunnel session with local URLs for all forwarded services."""
+
+    cluster_name: str
+    namespace: str
+    tunnels: list[TunnelInfo]
+
+    def _url_for(self, service: str) -> str | None:
+        for t in self.tunnels:
+            if t.service == service:
+                return t.local_url
+        return None
+
+    @property
+    def dashboard_url(self) -> str | None:
+        return self._url_for("dashboard")
+
+    @property
+    def client_url(self) -> str | None:
+        return self._url_for("client")
+
+    @property
+    def notebook_url(self) -> str | None:
+        return self._url_for("notebook")
+
+    @property
+    def code_server_url(self) -> str | None:
+        return self._url_for("code-server")
+
+    @property
+    def ssh_url(self) -> str | None:
+        return self._url_for("ssh")
