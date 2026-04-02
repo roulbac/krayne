@@ -50,13 +50,18 @@ class TestServicesDisabled:
             namespace=self.NAMESPACE,
             services=ServicesConfig(notebook=False, code_server=False, ssh=False),
         )
-        create_cluster(config, client=kube_client)
-        _wait_for_ready(
-            self.CLUSTER_NAME, self.NAMESPACE, kube_client, _CLUSTER_READY_TIMEOUT
-        )
-        self.client = kube_client
-        yield
-        delete_cluster(self.CLUSTER_NAME, self.NAMESPACE, client=kube_client)
+        try:
+            create_cluster(config, client=kube_client)
+            _wait_for_ready(
+                self.CLUSTER_NAME, self.NAMESPACE, kube_client, _CLUSTER_READY_TIMEOUT
+            )
+            self.client = kube_client
+            yield
+        finally:
+            try:
+                delete_cluster(self.CLUSTER_NAME, self.NAMESPACE, client=kube_client)
+            except Exception:
+                pass
 
     def test_only_base_services_detected(self):
         services = get_cluster_services(

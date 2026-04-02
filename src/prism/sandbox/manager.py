@@ -27,7 +27,7 @@ KUBERAY_HELM_REPO = "https://ray-project.github.io/kuberay-helm"
 SANDBOX_KUBECONFIG = PRISM_DIR / "sandbox-kubeconfig"
 
 MIN_CPUS = 2
-MIN_MEMORY_GB = 4
+MIN_MEMORY_GB = 6
 
 # Step names for progress reporting
 STEP_DOCKER = "Docker"

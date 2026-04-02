@@ -97,17 +97,22 @@ class TestServicesAndTunnel:
             namespace=self.NAMESPACE,
             services=ServicesConfig(notebook=True, code_server=True, ssh=True),
         )
-        create_cluster(config, client=kube_client)
-        _wait_for_ready(
-            self.CLUSTER_NAME, self.NAMESPACE, kube_client, _CLUSTER_READY_TIMEOUT
-        )
-        # Extra grace period for sidecar containers and lifecycle hooks
-        time.sleep(_SERVICE_STARTUP_GRACE)
-        self.client = kube_client
-        yield
-        # Ensure tunnels are cleaned up before deleting the cluster
-        stop_tunnels(self.CLUSTER_NAME, self.NAMESPACE)
-        delete_cluster(self.CLUSTER_NAME, self.NAMESPACE, client=kube_client)
+        try:
+            create_cluster(config, client=kube_client)
+            _wait_for_ready(
+                self.CLUSTER_NAME, self.NAMESPACE, kube_client, _CLUSTER_READY_TIMEOUT
+            )
+            # Extra grace period for lifecycle hooks to start services
+            time.sleep(_SERVICE_STARTUP_GRACE)
+            self.client = kube_client
+            yield
+        finally:
+            # Always clean up, even if setup fails
+            stop_tunnels(self.CLUSTER_NAME, self.NAMESPACE)
+            try:
+                delete_cluster(self.CLUSTER_NAME, self.NAMESPACE, client=kube_client)
+            except Exception:
+                pass
 
     # -- Service detection --------------------------------------------------
 

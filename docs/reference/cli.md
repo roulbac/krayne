@@ -385,7 +385,7 @@ Set up a local k3s cluster with KubeRay for development.
 prism sandbox setup
 ```
 
-Requires Docker with at least 2 CPUs and 4 GB RAM. Creates a k3s container named `prism-sandbox` and installs the KubeRay operator.
+Requires Docker with at least 2 CPUs and 6 GB RAM. Creates a k3s container named `prism-sandbox` and installs the KubeRay operator.
 
 ```title="Terminal output"
           Sandbox Setup

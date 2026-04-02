@@ -7,7 +7,7 @@ Prism includes a built-in **sandbox** — a local [k3s](https://k3s.io/) Kuberne
 ## Prerequisites
 
 - **Docker** installed and running
-- At least **2 CPUs** and **4 GB RAM** allocated to Docker
+- At least **2 CPUs** and **6 GB RAM** allocated to Docker
 
 !!! tip "Check Docker resources"
     On Docker Desktop, go to **Settings → Resources** to verify CPU and memory allocation.

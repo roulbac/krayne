@@ -58,7 +58,7 @@ Choose one of two paths:
     ╰─────────────────────────────────────────────────╯
     ```
 
-    The sandbox requires Docker with at least 2 CPUs and 4 GB RAM.
+    The sandbox requires Docker with at least 2 CPUs and 6 GB RAM.
 
     Then run `prism init` to select the sandbox kubeconfig:
 
