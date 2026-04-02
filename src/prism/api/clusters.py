@@ -206,13 +206,10 @@ def wait_until_ready(
 
 
 def _head_port_names(obj: dict) -> set[str]:
-    """Collect port names from all containers in the head pod spec."""
+    """Collect port names from head containers and headService spec."""
+    head_spec = obj.get("spec", {}).get("headGroupSpec", {})
     containers = (
-        obj.get("spec", {})
-        .get("headGroupSpec", {})
-        .get("template", {})
-        .get("spec", {})
-        .get("containers", [])
+        head_spec.get("template", {}).get("spec", {}).get("containers", [])
     )
     names: set[str] = set()
     for container in containers:
@@ -220,6 +217,11 @@ def _head_port_names(obj: dict) -> set[str]:
             name = port.get("name")
             if name:
                 names.add(name)
+    # Also check headService.spec.ports for extra service ports
+    for port in head_spec.get("headService", {}).get("spec", {}).get("ports", []):
+        name = port.get("name")
+        if name:
+            names.add(name)
     return names
 
 

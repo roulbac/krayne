@@ -67,19 +67,19 @@ def local_port_for(cluster_name: str, namespace: str, service_name: str) -> int:
 
 def detect_services(obj: dict) -> list[str]:
     """Detect which services are exposed on the head node by inspecting port names."""
-    containers = (
-        obj.get("spec", {})
-        .get("headGroupSpec", {})
-        .get("template", {})
-        .get("spec", {})
-        .get("containers", [])
-    )
+    head_spec = obj.get("spec", {}).get("headGroupSpec", {})
+    containers = head_spec.get("template", {}).get("spec", {}).get("containers", [])
     port_names: set[str] = set()
     for container in containers:
         for port in container.get("ports", []):
             name = port.get("name")
             if name:
                 port_names.add(name)
+    # Also check headService.spec.ports for extra service ports
+    for port in head_spec.get("headService", {}).get("spec", {}).get("ports", []):
+        name = port.get("name")
+        if name:
+            port_names.add(name)
     return [name for name in SERVICE_PORTS if name in port_names]
 
 
