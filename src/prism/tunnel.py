@@ -20,7 +20,7 @@ SERVICE_PORTS: dict[str, tuple[int, str]] = {
     "dashboard": (8265, "http"),
     "client": (10001, "ray"),
     "notebook": (8888, "http"),
-    "vscode": (8443, "http"),
+    "code-server": (8443, "http"),
     "ssh": (22, "ssh"),
 }
 

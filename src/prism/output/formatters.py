@@ -35,8 +35,8 @@ def _build_cluster_panel(info: ClusterInfo) -> Panel:
     table.add_row("Dashboard", info.dashboard_url or "pending")
     if info.notebook_url:
         table.add_row("Notebook", info.notebook_url)
-    if info.vscode_url:
-        table.add_row("VS Code", info.vscode_url)
+    if info.code_server_url:
+        table.add_row("Code Server", info.code_server_url)
     if info.ssh_url:
         table.add_row("SSH", info.ssh_url)
     table.add_row("Workers", str(info.num_workers))
@@ -91,8 +91,8 @@ def format_cluster_details(
     header.add_row("Dashboard", info.dashboard_url or "pending")
     if info.notebook_url:
         header.add_row("Notebook", info.notebook_url)
-    if info.vscode_url:
-        header.add_row("VS Code", info.vscode_url)
+    if info.code_server_url:
+        header.add_row("Code Server", info.code_server_url)
     if info.ssh_url:
         header.add_row("SSH", info.ssh_url)
     header.add_row("Ray Image", details.head.image)

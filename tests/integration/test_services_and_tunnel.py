@@ -95,7 +95,7 @@ class TestServicesAndTunnel:
         config = ClusterConfig(
             name=self.CLUSTER_NAME,
             namespace=self.NAMESPACE,
-            services=ServicesConfig(notebook=True, vscode_server=True, ssh=True),
+            services=ServicesConfig(notebook=True, code_server=True, ssh=True),
         )
         create_cluster(config, client=kube_client)
         _wait_for_ready(
@@ -116,7 +116,7 @@ class TestServicesAndTunnel:
         services = get_cluster_services(
             self.CLUSTER_NAME, self.NAMESPACE, client=self.client
         )
-        assert set(services) == {"dashboard", "client", "notebook", "vscode", "ssh"}
+        assert set(services) == {"dashboard", "client", "notebook", "code-server", "ssh"}
 
     # -- Service URLs populated in ClusterInfo ------------------------------
 
@@ -125,7 +125,7 @@ class TestServicesAndTunnel:
         assert info.dashboard_url is not None
         assert info.client_url is not None
         assert info.notebook_url is not None
-        assert info.vscode_url is not None
+        assert info.code_server_url is not None
         assert info.ssh_url is not None
 
     # -- Tunnel lifecycle ---------------------------------------------------
@@ -169,7 +169,7 @@ class TestServicesAndTunnel:
 
     def test_tunnel_ports_are_deterministic(self):
         """Same cluster always gets the same local ports."""
-        for svc in ("dashboard", "client", "notebook", "vscode", "ssh"):
+        for svc in ("dashboard", "client", "notebook", "code-server", "ssh"):
             p1 = local_port_for(self.CLUSTER_NAME, self.NAMESPACE, svc)
             p2 = local_port_for(self.CLUSTER_NAME, self.NAMESPACE, svc)
             assert p1 == p2
@@ -198,16 +198,16 @@ class TestServicesAndTunnel:
         status = _retry(lambda: _http_probe(url))
         assert status == 200, f"Notebook probe returned {status}"
 
-    def test_vscode_reachable_via_tunnel(self):
+    def test_code_server_reachable_via_tunnel(self):
         """code-server /healthz is reachable through the tunnel."""
         tunnels = start_tunnels(
-            self.CLUSTER_NAME, self.NAMESPACE, ["vscode"],
+            self.CLUSTER_NAME, self.NAMESPACE, ["code-server"],
             kubeconfig=self.kubeconfig,
         )
         lport = tunnels[0].local_port
         url = f"http://localhost:{lport}/healthz"
         status = _retry(lambda: _http_probe(url))
-        assert status == 200, f"VS Code probe returned {status}"
+        assert status == 200, f"Code Server probe returned {status}"
 
     def test_ssh_reachable_via_tunnel(self):
         """sshd returns an SSH banner through the tunnel."""
@@ -242,8 +242,8 @@ class TestServicesAndTunnel:
         t = tunnel_map["notebook"]
         assert _retry(lambda: _http_probe(f"http://localhost:{t.local_port}/api/status")) == 200
 
-        # VS Code
-        t = tunnel_map["vscode"]
+        # Code Server
+        t = tunnel_map["code-server"]
         assert _retry(lambda: _http_probe(f"http://localhost:{t.local_port}/healthz")) == 200
 
         # SSH

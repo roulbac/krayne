@@ -91,7 +91,7 @@ worker_groups:
     image: rayproject/ray:2.41.0-gpu
 services:
   notebook: true
-  vscode_server: true
+  code_server: true
 ```
 
 ```bash

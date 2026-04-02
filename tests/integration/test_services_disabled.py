@@ -48,7 +48,7 @@ class TestServicesDisabled:
         config = ClusterConfig(
             name=self.CLUSTER_NAME,
             namespace=self.NAMESPACE,
-            services=ServicesConfig(notebook=False, vscode_server=False, ssh=False),
+            services=ServicesConfig(notebook=False, code_server=False, ssh=False),
         )
         create_cluster(config, client=kube_client)
         _wait_for_ready(
@@ -67,7 +67,7 @@ class TestServicesDisabled:
     def test_optional_urls_are_none(self):
         info = get_cluster(self.CLUSTER_NAME, self.NAMESPACE, client=self.client)
         assert info.notebook_url is None
-        assert info.vscode_url is None
+        assert info.code_server_url is None
         assert info.ssh_url is None
         # Base URLs should still be present
         assert info.dashboard_url is not None

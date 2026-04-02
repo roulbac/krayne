@@ -48,7 +48,7 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
         resources["requests"]["nvidia.com/gpu"] = head.gpus
 
     # Only declare Ray-internal ports on the container. KubeRay auto-adds
-    # all named container ports to the head Service, so notebook/ssh/vscode
+    # all named container ports to the head Service, so notebook/ssh/code-server
     # are declared only in headService.spec.ports to avoid duplicates.
     ports: list[dict] = [
         {"containerPort": 6379, "name": "gcs-server"},
@@ -75,7 +75,7 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
             " --NotebookApp.token=''"
             " > /tmp/jupyter.log 2>&1) &"
         )
-    if services.vscode_server:
+    if services.code_server:
         startup_cmds.append(
             "(uv pip install --system code-server"
             " && nohup code-server"
@@ -104,8 +104,8 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
         extra_svc_ports.append({"name": "notebook", "port": 8888, "targetPort": 8888, "protocol": "TCP"})
     if services.ssh:
         extra_svc_ports.append({"name": "ssh", "port": 22, "targetPort": 22, "protocol": "TCP"})
-    if services.vscode_server:
-        extra_svc_ports.append({"name": "vscode", "port": 8443, "targetPort": 8443, "protocol": "TCP"})
+    if services.code_server:
+        extra_svc_ports.append({"name": "code-server", "port": 8443, "targetPort": 8443, "protocol": "TCP"})
 
     head_service: dict = {"spec": {"type": "ClusterIP"}}
     if extra_svc_ports:

@@ -79,7 +79,7 @@ worker_groups:
     image: rayproject/ray:2.41.0-gpu
 services:
   notebook: true
-  vscode_server: true
+  code_server: true
 ```
 
 ```bash
@@ -125,7 +125,7 @@ config = load_config_from_yaml(
 | Worker GPUs | `0` | CPU-only by default; opt in via flag |
 | GPU Type | `t4` | Most available, cost-effective default |
 | Notebook | enabled | Most users want immediate notebook access |
-| VS Code | disabled | Opt-in; not all users need it |
+| Code Server | disabled | Opt-in; not all users need it |
 
 ---
 

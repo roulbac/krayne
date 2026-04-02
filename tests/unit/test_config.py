@@ -32,7 +32,7 @@ class TestClusterConfigDefaults:
     def test_services_defaults(self):
         cfg = ClusterConfig(name="test")
         assert cfg.services.notebook is True
-        assert cfg.services.vscode_server is False
+        assert cfg.services.code_server is False
         assert cfg.services.ssh is True
 
     def test_custom_worker_groups(self):
@@ -108,7 +108,7 @@ class TestRoundTrip:
             namespace="ns",
             head=HeadNodeConfig(cpus=4, memory="16Gi"),
             worker_groups=[WorkerGroupConfig(name="w", replicas=3, gpus=2)],
-            services=ServicesConfig(vscode_server=True),
+            services=ServicesConfig(code_server=True),
         )
         data = cfg.model_dump()
         reloaded = ClusterConfig(**data)

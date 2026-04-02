@@ -35,7 +35,7 @@ graph TB
 |---|---|
 | **Head node** | Runs the Global Control Service (GCS), Ray dashboard, and scheduling. Does not typically run user workloads. |
 | **Worker group** | A set of identically configured worker pods. A cluster can have multiple worker groups (e.g., CPU workers and GPU workers). |
-| **Services** | Jupyter notebook, VS Code server, and SSH are optionally exposed on the head node. |
+| **Services** | Jupyter notebook, Code Server, and SSH are optionally exposed on the head node. |
 
 ---
 
@@ -160,18 +160,18 @@ Prism exposes several services on the head node, each mapped to a container port
 |---|---|---|---|
 | **Jupyter Notebook** | Enabled | 8888 | Web-based notebook environment on the head node |
 | **SSH** | Enabled | 22 | SSH access to the head node |
-| **VS Code Server** | Disabled | 8080 | Browser-based VS Code via a [code-server](https://github.com/coder/code-server) sidecar container |
+| **Code Server** | Disabled | 8443 | Browser-based Code Server via a [code-server](https://github.com/coder/code-server) sidecar container |
 
-When enabled, service URLs appear in `ClusterInfo` (e.g. `notebook_url`, `vscode_url`, `ssh_url`) and in the CLI output.
+When enabled, service URLs appear in `ClusterInfo` (e.g. `notebook_url`, `code_server_url`, `ssh_url`) and in the CLI output.
 
-VS Code Server runs as a **sidecar container** (`codercom/code-server`) alongside the Ray head container. The image can be overridden via the `PRISM_VSCODE_VERSION` environment variable.
+Code Server runs as a **sidecar container** (`codercom/code-server`) alongside the Ray head container. The image can be overridden via the `PRISM_VSCODE_VERSION` environment variable.
 
 Services are configured via the `services` section of `ClusterConfig` or the YAML file:
 
 ```yaml
 services:
   notebook: true
-  vscode_server: true
+  code_server: true
   ssh: true
 ```
 

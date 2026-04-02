@@ -358,7 +358,7 @@ class ClusterInfo:
     dashboard_url: str | None    # Ray dashboard URL
     client_url: str | None       # Ray client URL
     notebook_url: str | None     # Jupyter notebook URL (if enabled)
-    vscode_url: str | None       # VS Code server URL (if enabled)
+    code_server_url: str | None  # Code Server URL (if enabled)
     ssh_url: str | None          # SSH URL (if enabled)
     num_workers: int             # Total worker replicas
     created_at: str              # Creation timestamp

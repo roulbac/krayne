@@ -247,15 +247,15 @@ def _obj_to_info(
     dashboard_url = None
     client_url = None
     notebook_url = None
-    vscode_url = None
+    code_server_url = None
     ssh_url = None
     if head_ip:
         dashboard_url = f"http://{head_ip}:8265"
         client_url = f"ray://{head_ip}:10001"
         if "notebook" in port_names:
             notebook_url = f"http://{head_ip}:8888"
-        if "vscode" in port_names:
-            vscode_url = f"http://{head_ip}:8443"
+        if "code-server" in port_names:
+            code_server_url = f"http://{head_ip}:8443"
         if "ssh" in port_names:
             ssh_url = f"ssh://{head_ip}:22"
 
@@ -267,7 +267,7 @@ def _obj_to_info(
         dashboard_url=dashboard_url,
         client_url=client_url,
         notebook_url=notebook_url,
-        vscode_url=vscode_url,
+        code_server_url=code_server_url,
         ssh_url=ssh_url,
         num_workers=num_workers,
         created_at=metadata.get("creationTimestamp", ""),

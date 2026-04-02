@@ -70,7 +70,7 @@ class TestDetectServices:
                             "ports": [
                                 {"name": "notebook", "port": 8888},
                                 {"name": "ssh", "port": 22},
-                                {"name": "vscode", "port": 8443},
+                                {"name": "code-server", "port": 8443},
                             ]
                         }
                     },
@@ -78,7 +78,7 @@ class TestDetectServices:
             }
         }
         services = detect_services(obj)
-        assert set(services) == {"dashboard", "client", "notebook", "vscode", "ssh"}
+        assert set(services) == {"dashboard", "client", "notebook", "code-server", "ssh"}
 
     def test_base_only(self):
         obj = {

@@ -100,7 +100,7 @@ class TestBuildManifest:
         """All services disabled: headService has no extra ports."""
         cfg = ClusterConfig(
             name="bare",
-            services=ServicesConfig(notebook=False, vscode_server=False, ssh=False),
+            services=ServicesConfig(notebook=False, code_server=False, ssh=False),
         )
         m = build_manifest(cfg)
         svc_spec = m["spec"]["headGroupSpec"]["headService"]["spec"]
@@ -108,21 +108,21 @@ class TestBuildManifest:
         assert svc_spec["type"] == "ClusterIP"
 
     def test_head_service_all_services(self):
-        """All services enabled: notebook, ssh, vscode on headService."""
+        """All services enabled: notebook, ssh, code-server on headService."""
         cfg = ClusterConfig(
             name="all",
-            services=ServicesConfig(notebook=True, vscode_server=True, ssh=True),
+            services=ServicesConfig(notebook=True, code_server=True, ssh=True),
         )
         m = build_manifest(cfg)
         svc_ports = m["spec"]["headGroupSpec"]["headService"]["spec"]["ports"]
         port_names = {p["name"] for p in svc_ports}
-        assert port_names == {"notebook", "ssh", "vscode"}
+        assert port_names == {"notebook", "ssh", "code-server"}
 
-    def test_vscode_in_lifecycle_hook(self):
-        """When vscode_server is enabled, code-server is started via lifecycle hook."""
+    def test_code_server_in_lifecycle_hook(self):
+        """When code_server is enabled, code-server is started via lifecycle hook."""
         cfg = ClusterConfig(
             name="vs",
-            services=ServicesConfig(vscode_server=True),
+            services=ServicesConfig(code_server=True),
         )
         m = build_manifest(cfg)
         containers = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"]
@@ -131,8 +131,8 @@ class TestBuildManifest:
         assert "code-server" in hook_cmd
         assert "8443" in hook_cmd
 
-    def test_no_vscode_in_hook_when_disabled(self):
-        """When vscode_server is disabled (default), no code-server in hook."""
+    def test_no_code_server_in_hook_when_disabled(self):
+        """When code_server is disabled (default), no code-server in hook."""
         cfg = ClusterConfig(name="novs")
         m = build_manifest(cfg)
         container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]
@@ -178,7 +178,7 @@ class TestBuildManifest:
     def test_no_lifecycle_hook_when_no_services(self):
         cfg = ClusterConfig(
             name="bare",
-            services=ServicesConfig(notebook=False, vscode_server=False, ssh=False),
+            services=ServicesConfig(notebook=False, code_server=False, ssh=False),
         )
         m = build_manifest(cfg)
         container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]

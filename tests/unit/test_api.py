@@ -111,7 +111,7 @@ class TestGetCluster:
         assert info.client_url == "ray://10.0.0.1:10001"
         assert info.notebook_url == "http://10.0.0.1:8888"
         assert info.ssh_url == "ssh://10.0.0.1:22"
-        assert info.vscode_url is None  # no vscode port in sample obj
+        assert info.code_server_url is None  # no code-server port in sample obj
         mock_client.get_ray_cluster.assert_called_once_with("test", "default")
 
     def test_service_urls_absent_when_no_ports(self, mock_client):
@@ -143,7 +143,7 @@ class TestGetCluster:
         mock_client.get_ray_cluster.return_value = obj_no_ports
         info = get_cluster("test", "default", client=mock_client)
         assert info.notebook_url is None
-        assert info.vscode_url is None
+        assert info.code_server_url is None
         assert info.ssh_url is None
 
 

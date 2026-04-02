@@ -18,7 +18,7 @@ _INFO = ClusterInfo(
     dashboard_url="http://10.0.0.1:8265",
     client_url="ray://10.0.0.1:10001",
     notebook_url="http://10.0.0.1:8888",
-    vscode_url=None,
+    code_server_url=None,
     ssh_url="ssh://10.0.0.1:22",
     num_workers=2,
     created_at="2026-01-01T00:00:00Z",
@@ -63,7 +63,7 @@ class TestCreate:
         pending = ClusterInfo(
             name="test", namespace="default", status="pending",
             head_ip=None, dashboard_url=None, client_url=None,
-            notebook_url=None, vscode_url=None, ssh_url=None, num_workers=0,
+            notebook_url=None, code_server_url=None, ssh_url=None, num_workers=0,
             created_at="2026-01-01T00:00:00Z",
         )
         mock_create.return_value = pending
@@ -233,7 +233,7 @@ class TestTunOpen:
         not_ready = ClusterInfo(
             name="test", namespace="default", status="pending",
             head_ip=None, dashboard_url=None, client_url=None,
-            notebook_url=None, vscode_url=None, ssh_url=None, num_workers=0,
+            notebook_url=None, code_server_url=None, ssh_url=None, num_workers=0,
             created_at="2026-01-01T00:00:00Z",
         )
         mock_get.return_value = not_ready

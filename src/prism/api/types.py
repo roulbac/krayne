@@ -14,7 +14,7 @@ class ClusterInfo:
     dashboard_url: str | None
     client_url: str | None
     notebook_url: str | None
-    vscode_url: str | None
+    code_server_url: str | None
     ssh_url: str | None
     num_workers: int
     created_at: str
