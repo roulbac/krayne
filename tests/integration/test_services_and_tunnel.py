@@ -131,7 +131,7 @@ class TestServicesAndTunnel:
     # -- Tunnel lifecycle ---------------------------------------------------
 
     def test_tunnel_start_and_stop(self):
-        """tun-start creates tunnels, tun-close tears them down."""
+        """tun-open creates tunnels, tun-close tears them down."""
         services = get_cluster_services(
             self.CLUSTER_NAME, self.NAMESPACE, client=self.client
         )

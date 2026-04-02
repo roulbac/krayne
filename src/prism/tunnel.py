@@ -132,6 +132,16 @@ def is_tunnel_active(cluster_name: str, namespace: str) -> bool:
     return False
 
 
+def _resolve_kubeconfig(kubeconfig: str | None) -> str | None:
+    """Resolve kubeconfig from prism settings when not explicitly provided."""
+    if kubeconfig is not None:
+        return kubeconfig
+    from prism.config.settings import load_prism_settings
+
+    settings = load_prism_settings()
+    return settings.kubeconfig
+
+
 def start_tunnels(
     cluster_name: str,
     namespace: str,
@@ -153,6 +163,7 @@ def start_tunnels(
         assert state is not None  # guarded by is_tunnel_active
         return state.tunnels
 
+    kubeconfig = _resolve_kubeconfig(kubeconfig)
     svc_target = f"svc/{cluster_name}-head-svc"
     tunnels: list[TunnelInfo] = []
     pids: list[int] = []

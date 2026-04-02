@@ -224,12 +224,12 @@ class TestSandboxStatusCli:
         assert "Sandbox Status" in result.output
 
 
-class TestTunStart:
+class TestTunOpen:
     @patch("prism.tunnel.is_tunnel_active", return_value=False)
     @patch("prism.tunnel.start_tunnels")
     @patch("prism.cli.app._get_cluster_services", return_value=["dashboard", "client"])
     @patch("prism.cli.app._get_cluster", return_value=_INFO)
-    def test_tun_start_not_ready(self, mock_get, mock_services, mock_tunnels, mock_active):
+    def test_tun_open_not_ready(self, mock_get, mock_services, mock_tunnels, mock_active):
         not_ready = ClusterInfo(
             name="test", namespace="default", status="pending",
             head_ip=None, dashboard_url=None, client_url=None,
@@ -237,7 +237,7 @@ class TestTunStart:
             created_at="2026-01-01T00:00:00Z",
         )
         mock_get.return_value = not_ready
-        result = runner.invoke(app, ["tun-start", "test"])
+        result = runner.invoke(app, ["tun-open", "test"])
         assert result.exit_code == 1
         assert "not ready" in result.output.lower()
         mock_tunnels.assert_not_called()
@@ -246,20 +246,20 @@ class TestTunStart:
     @patch("prism.tunnel.start_tunnels")
     @patch("prism.cli.app._get_cluster_services", return_value=["dashboard", "client"])
     @patch("prism.cli.app._get_cluster", return_value=_INFO)
-    def test_tun_start_json_output(self, mock_get, mock_services, mock_tunnels, mock_active):
+    def test_tun_open_json_output(self, mock_get, mock_services, mock_tunnels, mock_active):
         from prism.tunnel import TunnelInfo
 
         tunnels = [
             TunnelInfo(service="dashboard", remote_port=8265, local_port=12345, local_url="http://localhost:12345"),
         ]
         mock_tunnels.return_value = tunnels
-        result = runner.invoke(app, ["--output", "json", "tun-start", "test"])
+        result = runner.invoke(app, ["--output", "json", "tun-open", "test"])
         assert result.exit_code == 0
         assert "dashboard" in result.output
 
     @patch("prism.tunnel.load_tunnel_state")
     @patch("prism.tunnel.is_tunnel_active", return_value=True)
-    def test_tun_start_idempotent(self, mock_active, mock_load):
+    def test_tun_open_idempotent(self, mock_active, mock_load):
         from prism.tunnel import TunnelInfo, TunnelState
 
         state = TunnelState(
@@ -268,7 +268,7 @@ class TestTunStart:
             pids=[123],
         )
         mock_load.return_value = state
-        result = runner.invoke(app, ["tun-start", "test"])
+        result = runner.invoke(app, ["tun-open", "test"])
         assert result.exit_code == 0
         assert "already active" in result.output.lower()
 

@@ -110,10 +110,10 @@ prism delete my-cluster --force
 
 ### Accessing services locally
 
-Cluster URLs always show the real pod/service IPs. To access services from your local machine, use `prism tun-start` to create localhost port-forwards:
+Cluster URLs always show the real pod/service IPs. To access services from your local machine, use `prism tun-open` to create localhost port-forwards:
 
 ```bash
-prism tun-start my-cluster   # start tunnels
+prism tun-open my-cluster   # start tunnels
 prism tun-close my-cluster   # stop tunnels
 ```
 

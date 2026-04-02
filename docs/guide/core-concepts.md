@@ -175,10 +175,10 @@ services:
   ssh: true
 ```
 
-To access services from your local machine, use `prism tun-start` / `prism tun-close`:
+To access services from your local machine, use `prism tun-open` / `prism tun-close`:
 
 ```bash
-prism tun-start my-cluster   # start tunnels (idempotent)
+prism tun-open my-cluster   # start tunnels (idempotent)
 prism tun-close my-cluster   # stop tunnels (idempotent)
 ```
 

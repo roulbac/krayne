@@ -110,7 +110,7 @@ prism create my-cluster --output json
 ```
 
 !!! tip "Local access"
-    Use `prism tun-start <cluster-name>` to create localhost mirrors of all cluster services via `kubectl port-forward`. Use `prism tun-close <cluster-name>` to stop.
+    Use `prism tun-open <cluster-name>` to create localhost mirrors of all cluster services via `kubectl port-forward`. Use `prism tun-close <cluster-name>` to stop.
 
 !!! note
     When using `--file`, the `name` argument and any CLI flags override the corresponding values in the YAML file.
@@ -294,14 +294,14 @@ Cluster 'my-cluster' deleted.
 
 ---
 
-## `prism tun-start`
+## `prism tun-open`
 
 Start tunnels for cluster services to localhost via `kubectl port-forward`. Processes run in the background — use `tun-close` to stop them.
 
 Both commands are **idempotent**: starting an already-active tunnel is a no-op (shows the existing tunnel info), and closing a non-existent tunnel is a no-op.
 
 ```
-prism tun-start <name> [OPTIONS]
+prism tun-open <name> [OPTIONS]
 ```
 
 **Arguments:**
@@ -322,13 +322,13 @@ Local ports are deterministically assigned from the cluster name and namespace, 
 
 ```bash
 # Start tunnels for all services on a cluster
-prism tun-start my-cluster
+prism tun-open my-cluster
 
 # Start tunnels in a specific namespace
-prism tun-start my-cluster -n ml-team
+prism tun-open my-cluster -n ml-team
 
 # Get tunnel info as JSON
-prism tun-start my-cluster --output json
+prism tun-open my-cluster --output json
 ```
 
 ```title="Terminal output"

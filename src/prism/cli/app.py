@@ -329,12 +329,12 @@ def init(
         _handle_error(exc)
 
 
-@app.command("tun-start")
-def tun_start(
+@app.command("tun-open")
+def tun_open(
     name: str = typer.Argument(..., help="Cluster name."),
     namespace: str = typer.Option("default", "-n", "--namespace"),
 ) -> None:
-    """Start tunnels for cluster services to localhost."""
+    """Open tunnels for cluster services to localhost."""
     from prism.tunnel import is_tunnel_active, start_tunnels
 
     try:
