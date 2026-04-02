@@ -49,15 +49,14 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
         resources["limits"]["nvidia.com/gpu"] = head.gpus
         resources["requests"]["nvidia.com/gpu"] = head.gpus
 
+    # Only declare Ray-internal ports on the container. KubeRay auto-adds
+    # all named container ports to the head Service, so notebook/ssh/vscode
+    # are declared only in headService.spec.ports to avoid duplicates.
     ports: list[dict] = [
         {"containerPort": 6379, "name": "gcs-server"},
         {"containerPort": 8265, "name": "dashboard"},
         {"containerPort": 10001, "name": "client"},
     ]
-    if services.notebook:
-        ports.append({"containerPort": 8888, "name": "notebook"})
-    if services.ssh:
-        ports.append({"containerPort": 22, "name": "ssh"})
 
     containers: list[dict] = [
         {

@@ -78,41 +78,45 @@ class TestBuildManifest:
         assert workers[1]["groupName"] == "gpu"
         assert workers[1]["replicas"] == 2
 
-    def test_head_ports_default_services(self):
-        """Default config enables notebook + ssh, so 5 ports on ray-head."""
+    def test_head_container_ports(self):
+        """Ray-head container only has the 3 base Ray ports."""
         cfg = ClusterConfig(name="ports")
-        m = build_manifest(cfg)
-        ports = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["ports"]
-        port_names = {p["name"] for p in ports}
-        assert port_names == {"gcs-server", "dashboard", "client", "notebook", "ssh"}
-
-    def test_head_ports_no_services(self):
-        """All services disabled leaves only the 3 base Ray ports."""
-        cfg = ClusterConfig(
-            name="bare",
-            services=ServicesConfig(notebook=False, vscode_server=False, ssh=False),
-        )
         m = build_manifest(cfg)
         ports = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["ports"]
         port_names = {p["name"] for p in ports}
         assert port_names == {"gcs-server", "dashboard", "client"}
 
-    def test_head_ports_all_services(self):
-        """All services enabled: 5 ports on ray-head + vscode sidecar."""
+    def test_head_service_extra_ports_default(self):
+        """Default services (notebook + ssh) appear on headService ports."""
+        cfg = ClusterConfig(name="svcports")
+        m = build_manifest(cfg)
+        svc_ports = m["spec"]["headGroupSpec"]["headService"]["spec"]["ports"]
+        port_names = {p["name"] for p in svc_ports}
+        assert "notebook" in port_names
+        assert "ssh" in port_names
+        assert "gcs-server" not in port_names  # Ray adds these itself
+
+    def test_head_service_no_extra_ports(self):
+        """All services disabled: headService has no extra ports."""
+        cfg = ClusterConfig(
+            name="bare",
+            services=ServicesConfig(notebook=False, vscode_server=False, ssh=False),
+        )
+        m = build_manifest(cfg)
+        svc_spec = m["spec"]["headGroupSpec"]["headService"]["spec"]
+        assert "ports" not in svc_spec
+        assert svc_spec["type"] == "ClusterIP"
+
+    def test_head_service_all_services(self):
+        """All services enabled: notebook, ssh, vscode on headService."""
         cfg = ClusterConfig(
             name="all",
             services=ServicesConfig(notebook=True, vscode_server=True, ssh=True),
         )
         m = build_manifest(cfg)
-        containers = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"]
-        # Collect all port names across all containers
-        all_port_names: set[str] = set()
-        for c in containers:
-            for p in c.get("ports", []):
-                all_port_names.add(p["name"])
-        assert all_port_names == {
-            "gcs-server", "dashboard", "client", "notebook", "ssh", "vscode",
-        }
+        svc_ports = m["spec"]["headGroupSpec"]["headService"]["spec"]["ports"]
+        port_names = {p["name"] for p in svc_ports}
+        assert port_names == {"notebook", "ssh", "vscode"}
 
     def test_vscode_sidecar_added(self):
         """When vscode_server is enabled, a sidecar container is added."""
