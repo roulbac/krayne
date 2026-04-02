@@ -95,7 +95,7 @@ def format_cluster_details(
         header.add_row("VS Code", info.vscode_url)
     if info.ssh_url:
         header.add_row("SSH", info.ssh_url)
-    header.add_row("Ray Version", details.ray_version)
+    header.add_row("Ray Image", details.head.image)
     console.print(Panel(header, title="Cluster Details", border_style="blue"))
 
     # Head node
