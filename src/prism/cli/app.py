@@ -329,19 +329,29 @@ def init(
         _handle_error(exc)
 
 
-@app.command("tunnel")
-def tunnel(
+@app.command("tun-start")
+def tun_start(
     name: str = typer.Argument(..., help="Cluster name."),
     namespace: str = typer.Option("default", "-n", "--namespace"),
 ) -> None:
-    """Forward cluster services to localhost (Ctrl+C to stop)."""
-    import time
-
-    from rich.live import Live
-
-    from prism.tunnel import start_tunnels
+    """Start tunnels for cluster services to localhost."""
+    from prism.tunnel import is_tunnel_active, start_tunnels
 
     try:
+        if is_tunnel_active(name, namespace):
+            from prism.tunnel import load_tunnel_state
+
+            state = load_tunnel_state(name, namespace)
+            assert state is not None
+            if _output_json:
+                format_json(state.tunnels, console)
+            else:
+                console.print(
+                    format_tunnel_panel(name, state.tunnels),
+                )
+                console.print("Tunnel already active.", style="dim")
+            return
+
         info = _get_cluster(name, namespace, kubeconfig=_kubeconfig)
         if info.status not in ("ready", "running"):
             err_console.print(
@@ -361,31 +371,32 @@ def tunnel(
             )
             raise typer.Exit(1)
 
-        tunnels, processes = start_tunnels(
+        tunnels = start_tunnels(
             name, namespace, services, kubeconfig=_kubeconfig
         )
 
-        try:
-            if _output_json:
-                format_json(tunnels, console)
-                return
+        if _output_json:
+            format_json(tunnels, console)
+        else:
+            console.print(format_tunnel_panel(name, tunnels))
+    except PrismError as exc:
+        _handle_error(exc)
 
-            with Live(
-                format_tunnel_panel(name, tunnels),
-                console=console,
-                refresh_per_second=1,
-            ):
-                while True:
-                    time.sleep(1)
-        except KeyboardInterrupt:
-            pass
-        finally:
-            for proc in processes:
-                proc.terminate()
-            for proc in processes:
-                proc.wait()
-            if not _output_json:
-                console.print("Tunnel stopped.", style="dim")
+
+@app.command("tun-close")
+def tun_close(
+    name: str = typer.Argument(..., help="Cluster name."),
+    namespace: str = typer.Option("default", "-n", "--namespace"),
+) -> None:
+    """Stop tunnels for a cluster."""
+    from prism.tunnel import stop_tunnels
+
+    try:
+        stopped = stop_tunnels(name, namespace)
+        if stopped:
+            console.print(f"Tunnel for '{name}' stopped.", style="green")
+        else:
+            console.print(f"No active tunnel for '{name}'.", style="dim")
     except PrismError as exc:
         _handle_error(exc)
 

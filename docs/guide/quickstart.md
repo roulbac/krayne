@@ -114,7 +114,7 @@ The `--wait` flag blocks until all pods are running:
 ```
 
 !!! tip "Local access"
-    To access cluster services from your machine, use `prism tunnel my-first-cluster` to create localhost port-forwards.
+    To access cluster services from your machine, use `prism tun-start my-first-cluster` to create localhost port-forwards. Use `prism tun-close my-first-cluster` to stop.
 
 This creates a cluster with sensible defaults:
 

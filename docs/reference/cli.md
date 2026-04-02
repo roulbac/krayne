@@ -110,7 +110,7 @@ prism create my-cluster --output json
 ```
 
 !!! tip "Local access"
-    Use `prism tunnel <cluster-name>` to create localhost mirrors of all cluster services via `kubectl port-forward`.
+    Use `prism tun-start <cluster-name>` to create localhost mirrors of all cluster services via `kubectl port-forward`. Use `prism tun-close <cluster-name>` to stop.
 
 !!! note
     When using `--file`, the `name` argument and any CLI flags override the corresponding values in the YAML file.
@@ -294,12 +294,14 @@ Cluster 'my-cluster' deleted.
 
 ---
 
-## `prism tunnel`
+## `prism tun-start`
 
-Forward cluster services to localhost via `kubectl port-forward`. Runs as a long-lived foreground process — press Ctrl+C to stop.
+Start tunnels for cluster services to localhost via `kubectl port-forward`. Processes run in the background — use `tun-close` to stop them.
+
+Both commands are **idempotent**: starting an already-active tunnel is a no-op (shows the existing tunnel info), and closing a non-existent tunnel is a no-op.
 
 ```
-prism tunnel <name> [OPTIONS]
+prism tun-start <name> [OPTIONS]
 ```
 
 **Arguments:**
@@ -319,14 +321,14 @@ Local ports are deterministically assigned from the cluster name and namespace, 
 **Examples:**
 
 ```bash
-# Tunnel all services on a cluster
-prism tunnel my-cluster
+# Start tunnels for all services on a cluster
+prism tun-start my-cluster
 
-# Tunnel a cluster in a specific namespace
-prism tunnel my-cluster -n ml-team
+# Start tunnels in a specific namespace
+prism tun-start my-cluster -n ml-team
 
-# Get tunnel info as JSON (prints and exits)
-prism tunnel my-cluster --output json
+# Get tunnel info as JSON
+prism tun-start my-cluster --output json
 ```
 
 ```title="Terminal output"
@@ -337,12 +339,41 @@ prism tunnel my-cluster --output json
 │  notebook     http://localhost:41337       8888          │
 │  ssh          ssh://localhost:19022        22            │
 │                                                         │
-│  Press Ctrl+C to stop                                   │
+│  Run tun-close to stop                                  │
 ╰─────────────────────────────────────────────────────────╯
 ```
 
 !!! note
     The cluster must be in `ready` or `running` state. Tunnels forward to the head Service (`svc/<name>-head-svc`), which survives pod restarts.
+
+---
+
+## `prism tun-close`
+
+Stop tunnels for a cluster. Terminates all background `kubectl port-forward` processes.
+
+```
+prism tun-close <name> [OPTIONS]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|---|---|
+| `name` | Cluster name (required) |
+
+**Options:**
+
+| Option | Default | Description |
+|---|---|---|
+| `-n`, `--namespace` | `default` | Kubernetes namespace |
+
+**Examples:**
+
+```bash
+prism tun-close my-cluster
+prism tun-close my-cluster -n ml-team
+```
 
 ---
 

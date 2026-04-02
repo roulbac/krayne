@@ -209,6 +209,6 @@ def format_tunnel_panel(cluster_name: str, tunnels: list[TunnelInfo]) -> Panel:
     return Panel(
         table,
         title=f"Tunnel Active \u2014 {cluster_name}",
-        subtitle="Press Ctrl+C to stop",
+        subtitle="Run tun-close to stop",
         border_style="green",
     )

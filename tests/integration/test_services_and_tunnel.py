@@ -21,7 +21,13 @@ import pytest
 from prism.api import create_cluster, delete_cluster, get_cluster, get_cluster_services
 from prism.config import ClusterConfig
 from prism.config.models import ServicesConfig
-from prism.tunnel import detect_services, local_port_for, start_tunnels
+from prism.tunnel import (
+    detect_services,
+    is_tunnel_active,
+    local_port_for,
+    start_tunnels,
+    stop_tunnels,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -99,6 +105,8 @@ class TestServicesAndTunnel:
         time.sleep(_SERVICE_STARTUP_GRACE)
         self.client = kube_client
         yield
+        # Ensure tunnels are cleaned up before deleting the cluster
+        stop_tunnels(self.CLUSTER_NAME, self.NAMESPACE)
         delete_cluster(self.CLUSTER_NAME, self.NAMESPACE, client=kube_client)
 
     # -- Service detection --------------------------------------------------
@@ -122,30 +130,42 @@ class TestServicesAndTunnel:
 
     # -- Tunnel lifecycle ---------------------------------------------------
 
-    def test_tunnel_creates_live_processes(self):
-        """start_tunnels spawns kubectl port-forward processes that stay alive."""
+    def test_tunnel_start_and_stop(self):
+        """tun-start creates tunnels, tun-close tears them down."""
         services = get_cluster_services(
             self.CLUSTER_NAME, self.NAMESPACE, client=self.client
         )
-        tunnels, processes = start_tunnels(
+        tunnels = start_tunnels(
             self.CLUSTER_NAME,
             self.NAMESPACE,
             services,
             kubeconfig=self.kubeconfig,
         )
-        try:
-            assert len(tunnels) == len(services)
-            # Give kubectl a moment to bind ports
-            time.sleep(2)
-            for proc in processes:
-                assert proc.poll() is None, (
-                    f"port-forward process died: {proc.stderr.read().decode()}"
-                )
-        finally:
-            for proc in processes:
-                proc.terminate()
-            for proc in processes:
-                proc.wait()
+        assert len(tunnels) == len(services)
+        assert is_tunnel_active(self.CLUSTER_NAME, self.NAMESPACE)
+
+        # Stop and verify
+        assert stop_tunnels(self.CLUSTER_NAME, self.NAMESPACE) is True
+        assert not is_tunnel_active(self.CLUSTER_NAME, self.NAMESPACE)
+
+    def test_tunnel_start_idempotent(self):
+        """Starting an already-active tunnel returns the same info."""
+        services = get_cluster_services(
+            self.CLUSTER_NAME, self.NAMESPACE, client=self.client
+        )
+        tunnels1 = start_tunnels(
+            self.CLUSTER_NAME, self.NAMESPACE, services,
+            kubeconfig=self.kubeconfig,
+        )
+        tunnels2 = start_tunnels(
+            self.CLUSTER_NAME, self.NAMESPACE, services,
+            kubeconfig=self.kubeconfig,
+        )
+        assert tunnels1 == tunnels2
+
+    def test_tunnel_stop_idempotent(self):
+        """Stopping a non-existent tunnel is a no-op."""
+        assert stop_tunnels(self.CLUSTER_NAME, self.NAMESPACE) is False
 
     def test_tunnel_ports_are_deterministic(self):
         """Same cluster always gets the same local ports."""
@@ -158,126 +178,75 @@ class TestServicesAndTunnel:
 
     def test_dashboard_reachable_via_tunnel(self):
         """Ray dashboard /api/version is reachable through the tunnel."""
-        tunnels, processes = start_tunnels(
-            self.CLUSTER_NAME,
-            self.NAMESPACE,
-            ["dashboard"],
+        tunnels = start_tunnels(
+            self.CLUSTER_NAME, self.NAMESPACE, ["dashboard"],
             kubeconfig=self.kubeconfig,
         )
-        try:
-            lport = tunnels[0].local_port
-            url = f"http://localhost:{lport}/api/version"
-            status = _retry(lambda: _http_probe(url))
-            assert status == 200, f"Dashboard probe returned {status}"
-        finally:
-            for p in processes:
-                p.terminate()
-            for p in processes:
-                p.wait()
+        lport = tunnels[0].local_port
+        url = f"http://localhost:{lport}/api/version"
+        status = _retry(lambda: _http_probe(url))
+        assert status == 200, f"Dashboard probe returned {status}"
 
     def test_notebook_reachable_via_tunnel(self):
         """Jupyter /api/status is reachable through the tunnel."""
-        tunnels, processes = start_tunnels(
-            self.CLUSTER_NAME,
-            self.NAMESPACE,
-            ["notebook"],
+        tunnels = start_tunnels(
+            self.CLUSTER_NAME, self.NAMESPACE, ["notebook"],
             kubeconfig=self.kubeconfig,
         )
-        try:
-            lport = tunnels[0].local_port
-            url = f"http://localhost:{lport}/api/status"
-            status = _retry(lambda: _http_probe(url))
-            assert status == 200, f"Notebook probe returned {status}"
-        finally:
-            for p in processes:
-                p.terminate()
-            for p in processes:
-                p.wait()
+        lport = tunnels[0].local_port
+        url = f"http://localhost:{lport}/api/status"
+        status = _retry(lambda: _http_probe(url))
+        assert status == 200, f"Notebook probe returned {status}"
 
     def test_vscode_reachable_via_tunnel(self):
         """code-server /healthz is reachable through the tunnel."""
-        tunnels, processes = start_tunnels(
-            self.CLUSTER_NAME,
-            self.NAMESPACE,
-            ["vscode"],
+        tunnels = start_tunnels(
+            self.CLUSTER_NAME, self.NAMESPACE, ["vscode"],
             kubeconfig=self.kubeconfig,
         )
-        try:
-            lport = tunnels[0].local_port
-            url = f"http://localhost:{lport}/healthz"
-            status = _retry(lambda: _http_probe(url))
-            assert status == 200, f"VS Code probe returned {status}"
-        finally:
-            for p in processes:
-                p.terminate()
-            for p in processes:
-                p.wait()
+        lport = tunnels[0].local_port
+        url = f"http://localhost:{lport}/healthz"
+        status = _retry(lambda: _http_probe(url))
+        assert status == 200, f"VS Code probe returned {status}"
 
     def test_ssh_reachable_via_tunnel(self):
         """sshd returns an SSH banner through the tunnel."""
-        tunnels, processes = start_tunnels(
-            self.CLUSTER_NAME,
-            self.NAMESPACE,
-            ["ssh"],
+        tunnels = start_tunnels(
+            self.CLUSTER_NAME, self.NAMESPACE, ["ssh"],
             kubeconfig=self.kubeconfig,
         )
-        try:
-            lport = tunnels[0].local_port
-            banner = _retry(lambda: _tcp_probe("localhost", lport))
-            assert banner.startswith(b"SSH-"), (
-                f"Expected SSH banner, got: {banner!r}"
-            )
-        finally:
-            for p in processes:
-                p.terminate()
-            for p in processes:
-                p.wait()
+        lport = tunnels[0].local_port
+        banner = _retry(lambda: _tcp_probe("localhost", lport))
+        assert banner.startswith(b"SSH-"), (
+            f"Expected SSH banner, got: {banner!r}"
+        )
 
     def test_all_services_via_single_tunnel_session(self):
         """All services reachable in one tunnel session."""
         services = get_cluster_services(
             self.CLUSTER_NAME, self.NAMESPACE, client=self.client
         )
-        tunnels, processes = start_tunnels(
-            self.CLUSTER_NAME,
-            self.NAMESPACE,
-            services,
+        tunnels = start_tunnels(
+            self.CLUSTER_NAME, self.NAMESPACE, services,
             kubeconfig=self.kubeconfig,
         )
-        try:
-            time.sleep(3)  # Let all port-forwards bind
+        time.sleep(3)  # Let all port-forwards bind
 
-            tunnel_map = {t.service: t for t in tunnels}
+        tunnel_map = {t.service: t for t in tunnels}
 
-            # Dashboard
-            t = tunnel_map["dashboard"]
-            assert _retry(lambda: _http_probe(f"http://localhost:{t.local_port}/api/version")) == 200
+        # Dashboard
+        t = tunnel_map["dashboard"]
+        assert _retry(lambda: _http_probe(f"http://localhost:{t.local_port}/api/version")) == 200
 
-            # Notebook
-            t = tunnel_map["notebook"]
-            assert _retry(lambda: _http_probe(f"http://localhost:{t.local_port}/api/status")) == 200
+        # Notebook
+        t = tunnel_map["notebook"]
+        assert _retry(lambda: _http_probe(f"http://localhost:{t.local_port}/api/status")) == 200
 
-            # VS Code
-            t = tunnel_map["vscode"]
-            assert _retry(lambda: _http_probe(f"http://localhost:{t.local_port}/healthz")) == 200
+        # VS Code
+        t = tunnel_map["vscode"]
+        assert _retry(lambda: _http_probe(f"http://localhost:{t.local_port}/healthz")) == 200
 
-            # SSH
-            t = tunnel_map["ssh"]
-            banner = _retry(lambda: _tcp_probe("localhost", t.local_port))
-            assert banner.startswith(b"SSH-")
-
-            # Client port (just verify TCP is open — ray client protocol isn't HTTP)
-            t = tunnel_map["client"]
-            connected = _retry(
-                lambda: _tcp_probe("localhost", t.local_port) is not None
-            )
-            # tcp_probe returns b"" on failure, which is falsy —
-            # for non-HTTP services, just check the port-forward process is alive
-            client_proc_idx = services.index("client")
-            assert processes[client_proc_idx].poll() is None
-
-        finally:
-            for p in processes:
-                p.terminate()
-            for p in processes:
-                p.wait()
+        # SSH
+        t = tunnel_map["ssh"]
+        banner = _retry(lambda: _tcp_probe("localhost", t.local_port))
+        assert banner.startswith(b"SSH-")
