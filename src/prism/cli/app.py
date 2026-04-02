@@ -180,12 +180,17 @@ def describe(
     namespace: str = typer.Option("default", "-n", "--namespace"),
 ) -> None:
     """Show detailed information about a cluster."""
+    from prism.tunnel import is_tunnel_active, load_tunnel_state
+
     try:
         details = _describe_cluster(name, namespace, kubeconfig=_kubeconfig)
         if _output_json:
             format_json(details, console)
         else:
-            format_cluster_details(details, console)
+            tunnel_state = None
+            if is_tunnel_active(name, namespace):
+                tunnel_state = load_tunnel_state(name, namespace)
+            format_cluster_details(details, console, tunnel_state=tunnel_state)
     except PrismError as exc:
         _handle_error(exc)
 

@@ -10,7 +10,7 @@ from rich.table import Table
 
 from prism.api.types import ClusterDetails, ClusterInfo
 from prism.sandbox.manager import SandboxStatus
-from prism.tunnel import TunnelInfo
+from prism.tunnel import TunnelInfo, TunnelState
 
 
 def _style_status(status: str) -> str:
@@ -72,7 +72,12 @@ def format_cluster_list(clusters: list[ClusterInfo], console: Console) -> None:
     console.print(table)
 
 
-def format_cluster_details(details: ClusterDetails, console: Console) -> None:
+def format_cluster_details(
+    details: ClusterDetails,
+    console: Console,
+    *,
+    tunnel_state: TunnelState | None = None,
+) -> None:
     info = details.info
 
     # Header
@@ -126,6 +131,17 @@ def format_cluster_details(details: ClusterDetails, console: Console) -> None:
                 wg.gpu_type or "-",
             )
         console.print(wg_table)
+
+    # Tunnels
+    if tunnel_state is not None:
+        console.print(format_tunnel_panel(info.name, tunnel_state.tunnels))
+    else:
+        tun_table = Table(show_header=False, box=None, padding=(0, 2))
+        tun_table.add_column("Field", style="bold cyan")
+        tun_table.add_column("Value")
+        tun_table.add_row("Tunnels", "[dim]closed[/dim]")
+        tun_table.add_row("", "[dim]Run tun-open to connect[/dim]")
+        console.print(Panel(tun_table, title="Tunnels", border_style="dim"))
 
 
 def format_json(data: Any, console: Console) -> None:
