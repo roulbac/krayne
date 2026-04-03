@@ -1,0 +1,10 @@
+/* Fix monospace rendering for box-drawing characters in terminal output.
+   The default mkdocs-material code font can render box-drawing characters
+   (╭╮╰╯│─┌┐└┘├┤┼) and symbols (✓) at inconsistent widths, breaking
+   alignment in Rich-style terminal output. Override with fonts known
+   to handle these glyphs correctly at uniform monospace width. */
+:root {
+  --md-code-font: "Cascadia Code", "Fira Code", "JetBrains Mono",
+    "Source Code Pro", "DejaVu Sans Mono", ui-monospace, SFMono-Regular,
+    "SF Mono", Menlo, Consolas, "Liberation Mono";
+}
