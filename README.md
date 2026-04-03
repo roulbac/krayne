@@ -84,12 +84,12 @@ All commands support `-n/--namespace`, `--output json`, and `--debug` flags.
 
 Full documentation is available at the [Krayne docs site](https://roulbac.github.io/krayne/).
 
-- [Getting Started](https://roulbac.github.io/krayne/getting-started/)
-- [CLI Reference](https://roulbac.github.io/krayne/cli/)
-- [Python SDK Reference](https://roulbac.github.io/krayne/sdk/)
-- [Configuration](https://roulbac.github.io/krayne/configuration/)
+- [Getting Started](https://roulbac.github.io/krayne/guide/quickstart/)
+- [CLI Reference](https://roulbac.github.io/krayne/reference/cli/)
+- [Python SDK Reference](https://roulbac.github.io/krayne/reference/sdk/)
+- [Configuration](https://roulbac.github.io/krayne/guide/configuration/)
 - [Architecture](https://roulbac.github.io/krayne/architecture/)
-- [Error Handling](https://roulbac.github.io/krayne/errors/)
+- [Error Handling](https://roulbac.github.io/krayne/reference/errors/)
 
 ## Requirements
 
