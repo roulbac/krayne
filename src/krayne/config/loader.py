@@ -6,8 +6,8 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from prism.config.models import ClusterConfig
-from prism.errors import ConfigValidationError
+from krayne.config.models import ClusterConfig
+from krayne.errors import ConfigValidationError
 
 
 def load_config_from_yaml(

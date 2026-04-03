@@ -1,12 +1,12 @@
 # Core Concepts
 
-This page explains the key concepts behind Prism and Ray on Kubernetes.
+This page explains the key concepts behind Krayne and Ray on Kubernetes.
 
 ---
 
 ## Ray cluster anatomy
 
-A Ray cluster consists of a **head node** and one or more **worker groups**. Prism manages these as Kubernetes pods via the KubeRay operator.
+A Ray cluster consists of a **head node** and one or more **worker groups**. Krayne manages these as Kubernetes pods via the KubeRay operator.
 
 ```mermaid
 graph TB
@@ -43,29 +43,29 @@ graph TB
 
 [KubeRay](https://ray-project.github.io/kuberay/) is a Kubernetes operator that manages Ray clusters via a Custom Resource Definition (CRD): `ray.io/v1/RayCluster`.
 
-Prism generates the `RayCluster` manifest from your configuration and submits it to the Kubernetes API. The KubeRay operator then reconciles the desired state — creating pods, services, and networking.
+Krayne generates the `RayCluster` manifest from your configuration and submits it to the Kubernetes API. The KubeRay operator then reconciles the desired state — creating pods, services, and networking.
 
 ```mermaid
 sequenceDiagram
   participant User
-  participant Prism as Prism CLI/SDK
+  participant Krayne as Krayne CLI/SDK
   participant K8s as Kubernetes API
   participant KubeRay as KubeRay Operator
   participant Pods as Ray Pods
 
-  User->>Prism: prism create my-cluster
-  Prism->>Prism: Build ClusterConfig
-  Prism->>Prism: build_manifest(config)
-  Prism->>K8s: Create RayCluster CR
+  User->>Krayne: krayne create my-cluster
+  Krayne->>Krayne: Build ClusterConfig
+  Krayne->>Krayne: build_manifest(config)
+  Krayne->>K8s: Create RayCluster CR
   K8s->>KubeRay: Notify: new RayCluster
   KubeRay->>Pods: Create head + worker pods
   Pods-->>KubeRay: Pods running
   KubeRay-->>K8s: Update status: Ready
-  K8s-->>Prism: Status: ready
-  Prism-->>User: Cluster ready!
+  K8s-->>Krayne: Status: ready
+  Krayne-->>User: Cluster ready!
 ```
 
-You never need to write the `RayCluster` YAML yourself — Prism handles manifest generation, submission, and status polling.
+You never need to write the `RayCluster` YAML yourself — Krayne handles manifest generation, submission, and status polling.
 
 ---
 
@@ -75,16 +75,16 @@ A cluster moves through several states from creation to deletion:
 
 ```mermaid
 stateDiagram-v2
-  [*] --> creating: prism create
+  [*] --> creating: krayne create
   creating --> ready: All pods running
   creating --> image_pull_error: Bad container image
   creating --> crash_loop: Container crash
   creating --> unschedulable: Insufficient resources
-  ready --> ready: prism scale
-  ready --> [*]: prism delete
-  image_pull_error --> [*]: prism delete
-  crash_loop --> [*]: prism delete
-  unschedulable --> [*]: prism delete
+  ready --> ready: krayne scale
+  ready --> [*]: krayne delete
+  image_pull_error --> [*]: krayne delete
+  crash_loop --> [*]: krayne delete
+  unschedulable --> [*]: krayne delete
 ```
 
 | Status | Meaning |
@@ -98,22 +98,22 @@ stateDiagram-v2
 | `pods-pending` | Pods waiting to be scheduled |
 | `running` | Pods running but cluster not fully ready |
 
-Use `prism describe <name>` to check the current status at any time.
+Use `krayne describe <name>` to check the current status at any time.
 
 ---
 
 ## Namespaces
 
-Prism scopes all operations to a Kubernetes **namespace**. The default namespace is `default`, but you can specify any namespace:
+Krayne scopes all operations to a Kubernetes **namespace**. The default namespace is `default`, but you can specify any namespace:
 
 ```bash
 # CLI
-prism create my-cluster -n ml-team
-prism get -n ml-team
+krayne create my-cluster -n ml-team
+krayne get -n ml-team
 
 # Python SDK
-from prism.api import create_cluster
-from prism.config import ClusterConfig
+from krayne.api import create_cluster
+from krayne.config import ClusterConfig
 
 config = ClusterConfig(name="my-cluster", namespace="ml-team")
 create_cluster(config)
@@ -125,7 +125,7 @@ Clusters in different namespaces are independent — they can share names withou
 
 ## Configuration model
 
-Prism uses a layered configuration system with three sources, resolved in order of precedence:
+Krayne uses a layered configuration system with three sources, resolved in order of precedence:
 
 ```mermaid
 flowchart LR
@@ -145,7 +145,7 @@ The only required field is `name`. Everything else has sensible defaults:
 
 ```bash
 # This is a complete, valid command
-prism create my-cluster
+krayne create my-cluster
 ```
 
 See [Configuration](configuration.md) for the full config model and defaults.
@@ -154,7 +154,7 @@ See [Configuration](configuration.md) for the full config model and defaults.
 
 ## Services
 
-Prism exposes several services on the head node, each mapped to a container port:
+Krayne exposes several services on the head node, each mapped to a container port:
 
 | Service | Default | Port | Description |
 |---|---|---|---|
@@ -175,11 +175,11 @@ services:
   ssh: true
 ```
 
-To access services from your local machine, use `prism tun-open` / `prism tun-close`:
+To access services from your local machine, use `krayne tun-open` / `krayne tun-close`:
 
 ```bash
-prism tun-open my-cluster   # start tunnels (idempotent)
-prism tun-close my-cluster   # stop tunnels (idempotent)
+krayne tun-open my-cluster   # start tunnels (idempotent)
+krayne tun-close my-cluster   # stop tunnels (idempotent)
 ```
 
 ---
@@ -190,11 +190,11 @@ Every operation available from the CLI is available as a Python function with th
 
 | CLI Command | SDK Function | Description |
 |---|---|---|
-| `prism create` | `create_cluster()` | Create a new cluster |
-| `prism get` | `list_clusters()` | List all clusters |
-| `prism describe` | `describe_cluster()` | Get detailed cluster info |
-| `prism scale` | `scale_cluster()` | Scale a worker group |
-| `prism delete` | `delete_cluster()` | Delete a cluster |
+| `krayne create` | `create_cluster()` | Create a new cluster |
+| `krayne get` | `list_clusters()` | List all clusters |
+| `krayne describe` | `describe_cluster()` | Get detailed cluster info |
+| `krayne scale` | `scale_cluster()` | Scale a worker group |
+| `krayne delete` | `delete_cluster()` | Delete a cluster |
 | — | `get_cluster()` | Get info for a single cluster |
 | — | `wait_until_ready()` | Poll until cluster is ready |
 

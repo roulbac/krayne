@@ -1,6 +1,6 @@
 # Architecture
 
-Prism is organized into five modules with a clear dependency direction. This page describes the module structure, design principles, and how the pieces fit together.
+Krayne is organized into five modules with a clear dependency direction. This page describes the module structure, design principles, and how the pieces fit together.
 
 ## Module overview
 
@@ -22,7 +22,7 @@ graph TD
 
 ## Modules
 
-### `prism.cli` — CLI layer
+### `krayne.cli` — CLI layer
 
 The CLI is a **thin Typer shell** over the SDK. It has three responsibilities:
 
@@ -32,9 +32,9 @@ The CLI is a **thin Typer shell** over the SDK. It has three responsibilities:
 
 No business logic lives here. If a feature can't be tested through the SDK alone, it's in the wrong layer.
 
-### `prism.api` — SDK layer
+### `krayne.api` — SDK layer
 
-The core of Prism. All cluster lifecycle operations are implemented as **free functions**:
+The core of Krayne. All cluster lifecycle operations are implemented as **free functions**:
 
 - `create_cluster()`, `get_cluster()`, `list_clusters()`
 - `describe_cluster()`, `scale_cluster()`, `delete_cluster()`
@@ -42,7 +42,7 @@ The core of Prism. All cluster lifecycle operations are implemented as **free fu
 
 Each function takes explicit parameters and returns immutable dataclasses. The Kubernetes client is injected via the `client` parameter (defaults to `None`, which creates a client from kubeconfig).
 
-### `prism.config` — Configuration layer
+### `krayne.config` — Configuration layer
 
 [Pydantic models](https://docs.pydantic.dev/) for cluster configuration:
 
@@ -52,7 +52,7 @@ Each function takes explicit parameters and returns immutable dataclasses. The K
 
 Validation happens at this boundary. By the time data reaches the SDK, it's guaranteed to be valid.
 
-### `prism.kube` — Kubernetes client layer
+### `krayne.kube` — Kubernetes client layer
 
 The only module that talks to the Kubernetes API. Contains:
 
@@ -62,7 +62,7 @@ The only module that talks to the Kubernetes API. Contains:
 
 The protocol-based design means any object with the right methods works as a client — no inheritance, no registration.
 
-### `prism.output` — Output formatters
+### `krayne.output` — Output formatters
 
 Rich formatters for CLI display:
 
@@ -75,7 +75,7 @@ Rich formatters for CLI display:
 
 ## Request flow
 
-This sequence diagram shows what happens when you run `prism create my-cluster`:
+This sequence diagram shows what happens when you run `krayne create my-cluster`:
 
 ```mermaid
 sequenceDiagram
@@ -87,7 +87,7 @@ sequenceDiagram
   participant Client as KubeClient
   participant K8s as Kubernetes API
 
-  User->>CLI: prism create my-cluster
+  User->>CLI: krayne create my-cluster
   CLI->>Config: Build ClusterConfig from flags
   Config-->>CLI: Validated config
   CLI->>SDK: create_cluster(config)
@@ -150,7 +150,7 @@ flowchart LR
 
 **CRD mapping:**
 
-| Prism Config | KubeRay CRD Path |
+| Krayne Config | KubeRay CRD Path |
 |---|---|
 | `config.name` | `metadata.name` |
 | `config.namespace` | `metadata.namespace` |
@@ -164,20 +164,20 @@ flowchart LR
 
 ## Error handling
 
-All exceptions inherit from `PrismError`:
+All exceptions inherit from `KrayneError`:
 
 ```mermaid
 classDiagram
-  PrismError <|-- ClusterNotFoundError
-  PrismError <|-- ClusterAlreadyExistsError
-  PrismError <|-- ConfigValidationError
-  PrismError <|-- ClusterTimeoutError
-  PrismError <|-- KubeConnectionError
-  PrismError <|-- NamespaceNotFoundError
-  PrismError <|-- SandboxError
+  KrayneError <|-- ClusterNotFoundError
+  KrayneError <|-- ClusterAlreadyExistsError
+  KrayneError <|-- ConfigValidationError
+  KrayneError <|-- ClusterTimeoutError
+  KrayneError <|-- KubeConnectionError
+  KrayneError <|-- NamespaceNotFoundError
+  KrayneError <|-- SandboxError
 ```
 
-The CLI catches `PrismError` and renders a Rich panel. SDK users catch specific subtypes for fine-grained handling.
+The CLI catches `KrayneError` and renders a Rich panel. SDK users catch specific subtypes for fine-grained handling.
 
 ---
 

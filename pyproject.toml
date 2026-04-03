@@ -1,5 +1,5 @@
 [project]
-name = "prism-sdk"
+name = "krayne"
 version = "0.1.0"
 description = "CLI and SDK for creating, managing, and scaling Ray clusters on Kubernetes"
 readme = "README.md"
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-prism = "prism.cli.app:app"
+krayne = "krayne.cli.app:app"
 
 [dependency-groups]
 dev = [
@@ -33,7 +33,7 @@ requires = ["uv_build>=0.11.1,<0.12"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "prism"
+module-name = "krayne"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

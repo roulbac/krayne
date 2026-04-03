@@ -8,11 +8,11 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from prism import __version__
-from prism.errors import PrismError
+from krayne import __version__
+from krayne.errors import KrayneError
 
 app = typer.Typer(
-    name="prism",
+    name="krayne",
     help="Create, manage, and scale Ray clusters on Kubernetes.",
     no_args_is_help=True,
 )
@@ -28,7 +28,7 @@ _kubeconfig: str | None = None
 
 def _version_callback(value: bool) -> None:
     if value:
-        console.print(f"prism {__version__}")
+        console.print(f"krayne {__version__}")
         raise typer.Exit()
 
 
@@ -42,7 +42,7 @@ def main(
     output: str = typer.Option("table", "--output", "-o", help="Output format: table or json."),
     kubeconfig: Optional[str] = typer.Option(None, "--kubeconfig", help="Path to kubeconfig file."),
 ) -> None:
-    """Prism — Ray clusters made simple."""
+    """Krayne — Ray clusters made simple."""
     global _debug, _output_json, _kubeconfig
     _debug = debug
     _output_json = output == "json"
@@ -57,7 +57,7 @@ def _handle_error(exc: Exception) -> None:
     raise typer.Exit(1)
 
 
-from prism.api import (  # noqa: E402
+from krayne.api import (  # noqa: E402
     create_cluster as _create_cluster,
     delete_cluster as _delete_cluster,
     describe_cluster as _describe_cluster,
@@ -66,16 +66,16 @@ from prism.api import (  # noqa: E402
     list_clusters as _list_clusters,
     scale_cluster as _scale_cluster,
 )
-from prism.config import (  # noqa: E402
+from krayne.config import (  # noqa: E402
     ClusterConfig,
-    PrismSettings,
+    KrayneSettings,
     WorkerGroupConfig,
     load_config_from_yaml,
     DEFAULT_CPUS,
     DEFAULT_HEAD_MEMORY,
-    save_prism_settings,
+    save_krayne_settings,
 )
-from prism.output import (  # noqa: E402
+from krayne.output import (  # noqa: E402
     format_cluster_created,
     format_cluster_details,
     build_sandbox_progress_table,
@@ -86,7 +86,7 @@ from prism.output import (  # noqa: E402
     format_sandbox_status,
     format_tunnel_panel,
 )
-from prism.sandbox import (  # noqa: E402
+from krayne.sandbox import (  # noqa: E402
     setup_sandbox as _setup_sandbox,
     teardown_sandbox as _teardown_sandbox,
     sandbox_status as _sandbox_status,
@@ -155,7 +155,7 @@ def create(
             pass
 
         format_cluster_created(info, console)
-    except PrismError as exc:
+    except KrayneError as exc:
         _handle_error(exc)
 
 
@@ -170,7 +170,7 @@ def get(
             format_json(clusters, console)
         else:
             format_cluster_list(clusters, console)
-    except PrismError as exc:
+    except KrayneError as exc:
         _handle_error(exc)
 
 
@@ -180,7 +180,7 @@ def describe(
     namespace: str = typer.Option("default", "-n", "--namespace"),
 ) -> None:
     """Show detailed information about a cluster."""
-    from prism.tunnel import is_tunnel_active, load_tunnel_state
+    from krayne.tunnel import is_tunnel_active, load_tunnel_state
 
     try:
         details = _describe_cluster(name, namespace, kubeconfig=_kubeconfig)
@@ -191,7 +191,7 @@ def describe(
             if is_tunnel_active(name, namespace):
                 tunnel_state = load_tunnel_state(name, namespace)
             format_cluster_details(details, console, tunnel_state=tunnel_state)
-    except PrismError as exc:
+    except KrayneError as exc:
         _handle_error(exc)
 
 
@@ -209,7 +209,7 @@ def scale(
             format_json(info, console)
         else:
             format_cluster_created(info, console)
-    except PrismError as exc:
+    except KrayneError as exc:
         _handle_error(exc)
 
 
@@ -225,12 +225,12 @@ def delete(
             typer.confirm(
                 f"Delete cluster '{name}' in namespace '{namespace}'?", abort=True
             )
-        from prism.tunnel import stop_tunnels
+        from krayne.tunnel import stop_tunnels
 
         stop_tunnels(name, namespace)
         _delete_cluster(name, namespace, kubeconfig=_kubeconfig)
         console.print(f"Cluster '{name}' deleted.", style="green")
-    except PrismError as exc:
+    except KrayneError as exc:
         _handle_error(exc)
 
 
@@ -243,16 +243,16 @@ def init(
         None, "--context", "-c", help="Kubernetes context name (skips interactive prompt)."
     ),
 ) -> None:
-    """Initialise Prism with a kubeconfig and kube context.
+    """Initialise Krayne with a kubeconfig and kube context.
 
     When run without flags an interactive menu is shown.  Pass --kubeconfig
     and --context for headless / CI usage.
     """
     import yaml as _yaml
 
-    from prism.config.settings import DEFAULT_KUBECONFIG
-    from prism.errors import ConfigValidationError
-    from prism.sandbox.manager import SANDBOX_KUBECONFIG
+    from krayne.config.settings import DEFAULT_KUBECONFIG
+    from krayne.errors import ConfigValidationError
+    from krayne.sandbox.manager import SANDBOX_KUBECONFIG
 
     try:
         # --- resolve kubeconfig path -----------------------------------------
@@ -329,11 +329,11 @@ def init(
                     f"Available: {', '.join(contexts)}"
                 )
 
-        save_prism_settings(
-            PrismSettings(kubeconfig=str(resolved), kube_context=context)
+        save_krayne_settings(
+            KrayneSettings(kubeconfig=str(resolved), kube_context=context)
         )
         format_init_success(str(resolved), context, console)
-    except PrismError as exc:
+    except KrayneError as exc:
         _handle_error(exc)
 
 
@@ -343,11 +343,11 @@ def tun_open(
     namespace: str = typer.Option("default", "-n", "--namespace"),
 ) -> None:
     """Open tunnels for cluster services to localhost."""
-    from prism.tunnel import is_tunnel_active, start_tunnels
+    from krayne.tunnel import is_tunnel_active, start_tunnels
 
     try:
         if is_tunnel_active(name, namespace):
-            from prism.tunnel import load_tunnel_state
+            from krayne.tunnel import load_tunnel_state
 
             state = load_tunnel_state(name, namespace)
             assert state is not None
@@ -387,7 +387,7 @@ def tun_open(
             format_json(tunnels, console)
         else:
             console.print(format_tunnel_panel(name, tunnels))
-    except PrismError as exc:
+    except KrayneError as exc:
         _handle_error(exc)
 
 
@@ -397,7 +397,7 @@ def tun_close(
     namespace: str = typer.Option("default", "-n", "--namespace"),
 ) -> None:
     """Stop tunnels for a cluster."""
-    from prism.tunnel import stop_tunnels
+    from krayne.tunnel import stop_tunnels
 
     try:
         stopped = stop_tunnels(name, namespace)
@@ -405,7 +405,7 @@ def tun_close(
             console.print(f"Tunnel for '{name}' stopped.", style="green")
         else:
             console.print(f"No active tunnel for '{name}'.", style="dim")
-    except PrismError as exc:
+    except KrayneError as exc:
         _handle_error(exc)
 
 
@@ -421,7 +421,7 @@ app.add_typer(sandbox_app)
 def sandbox_setup() -> None:
     """Set up a local k3s cluster with KubeRay."""
     from rich.live import Live
-    from prism.sandbox.manager import SETUP_STEPS
+    from krayne.sandbox.manager import SETUP_STEPS
 
     steps: dict[str, str] = {s: "pending" for s in SETUP_STEPS}
 
@@ -437,7 +437,7 @@ def sandbox_setup() -> None:
             kubeconfig_path = _setup_sandbox(on_progress=_on_progress)
 
         format_sandbox_setup_success(kubeconfig_path, console)
-    except PrismError as exc:
+    except KrayneError as exc:
         _handle_error(exc)
 
 
@@ -447,7 +447,7 @@ def sandbox_teardown() -> None:
     try:
         _teardown_sandbox()
         console.print("Sandbox removed.", style="green")
-    except PrismError as exc:
+    except KrayneError as exc:
         _handle_error(exc)
 
 
@@ -460,5 +460,5 @@ def sandbox_status_cmd() -> None:
             format_json(status, console)
         else:
             format_sandbox_status(status, console)
-    except PrismError as exc:
+    except KrayneError as exc:
         _handle_error(exc)

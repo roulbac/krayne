@@ -1,4 +1,4 @@
-from prism.api.clusters import (
+from krayne.api.clusters import (
     create_cluster,
     delete_cluster,
     describe_cluster,
@@ -10,4 +10,4 @@ from prism.api.clusters import (
     scale_cluster,
     wait_until_ready,
 )
-from prism.api.types import ManagedClusterResult
+from krayne.api.types import ManagedClusterResult

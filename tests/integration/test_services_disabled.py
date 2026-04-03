@@ -13,9 +13,9 @@ import time
 
 import pytest
 
-from prism.api import create_cluster, delete_cluster, get_cluster, get_cluster_services
-from prism.config import ClusterConfig
-from prism.config.models import HeadNodeConfig, ServicesConfig, WorkerGroupConfig
+from krayne.api import create_cluster, delete_cluster, get_cluster, get_cluster_services
+from krayne.config import ClusterConfig
+from krayne.config.models import HeadNodeConfig, ServicesConfig, WorkerGroupConfig
 
 pytestmark = pytest.mark.integration
 
@@ -39,7 +39,7 @@ def _wait_for_ready(name: str, namespace: str, client, timeout: int) -> None:
 
 def _wait_for_deleted(name: str, namespace: str, client, timeout: int = 60) -> None:
     """Poll until the cluster no longer exists."""
-    from prism.errors import ClusterNotFoundError
+    from krayne.errors import ClusterNotFoundError
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

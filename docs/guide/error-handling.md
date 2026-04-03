@@ -1,6 +1,6 @@
 # Error Handling
 
-Prism provides clear, actionable error messages in both the CLI and SDK. All errors inherit from a single base class, making them easy to catch and handle.
+Krayne provides clear, actionable error messages in both the CLI and SDK. All errors inherit from a single base class, making them easy to catch and handle.
 
 ---
 
@@ -9,7 +9,7 @@ Prism provides clear, actionable error messages in both the CLI and SDK. All err
 By default, errors are displayed as Rich panels with a clean message:
 
 ```title="Terminal output"
-$ prism describe nonexistent-cluster
+$ krayne describe nonexistent-cluster
 ╭──── Error ─────────────────────────────────╮
 │ Cluster 'nonexistent-cluster' not found in │
 │ namespace 'default'                        │
@@ -21,14 +21,14 @@ $ prism describe nonexistent-cluster
 Use `--debug` to see the full Python traceback:
 
 ```bash
-$ prism describe nonexistent-cluster --debug
+$ krayne describe nonexistent-cluster --debug
 Traceback (most recent call last):
-  File ".../prism/cli/app.py", line 42, in describe
+  File ".../krayne/cli/app.py", line 42, in describe
     details = describe_cluster(name, namespace, client=client)
-  File ".../prism/api/clusters.py", line 89, in describe_cluster
+  File ".../krayne/api/clusters.py", line 89, in describe_cluster
     obj = client.get_ray_cluster(name, namespace)
   ...
-prism.errors.ClusterNotFoundError: Cluster 'nonexistent-cluster'
+krayne.errors.ClusterNotFoundError: Cluster 'nonexistent-cluster'
 not found in namespace 'default'
 ```
 
@@ -36,11 +36,11 @@ not found in namespace 'default'
 
 ## Error hierarchy
 
-All Prism exceptions inherit from `PrismError`:
+All Krayne exceptions inherit from `KrayneError`:
 
 ```mermaid
 classDiagram
-  class PrismError {
+  class KrayneError {
     Base exception
   }
   class ClusterNotFoundError {
@@ -66,35 +66,35 @@ classDiagram
     +namespace: str
   }
 
-  PrismError <|-- ClusterNotFoundError
-  PrismError <|-- ClusterAlreadyExistsError
-  PrismError <|-- ConfigValidationError
-  PrismError <|-- ClusterTimeoutError
-  PrismError <|-- KubeConnectionError
-  PrismError <|-- NamespaceNotFoundError
+  KrayneError <|-- ClusterNotFoundError
+  KrayneError <|-- ClusterAlreadyExistsError
+  KrayneError <|-- ConfigValidationError
+  KrayneError <|-- ClusterTimeoutError
+  KrayneError <|-- KubeConnectionError
+  KrayneError <|-- NamespaceNotFoundError
 ```
 
 ---
 
 ## Handling errors in Python
 
-### Catch all Prism errors
+### Catch all Krayne errors
 
 ```python
-from prism.api import create_cluster
-from prism.errors import PrismError
+from krayne.api import create_cluster
+from krayne.errors import KrayneError
 
 try:
     info = create_cluster(config)
-except PrismError as e:
-    print(f"Prism error: {e}")
+except KrayneError as e:
+    print(f"Krayne error: {e}")
 ```
 
 ### Catch specific errors
 
 ```python
-from prism.api import get_cluster, create_cluster
-from prism.errors import (
+from krayne.api import get_cluster, create_cluster
+from krayne.errors import (
     ClusterNotFoundError,
     ClusterAlreadyExistsError,
     ClusterTimeoutError,
@@ -129,8 +129,8 @@ except ClusterTimeoutError as e:
 | `ClusterNotFoundError` | Cluster name doesn't exist in the namespace | Check spelling, verify namespace with `-n` |
 | `ClusterAlreadyExistsError` | A cluster with that name already exists | Choose a different name or delete the existing cluster |
 | `ConfigValidationError` | Invalid YAML or config values | Check YAML syntax, field names, and value types |
-| `ClusterTimeoutError` | Cluster didn't reach `ready` in time | Increase `--timeout`, check pod status with `prism describe` |
-| `KubeConnectionError` | Can't reach Kubernetes API | Check kubeconfig, verify cluster is running, run `prism init` |
+| `ClusterTimeoutError` | Cluster didn't reach `ready` in time | Increase `--timeout`, check pod status with `krayne describe` |
+| `KubeConnectionError` | Can't reach Kubernetes API | Check kubeconfig, verify cluster is running, run `krayne init` |
 | `NamespaceNotFoundError` | Specified namespace doesn't exist | Create the namespace first with `kubectl create namespace <name>` |
 
 ---
@@ -142,9 +142,9 @@ flowchart TD
   Error["Error occurred"] --> Debug{"Add --debug flag"}
   Debug --> Traceback["Read traceback"]
   Traceback --> Type{"Error type?"}
-  Type -->|Connection| CheckKube["Check kubeconfig<br/>prism init"]
-  Type -->|NotFound| CheckName["Check cluster name<br/>prism get"]
-  Type -->|Timeout| CheckPods["Check pod status<br/>prism describe"]
+  Type -->|Connection| CheckKube["Check kubeconfig<br/>krayne init"]
+  Type -->|NotFound| CheckName["Check cluster name<br/>krayne get"]
+  Type -->|Timeout| CheckPods["Check pod status<br/>krayne describe"]
   Type -->|Config| CheckYAML["Validate YAML<br/>Check field names"]
 ```
 

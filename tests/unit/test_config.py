@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from prism.config import (
+from krayne.config import (
     DEFAULT_CPUS,
     DEFAULT_HEAD_MEMORY,
     DEFAULT_MEMORY,
@@ -16,7 +16,7 @@ from prism.config import (
     WorkerGroupConfig,
     load_config_from_yaml,
 )
-from prism.errors import ConfigValidationError
+from krayne.errors import ConfigValidationError
 
 
 class TestClusterConfigDefaults:

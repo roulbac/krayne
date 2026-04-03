@@ -8,7 +8,7 @@ import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from prism.config.settings import PRISM_DIR
+from krayne.config.settings import PRISM_DIR
 
 PORT_RANGE_START = 10000
 PORT_RANGE_END = 60000
@@ -133,12 +133,12 @@ def is_tunnel_active(cluster_name: str, namespace: str) -> bool:
 
 
 def _resolve_kubeconfig(kubeconfig: str | None) -> str | None:
-    """Resolve kubeconfig from prism settings when not explicitly provided."""
+    """Resolve kubeconfig from krayne settings when not explicitly provided."""
     if kubeconfig is not None:
         return kubeconfig
-    from prism.config.settings import load_prism_settings
+    from krayne.config.settings import load_krayne_settings
 
-    settings = load_prism_settings()
+    settings = load_krayne_settings()
     return settings.kubeconfig
 
 

@@ -8,9 +8,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from prism.api.types import ClusterDetails, ClusterInfo
-from prism.sandbox.manager import SandboxStatus
-from prism.tunnel import TunnelInfo, TunnelState
+from krayne.api.types import ClusterDetails, ClusterInfo
+from krayne.sandbox.manager import SandboxStatus
+from krayne.tunnel import TunnelInfo, TunnelState
 
 
 def _style_status(status: str) -> str:
@@ -163,7 +163,7 @@ def format_init_success(
     table.add_column("Value")
     table.add_row("Kubeconfig", kubeconfig_path)
     table.add_row("Context", kube_context)
-    console.print(Panel(table, title="Prism Initialized", border_style="green"))
+    console.print(Panel(table, title="Krayne Initialized", border_style="green"))
 
 
 def format_sandbox_setup_success(kubeconfig_path: str, console: Console) -> None:
@@ -177,8 +177,8 @@ def format_sandbox_setup_success(kubeconfig_path: str, console: Console) -> None
     hint = Table(show_header=False, box=None, padding=(0, 2))
     hint.add_column("Step", style="bold", justify="right")
     hint.add_column("Command")
-    hint.add_row("1.", "[bold]prism init[/bold]  — select the sandbox kubeconfig and context")
-    hint.add_row("2.", "[bold]prism create my-cluster[/bold]  — launch your first Ray cluster")
+    hint.add_row("1.", "[bold]krayne init[/bold]  — select the sandbox kubeconfig and context")
+    hint.add_row("2.", "[bold]krayne create my-cluster[/bold]  — launch your first Ray cluster")
     console.print(Panel(hint, title="Next Steps", border_style="cyan"))
 
 

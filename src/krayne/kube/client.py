@@ -7,7 +7,7 @@ from kubernetes import client as k8s_client  # type: ignore[import-untyped]
 from kubernetes import config as k8s_config  # type: ignore[import-untyped]
 from kubernetes.client.exceptions import ApiException  # type: ignore[import-untyped]
 
-from prism.errors import (
+from krayne.errors import (
     ClusterAlreadyExistsError,
     ClusterNotFoundError,
     KubeConnectionError,

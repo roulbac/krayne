@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 uv sync               # Install all dependencies (dev + runtime)
-uv run prism <command>             # Run the CLI
+uv run krayne <command>             # Run the CLI
 ```
 
 ## Testing
@@ -22,7 +22,7 @@ Unit test timeout: 60s. Integration test timeout: 600s. CI runs against Python 3
 
 ## Architecture
 
-Prism is a CLI + Python SDK for managing Ray clusters on Kubernetes via the KubeRay CRD (`ray.io/v1/rayclusters`).
+Krayne is a CLI + Python SDK for managing Ray clusters on Kubernetes via the KubeRay CRD (`ray.io/v1/rayclusters`).
 
 **Dependency flow:**
 ```
@@ -35,11 +35,11 @@ CLI → Output (output/formatters.py)
 **Key design decisions:**
 - **Functional-first**: SDK is 7 free functions in `api/clusters.py`, no behavior classes. `KubeClient` is a Protocol (structural typing) passed as a parameter — never imported at call site.
 - **Pydantic at boundaries**: `ClusterConfig` (input) uses Pydantic with `extra="forbid"`. Output types (`ClusterInfo`, `ClusterDetails`) are frozen dataclasses.
-- **Zero-config**: Every CLI command works with zero flags. `prism create my-cluster` just works.
+- **Zero-config**: Every CLI command works with zero flags. `krayne create my-cluster` just works.
 - **CLI = thin wrapper**: CLI only does argument parsing + Rich output formatting. All logic lives in `api/clusters.py`.
 - **Manifest builder is pure**: `build_manifest(config) -> dict` — no I/O, easy to snapshot-test.
 
-**Error hierarchy**: All exceptions inherit from `PrismError` in `errors.py`. CLI catches `PrismError` and renders a Rich panel. SDK functions raise specific subtypes (`ClusterNotFoundError`, `ClusterAlreadyExistsError`, `ConfigValidationError`, `ClusterTimeoutError`, `KubeConnectionError`, `NamespaceNotFoundError`).
+**Error hierarchy**: All exceptions inherit from `KrayneError` in `errors.py`. CLI catches `KrayneError` and renders a Rich panel. SDK functions raise specific subtypes (`ClusterNotFoundError`, `ClusterAlreadyExistsError`, `ConfigValidationError`, `ClusterTimeoutError`, `KubeConnectionError`, `NamespaceNotFoundError`).
 
 **Testing pattern**: Unit tests mock `KubeClient` by passing a `MagicMock` that satisfies the Protocol. The mock returns raw K8s-style dicts (same shape as real API responses). No patching of imports needed — just pass the mock via the `client=` kwarg.
 

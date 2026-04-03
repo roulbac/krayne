@@ -1,29 +1,27 @@
-# Prism
+# Krayne
 
 **CLI and SDK for creating, managing, and scaling Ray clusters on Kubernetes.**
 
-Prism wraps the [KubeRay](https://ray-project.github.io/kuberay/) operator behind a clean, opinionated interface so ML practitioners can get distributed compute without touching Kubernetes manifests.
-
-> *A prism takes a single beam of light and organizes it into something structured and useful. Prism does the same for Ray clusters.*
+Krayne wraps the [KubeRay](https://ray-project.github.io/kuberay/) operator behind a clean, opinionated interface so ML practitioners can get distributed compute without touching Kubernetes manifests.
 
 ## Quickstart
 
 ```bash
-pip install prism-sdk
+pip install krayne
 ```
 
 Create a Ray cluster with a single command:
 
 ```bash
-prism create my-cluster --gpus-per-worker 1 --workers 2
+krayne create my-cluster --gpus-per-worker 1 --workers 2
 ```
 
 Or use the Python SDK to define code and infrastructure together:
 
 ```python
 import ray
-from prism.api import managed_cluster
-from prism.config import ClusterConfig, WorkerGroupConfig
+from krayne.api import managed_cluster
+from krayne.config import ClusterConfig, WorkerGroupConfig
 
 config = ClusterConfig(
     name="hello-world",
@@ -47,8 +45,8 @@ with managed_cluster(config) as managed:
 Tunnels are opened by default — access the dashboard, notebook, and other services via `localhost`:
 
 ```python
-from prism.api import managed_cluster
-from prism.config import ClusterConfig
+from krayne.api import managed_cluster
+from krayne.config import ClusterConfig
 
 config = ClusterConfig(name="my-cluster")
 
@@ -73,25 +71,25 @@ with managed_cluster(config) as managed:
 ## CLI Overview
 
 ```
-prism create <name>      Create a new Ray cluster
-prism get                List clusters in a namespace
-prism describe <name>    Show detailed cluster info
-prism scale <name>       Scale a worker group
-prism delete <name>      Delete a cluster
+krayne create <name>      Create a new Ray cluster
+krayne get                List clusters in a namespace
+krayne describe <name>    Show detailed cluster info
+krayne scale <name>       Scale a worker group
+krayne delete <name>      Delete a cluster
 ```
 
 All commands support `-n/--namespace`, `--output json`, and `--debug` flags.
 
 ## Documentation
 
-Full documentation is available at the [Prism docs site](https://roulbac.github.io/prism/).
+Full documentation is available at the [Krayne docs site](https://roulbac.github.io/krayne/).
 
-- [Getting Started](https://roulbac.github.io/prism/getting-started/)
-- [CLI Reference](https://roulbac.github.io/prism/cli/)
-- [Python SDK Reference](https://roulbac.github.io/prism/sdk/)
-- [Configuration](https://roulbac.github.io/prism/configuration/)
-- [Architecture](https://roulbac.github.io/prism/architecture/)
-- [Error Handling](https://roulbac.github.io/prism/errors/)
+- [Getting Started](https://roulbac.github.io/krayne/getting-started/)
+- [CLI Reference](https://roulbac.github.io/krayne/cli/)
+- [Python SDK Reference](https://roulbac.github.io/krayne/sdk/)
+- [Configuration](https://roulbac.github.io/krayne/configuration/)
+- [Architecture](https://roulbac.github.io/krayne/architecture/)
+- [Error Handling](https://roulbac.github.io/krayne/errors/)
 
 ## Requirements
 
@@ -103,8 +101,8 @@ Full documentation is available at the [Prism docs site](https://roulbac.github.
 
 ```bash
 # Clone and install
-git clone https://github.com/roulbac/prism.git
-cd prism
+git clone https://github.com/roulbac/krayne.git
+cd krayne
 uv sync
 
 # Run tests

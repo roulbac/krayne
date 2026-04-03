@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from prism.api import (
+from krayne.api import (
     create_cluster,
     delete_cluster,
     describe_cluster,
@@ -15,9 +15,9 @@ from prism.api import (
     scale_cluster,
     wait_until_ready,
 )
-from prism.api.types import ClusterDetails, ClusterInfo, ManagedClusterResult, TunnelSession
-from prism.config import ClusterConfig, WorkerGroupConfig
-from prism.errors import ClusterTimeoutError, PrismError
+from krayne.api.types import ClusterDetails, ClusterInfo, ManagedClusterResult, TunnelSession
+from krayne.config import ClusterConfig, WorkerGroupConfig
+from krayne.errors import ClusterTimeoutError, KrayneError
 
 
 _SAMPLE_OBJ = {
@@ -179,7 +179,7 @@ class TestScaleCluster:
         assert patch_arg["spec"]["workerGroupSpecs"][0]["replicas"] == 4
 
     def test_scale_unknown_group(self, mock_client):
-        with pytest.raises(PrismError, match="not found"):
+        with pytest.raises(KrayneError, match="not found"):
             scale_cluster("test", "default", "nonexistent", 4, client=mock_client)
 
 
@@ -232,10 +232,10 @@ class TestManagedCluster:
             pass
         mock_client.delete_ray_cluster.assert_called_once_with("test", "ml")
 
-    @patch("prism.tunnel.stop_tunnels")
-    @patch("prism.tunnel.start_tunnels")
+    @patch("krayne.tunnel.stop_tunnels")
+    @patch("krayne.tunnel.start_tunnels")
     def test_tunnel_default_opens_and_closes(self, mock_start, mock_stop, mock_client):
-        from prism.tunnel import TunnelInfo
+        from krayne.tunnel import TunnelInfo
 
         mock_start.return_value = [
             TunnelInfo(service="dashboard", remote_port=8265, local_port=12345, local_url="http://localhost:12345"),
@@ -252,8 +252,8 @@ class TestManagedCluster:
         mock_stop.assert_called_once_with("test", "default")
         mock_client.delete_ray_cluster.assert_called_once_with("test", "default")
 
-    @patch("prism.tunnel.stop_tunnels")
-    @patch("prism.tunnel.start_tunnels")
+    @patch("krayne.tunnel.stop_tunnels")
+    @patch("krayne.tunnel.start_tunnels")
     def test_tunnel_false_skips_tunnels(self, mock_start, mock_stop, mock_client):
         cfg = ClusterConfig(name="test")
         with managed_cluster(cfg, client=mock_client, tunnel=False) as result:
@@ -262,8 +262,8 @@ class TestManagedCluster:
         mock_stop.assert_not_called()
         mock_client.delete_ray_cluster.assert_called_once_with("test", "default")
 
-    @patch("prism.tunnel.stop_tunnels")
-    @patch("prism.tunnel.start_tunnels")
+    @patch("krayne.tunnel.stop_tunnels")
+    @patch("krayne.tunnel.start_tunnels")
     def test_tunnel_cleanup_on_exception(self, mock_start, mock_stop, mock_client):
         mock_start.return_value = []
         cfg = ClusterConfig(name="test")
@@ -273,8 +273,8 @@ class TestManagedCluster:
         mock_stop.assert_called_once_with("test", "default")
         mock_client.delete_ray_cluster.assert_called_once_with("test", "default")
 
-    @patch("prism.tunnel.stop_tunnels")
-    @patch("prism.tunnel.start_tunnels")
+    @patch("krayne.tunnel.stop_tunnels")
+    @patch("krayne.tunnel.start_tunnels")
     def test_cleanup_order_tunnels_before_cluster(self, mock_start, mock_stop, mock_client):
         mock_start.return_value = []
         call_order = []
@@ -288,7 +288,7 @@ class TestManagedCluster:
 
 class TestManagedClusterResult:
     def test_cluster_and_tunnel_accessed_separately(self):
-        from prism.tunnel import TunnelInfo
+        from krayne.tunnel import TunnelInfo
 
         cluster = ClusterInfo(
             name="c", namespace="ns", status="ready", head_ip="10.0.0.1",
@@ -327,7 +327,7 @@ class TestKubeconfigPassthrough:
 
     @pytest.fixture(autouse=True)
     def _patch_client(self):
-        with patch("prism.api.clusters.DefaultKubeClient") as mock_cls:
+        with patch("krayne.api.clusters.DefaultKubeClient") as mock_cls:
             mock_instance = MagicMock()
             mock_instance.list_ray_clusters.return_value = [_SAMPLE_OBJ]
             mock_instance.get_ray_cluster.return_value = _SAMPLE_OBJ
@@ -339,10 +339,10 @@ class TestKubeconfigPassthrough:
 
     @pytest.fixture(autouse=True)
     def _patch_settings(self):
-        with patch("prism.api.clusters.load_prism_settings") as mock_settings:
-            from prism.config.settings import PrismSettings
+        with patch("krayne.api.clusters.load_krayne_settings") as mock_settings:
+            from krayne.config.settings import KrayneSettings
 
-            mock_settings.return_value = PrismSettings()
+            mock_settings.return_value = KrayneSettings()
             yield
 
     def test_explicit_kubeconfig(self):
@@ -352,10 +352,10 @@ class TestKubeconfigPassthrough:
         )
 
     def test_no_kubeconfig_uses_settings(self):
-        from prism.config.settings import PrismSettings
+        from krayne.config.settings import KrayneSettings
 
-        with patch("prism.api.clusters.load_prism_settings") as mock_settings:
-            mock_settings.return_value = PrismSettings(kubeconfig="/from/settings")
+        with patch("krayne.api.clusters.load_krayne_settings") as mock_settings:
+            mock_settings.return_value = KrayneSettings(kubeconfig="/from/settings")
             list_clusters("default")
             self.mock_cls.assert_called_with(
                 kubeconfig="/from/settings", context=None
@@ -474,10 +474,10 @@ class TestPodLevelStatus:
 
 
 class TestOpenTunnel:
-    @patch("prism.tunnel.stop_tunnels")
-    @patch("prism.tunnel.start_tunnels")
+    @patch("krayne.tunnel.stop_tunnels")
+    @patch("krayne.tunnel.start_tunnels")
     def test_opens_and_closes_tunnels(self, mock_start, mock_stop, mock_client):
-        from prism.tunnel import TunnelInfo
+        from krayne.tunnel import TunnelInfo
 
         mock_start.return_value = [
             TunnelInfo(service="dashboard", remote_port=8265, local_port=12345, local_url="http://localhost:12345"),
@@ -491,8 +491,8 @@ class TestOpenTunnel:
         mock_start.assert_called_once_with("test", "default", ["dashboard", "client", "notebook", "ssh"], kubeconfig=None)
         mock_stop.assert_called_once_with("test", "default")
 
-    @patch("prism.tunnel.stop_tunnels")
-    @patch("prism.tunnel.start_tunnels")
+    @patch("krayne.tunnel.stop_tunnels")
+    @patch("krayne.tunnel.start_tunnels")
     def test_closes_on_exception(self, mock_start, mock_stop, mock_client):
         mock_start.return_value = []
         with pytest.raises(RuntimeError, match="boom"):
@@ -503,7 +503,7 @@ class TestOpenTunnel:
 
 class TestTunnelSession:
     def test_url_properties(self):
-        from prism.tunnel import TunnelInfo
+        from krayne.tunnel import TunnelInfo
 
         tunnels = [
             TunnelInfo(service="dashboard", remote_port=8265, local_port=11111, local_url="http://localhost:11111"),
@@ -520,7 +520,7 @@ class TestTunnelSession:
         assert session.ssh_url == "ssh://localhost:55555"
 
     def test_missing_service_returns_none(self):
-        from prism.tunnel import TunnelInfo
+        from krayne.tunnel import TunnelInfo
 
         tunnels = [
             TunnelInfo(service="dashboard", remote_port=8265, local_port=11111, local_url="http://localhost:11111"),

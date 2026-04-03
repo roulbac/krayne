@@ -6,13 +6,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from prism.errors import (
+from krayne.errors import (
     DockerNotFoundError,
     SandboxAlreadyExistsError,
     SandboxError,
     SandboxNotFoundError,
 )
-from prism.sandbox.manager import (
+from krayne.sandbox.manager import (
     SANDBOX_CONTAINER_NAME,
     SETUP_STEPS,
     STEP_DOCKER,
@@ -27,8 +27,8 @@ from prism.sandbox.manager import (
 @pytest.fixture(autouse=True)
 def _isolate_settings(tmp_path, monkeypatch):
     """Redirect all settings and kubeconfig paths to tmp."""
-    import prism.config.settings as settings_mod
-    import prism.sandbox.manager as mgr_mod
+    import krayne.config.settings as settings_mod
+    import krayne.sandbox.manager as mgr_mod
 
     monkeypatch.setattr(settings_mod, "PRISM_DIR", tmp_path)
     monkeypatch.setattr(settings_mod, "PRISM_CONFIG_FILE", tmp_path / "config.yaml")
@@ -52,11 +52,11 @@ class TestSetupSandbox:
 
         return side_effect
 
-    @patch("prism.sandbox.manager.subprocess.run")
-    @patch("prism.sandbox.manager._container_exists", return_value=False)
-    @patch("prism.sandbox.manager._wait_for_k3s")
-    @patch("prism.sandbox.manager._wait_for_crds")
-    @patch("prism.sandbox.manager._wait_for_deployment")
+    @patch("krayne.sandbox.manager.subprocess.run")
+    @patch("krayne.sandbox.manager._container_exists", return_value=False)
+    @patch("krayne.sandbox.manager._wait_for_k3s")
+    @patch("krayne.sandbox.manager._wait_for_crds")
+    @patch("krayne.sandbox.manager._wait_for_deployment")
     def test_setup_success(
         self, mock_deploy, mock_crds, mock_k3s, mock_exists, mock_run, tmp_path
     ):
@@ -66,11 +66,11 @@ class TestSetupSandbox:
         assert path.endswith("sandbox-kubeconfig")
         assert Path(path).exists()
 
-    @patch("prism.sandbox.manager.subprocess.run")
-    @patch("prism.sandbox.manager._container_exists", return_value=False)
-    @patch("prism.sandbox.manager._wait_for_k3s")
-    @patch("prism.sandbox.manager._wait_for_crds")
-    @patch("prism.sandbox.manager._wait_for_deployment")
+    @patch("krayne.sandbox.manager.subprocess.run")
+    @patch("krayne.sandbox.manager._container_exists", return_value=False)
+    @patch("krayne.sandbox.manager._wait_for_k3s")
+    @patch("krayne.sandbox.manager._wait_for_crds")
+    @patch("krayne.sandbox.manager._wait_for_deployment")
     def test_setup_progress_callback(
         self, mock_deploy, mock_crds, mock_k3s, mock_exists, mock_run, tmp_path
     ):
@@ -93,14 +93,14 @@ class TestSetupSandbox:
         assert docker_calls[0] == "in_progress"
         assert docker_calls[-1] == "done"
 
-    @patch("prism.sandbox.manager._run")
+    @patch("krayne.sandbox.manager._run")
     def test_docker_not_found(self, mock_run):
         mock_run.side_effect = SandboxError("Command not found: docker")
         with pytest.raises(DockerNotFoundError):
             setup_sandbox()
 
-    @patch("prism.sandbox.manager._run")
-    @patch("prism.sandbox.manager._container_exists", return_value=True)
+    @patch("krayne.sandbox.manager._run")
+    @patch("krayne.sandbox.manager._container_exists", return_value=True)
     def test_already_exists(self, mock_exists, mock_run):
         # _run for docker info should succeed with enough resources
         mock_run.return_value = MagicMock(returncode=0, stdout="8 8589934592")
@@ -109,28 +109,28 @@ class TestSetupSandbox:
 
 
 class TestTeardownSandbox:
-    @patch("prism.sandbox.manager._run")
-    @patch("prism.sandbox.manager._container_exists", return_value=True)
+    @patch("krayne.sandbox.manager._run")
+    @patch("krayne.sandbox.manager._container_exists", return_value=True)
     def test_teardown_success(self, mock_exists, mock_run, tmp_path):
         # Create a sandbox kubeconfig to verify cleanup
-        import prism.sandbox.manager as mgr_mod
+        import krayne.sandbox.manager as mgr_mod
         mgr_mod.SANDBOX_KUBECONFIG.write_text("kubeconfig")
 
         teardown_sandbox()
         mock_run.assert_called_once()
         assert not mgr_mod.SANDBOX_KUBECONFIG.exists()
 
-    @patch("prism.sandbox.manager._container_exists", return_value=False)
+    @patch("krayne.sandbox.manager._container_exists", return_value=False)
     def test_teardown_not_found(self, mock_exists):
         with pytest.raises(SandboxNotFoundError):
             teardown_sandbox()
 
 
 class TestSandboxStatus:
-    @patch("prism.sandbox.manager.subprocess.run")
+    @patch("krayne.sandbox.manager.subprocess.run")
     def test_status_running(self, mock_run, tmp_path):
         import json
-        import prism.sandbox.manager as mgr_mod
+        import krayne.sandbox.manager as mgr_mod
 
         mgr_mod.SANDBOX_KUBECONFIG.write_text("kubeconfig")
 
@@ -149,7 +149,7 @@ class TestSandboxStatus:
         assert status.container_id == "abc123def456"
         assert status.k3s_version == "rancher/k3s:v1.35.2-k3s1"
 
-    @patch("prism.sandbox.manager.subprocess.run")
+    @patch("krayne.sandbox.manager.subprocess.run")
     def test_status_not_running(self, mock_run):
         mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="")
         status = sandbox_status()

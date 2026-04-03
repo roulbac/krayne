@@ -1,4 +1,4 @@
-from prism.output.formatters import (
+from krayne.output.formatters import (
     build_sandbox_progress_table,
     format_cluster_created,
     format_cluster_details,

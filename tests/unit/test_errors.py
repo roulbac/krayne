@@ -1,14 +1,14 @@
-from prism.errors import (
+from krayne.errors import (
     ClusterAlreadyExistsError,
     ClusterNotFoundError,
     ClusterTimeoutError,
     KubeConnectionError,
     NamespaceNotFoundError,
-    PrismError,
+    KrayneError,
 )
 
 
-def test_all_exceptions_inherit_from_prism_error():
+def test_all_exceptions_inherit_from_krayne_error():
     for exc_cls in (
         ClusterNotFoundError,
         ClusterAlreadyExistsError,
@@ -16,7 +16,7 @@ def test_all_exceptions_inherit_from_prism_error():
         KubeConnectionError,
         NamespaceNotFoundError,
     ):
-        assert issubclass(exc_cls, PrismError)
+        assert issubclass(exc_cls, KrayneError)
 
 
 def test_cluster_not_found_message():

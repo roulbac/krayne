@@ -6,21 +6,21 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from prism.config.settings import (
+from krayne.config.settings import (
     PRISM_DIR,
-    clear_prism_settings,
-    load_prism_settings,
-    save_prism_settings,
-    PrismSettings,
+    clear_krayne_settings,
+    load_krayne_settings,
+    save_krayne_settings,
+    KrayneSettings,
 )
-from prism.errors import (
+from krayne.errors import (
     DockerNotFoundError,
     SandboxAlreadyExistsError,
     SandboxError,
     SandboxNotFoundError,
 )
 
-SANDBOX_CONTAINER_NAME = "prism-sandbox"
+SANDBOX_CONTAINER_NAME = "krayne-sandbox"
 K3S_IMAGE = "rancher/k3s:v1.35.2-k3s1"
 HELM_IMAGE = "alpine/helm"
 KUBERAY_HELM_REPO = "https://ray-project.github.io/kuberay-helm"
@@ -251,7 +251,7 @@ def setup_sandbox(on_progress: ProgressCallback = None) -> str:
         _notify(on_progress, STEP_OPERATOR, "done")
 
         # 8. Save as active config
-        save_prism_settings(PrismSettings(kubeconfig=kubeconfig_path))
+        save_krayne_settings(KrayneSettings(kubeconfig=kubeconfig_path))
 
         return kubeconfig_path
 
@@ -275,10 +275,10 @@ def teardown_sandbox() -> None:
     if SANDBOX_KUBECONFIG.exists():
         SANDBOX_KUBECONFIG.unlink()
 
-    # Clear prism settings if they point to the sandbox
-    settings = load_prism_settings()
+    # Clear krayne settings if they point to the sandbox
+    settings = load_krayne_settings()
     if settings.kubeconfig == str(SANDBOX_KUBECONFIG):
-        clear_prism_settings()
+        clear_krayne_settings()
 
 
 def sandbox_status() -> SandboxStatus:

@@ -1,9 +1,9 @@
 # Configuration Models
 
-All cluster configuration is defined using [Pydantic v2](https://docs.pydantic.dev/) models. Models are importable from `prism.config`.
+All cluster configuration is defined using [Pydantic v2](https://docs.pydantic.dev/) models. Models are importable from `krayne.config`.
 
 ```python
-from prism.config import (
+from krayne.config import (
     ClusterConfig,
     HeadNodeConfig,
     WorkerGroupConfig,
@@ -104,7 +104,7 @@ def load_config_from_yaml(
 **Example:**
 
 ```python
-from prism.config import load_config_from_yaml
+from krayne.config import load_config_from_yaml
 
 # Basic load
 config = load_config_from_yaml("cluster.yaml")
@@ -120,34 +120,34 @@ config = load_config_from_yaml(
 
 ## Settings
 
-User-level settings are persisted in `~/.prism/config.yaml` and managed via these functions:
+User-level settings are persisted in `~/.krayne/config.yaml` and managed via these functions:
 
 ```python
-from prism.config import (
-    PrismSettings,
-    load_prism_settings,
-    save_prism_settings,
-    clear_prism_settings,
+from krayne.config import (
+    KrayneSettings,
+    load_krayne_settings,
+    save_krayne_settings,
+    clear_krayne_settings,
 )
 ```
 
-### `PrismSettings`
+### `KrayneSettings`
 
 ```python
 @dataclass
-class PrismSettings:
+class KrayneSettings:
     kubeconfig: str | None = None
     kube_context: str | None = None
 ```
 
-### `load_prism_settings() -> PrismSettings`
+### `load_krayne_settings() -> KrayneSettings`
 
-Load settings from `~/.prism/config.yaml`, returning defaults if absent.
+Load settings from `~/.krayne/config.yaml`, returning defaults if absent.
 
-### `save_prism_settings(settings: PrismSettings) -> None`
+### `save_krayne_settings(settings: KrayneSettings) -> None`
 
-Write settings to `~/.prism/config.yaml`, creating the directory if needed.
+Write settings to `~/.krayne/config.yaml`, creating the directory if needed.
 
-### `clear_prism_settings() -> None`
+### `clear_krayne_settings() -> None`
 
 Remove the settings file if it exists.

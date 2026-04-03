@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from prism.config import ClusterConfig, HeadNodeConfig, WorkerGroupConfig
-from prism.config.models import ServicesConfig
-from prism.kube.manifest import RAY_IMAGE, build_manifest
+from krayne.config import ClusterConfig, HeadNodeConfig, WorkerGroupConfig
+from krayne.config.models import ServicesConfig
+from krayne.kube.manifest import RAY_IMAGE, build_manifest
 
 
 class TestBuildManifest:
@@ -14,7 +14,7 @@ class TestBuildManifest:
         assert m["kind"] == "RayCluster"
         assert m["metadata"]["name"] == "basic"
         assert m["metadata"]["namespace"] == "default"
-        assert m["metadata"]["labels"]["app.kubernetes.io/managed-by"] == "prism"
+        assert m["metadata"]["labels"]["app.kubernetes.io/managed-by"] == "krayne"
 
     def test_head_resources(self):
         cfg = ClusterConfig(name="h", head=HeadNodeConfig(cpus=8, memory="32Gi"))

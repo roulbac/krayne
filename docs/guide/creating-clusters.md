@@ -1,6 +1,6 @@
 # Creating Clusters
 
-This guide covers all the ways to create Ray clusters with Prism — from a single command to complex multi-worker GPU configurations.
+This guide covers all the ways to create Ray clusters with Krayne — from a single command to complex multi-worker GPU configurations.
 
 ---
 
@@ -9,13 +9,13 @@ This guide covers all the ways to create Ray clusters with Prism — from a sing
 The simplest way to create a cluster:
 
 ```bash
-prism create my-cluster
+krayne create my-cluster
 ```
 
 This returns immediately after submitting the cluster to Kubernetes. To wait until it's fully ready:
 
 ```bash
-prism create my-cluster --wait
+krayne create my-cluster --wait
 ```
 
 ```title="Terminal output"
@@ -41,14 +41,14 @@ The default cluster includes:
 Add GPUs to workers with CLI flags:
 
 ```bash
-prism create gpu-experiment \
+krayne create gpu-experiment \
     --gpus-per-worker 1 \
     --worker-gpu-type a100 \
     --workers 2 \
     --wait
 ```
 
-This creates 2 workers, each with 1 NVIDIA A100 GPU. Prism sets the appropriate Kubernetes node selectors and resource limits automatically.
+This creates 2 workers, each with 1 NVIDIA A100 GPU. Krayne sets the appropriate Kubernetes node selectors and resource limits automatically.
 
 !!! note "GPU types"
     Common GPU types: `t4`, `a100`, `v100`, `l4`, `h100`. The value maps to the `cloud.google.com/gke-accelerator` node selector.
@@ -60,7 +60,7 @@ This creates 2 workers, each with 1 NVIDIA A100 GPU. Prism sets the appropriate 
 Override head and worker resources:
 
 ```bash
-prism create my-cluster \
+krayne create my-cluster \
     --cpus-in-head 8 \
     --memory-in-head 32Gi \
     --workers 4 \
@@ -95,7 +95,7 @@ services:
 ```
 
 ```bash
-prism create my-experiment --file cluster.yaml --wait
+krayne create my-experiment --file cluster.yaml --wait
 ```
 
 !!! tip "CLI flags override YAML"
@@ -103,7 +103,7 @@ prism create my-experiment --file cluster.yaml --wait
 
     ```bash
     # YAML sets workers to 4, but this creates 8
-    prism create my-experiment --file cluster.yaml --workers 8
+    krayne create my-experiment --file cluster.yaml --workers 8
     ```
 
 ---
@@ -113,8 +113,8 @@ prism create my-experiment --file cluster.yaml --wait
 The SDK provides the same functionality for use in scripts, notebooks, and pipelines:
 
 ```python
-from prism.api import create_cluster
-from prism.config import ClusterConfig, WorkerGroupConfig
+from krayne.api import create_cluster
+from krayne.config import ClusterConfig, WorkerGroupConfig
 
 # Simple cluster
 config = ClusterConfig(name="sdk-cluster")
@@ -144,8 +144,8 @@ Use `managed_cluster` as a context manager to create a cluster that is automatic
 
 ```python
 import ray
-from prism.api import managed_cluster
-from prism.config import ClusterConfig, WorkerGroupConfig
+from krayne.api import managed_cluster
+from krayne.config import ClusterConfig, WorkerGroupConfig
 
 config = ClusterConfig(
     name="experiment",
@@ -177,8 +177,8 @@ This is useful for scripts, CI pipelines, and notebooks where you want guarantee
 ### Loading from YAML
 
 ```python
-from prism.api import create_cluster
-from prism.config import load_config_from_yaml
+from krayne.api import create_cluster
+from krayne.config import load_config_from_yaml
 
 # Basic load
 config = load_config_from_yaml("cluster.yaml")
@@ -200,7 +200,7 @@ By default, clusters are created in the `default` namespace:
 
 ```bash
 # Specify a namespace
-prism create my-cluster -n ml-team --wait
+krayne create my-cluster -n ml-team --wait
 ```
 
 ```python
@@ -208,7 +208,7 @@ config = ClusterConfig(name="my-cluster", namespace="ml-team")
 ```
 
 !!! warning
-    The namespace must already exist in Kubernetes. Prism raises `NamespaceNotFoundError` if it doesn't.
+    The namespace must already exist in Kubernetes. Krayne raises `NamespaceNotFoundError` if it doesn't.
 
 ---
 
@@ -218,14 +218,14 @@ The `--wait` flag blocks until the cluster is ready. Control the timeout with `-
 
 ```bash
 # Wait up to 10 minutes
-prism create my-cluster --wait --timeout 600
+krayne create my-cluster --wait --timeout 600
 ```
 
 ```python
 info = create_cluster(config, wait=True, timeout=600)
 ```
 
-If the cluster isn't ready within the timeout, Prism raises `ClusterTimeoutError`.
+If the cluster isn't ready within the timeout, Krayne raises `ClusterTimeoutError`.
 
 ---
 
@@ -233,4 +233,4 @@ If the cluster isn't ready within the timeout, Prism raises `ClusterTimeoutError
 
 - [Managing Clusters](managing-clusters.md) — list, describe, scale, and delete clusters
 - [Configuration](configuration.md) — full config model, defaults, and YAML schema
-- [CLI Reference](../reference/cli.md) — complete `prism create` flag documentation
+- [CLI Reference](../reference/cli.md) — complete `krayne create` flag documentation
