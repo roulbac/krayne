@@ -226,7 +226,7 @@ def delete_cluster(
 
 ### `managed_cluster`
 
-Context manager that creates a cluster, waits for readiness, and deletes it on exit.
+Context manager that creates a cluster, waits for readiness, optionally opens tunnels, and cleans up everything on exit.
 
 ```python
 def managed_cluster(
@@ -235,7 +235,8 @@ def managed_cluster(
     client: KubeClient | None = None,
     kubeconfig: str | None = None,
     timeout: int = 300,
-) -> ContextManager[ClusterInfo]
+    tunnel: bool = True,
+) -> ContextManager[ManagedClusterResult]
 ```
 
 **Parameters:**
@@ -246,8 +247,9 @@ def managed_cluster(
 | `client` | `KubeClient \| None` | `None` | Kubernetes client |
 | `kubeconfig` | `str \| None` | `None` | Path to kubeconfig file |
 | `timeout` | `int` | `300` | Timeout in seconds for cluster readiness |
+| `tunnel` | `bool` | `True` | Open port-forward tunnels to cluster services |
 
-**Yields:** [`ClusterInfo`](#clusterinfo) once the cluster is ready
+**Yields:** [`ManagedClusterResult`](#managedclusterresult) once the cluster is ready
 
 **Raises:**
 
@@ -256,7 +258,7 @@ def managed_cluster(
 - `ClusterTimeoutError` — cluster not ready within timeout
 - `KubeConnectionError` — cannot reach the Kubernetes API
 
-The cluster is always deleted on exit, even if an exception occurs inside the `with` block.
+The cluster is always deleted on exit, even if an exception occurs inside the `with` block. When `tunnel=True`, tunnels are closed before the cluster is deleted.
 
 **Example:**
 
@@ -270,11 +272,17 @@ config = ClusterConfig(
     worker_groups=[WorkerGroupConfig(replicas=2, gpus=1, gpu_type="a100")],
 )
 
-with managed_cluster(config, timeout=600) as cluster:
-    ray.init(cluster.client_url)
+# Tunnels are opened by default — URLs resolve to localhost
+with managed_cluster(config, timeout=600) as result:
+    ray.init(result.client_url)        # ray://localhost:...
+    print(result.dashboard_url)        # http://localhost:...
     # ... run distributed work ...
     ray.shutdown()
-# Cluster is automatically deleted here
+# Tunnels closed, then cluster deleted
+
+# Use tunnel=False for in-cluster access (e.g. running inside the same K8s cluster)
+with managed_cluster(config, tunnel=False) as result:
+    ray.init(result.client_url)        # ray://10.0.0.1:10001
 ```
 
 ---
@@ -405,6 +413,33 @@ class WorkerGroupInfo:
     gpus: int            # GPUs per worker
     gpu_type: str | None # GPU accelerator type
 ```
+
+### `ManagedClusterResult`
+
+Aggregated result from `managed_cluster`, combining cluster info with an optional tunnel session.
+
+```python
+@dataclass(frozen=True)
+class ManagedClusterResult:
+    cluster: ClusterInfo              # Cluster information
+    tunnel_session: TunnelSession | None  # Tunnel session (None if tunnel=False)
+```
+
+URL properties (`dashboard_url`, `client_url`, `notebook_url`, `code_server_url`, `ssh_url`) delegate to `tunnel_session` when available, falling back to `cluster` URLs. Passthrough properties `name`, `namespace`, and `status` delegate to `cluster`.
+
+### `TunnelSession`
+
+Active tunnel session with local URLs for all forwarded services.
+
+```python
+@dataclass(frozen=True)
+class TunnelSession:
+    cluster_name: str          # Cluster name
+    namespace: str             # Kubernetes namespace
+    tunnels: list[TunnelInfo]  # List of active tunnels
+```
+
+Provides URL properties: `dashboard_url`, `client_url`, `notebook_url`, `code_server_url`, `ssh_url` — each returns the local URL for the corresponding service, or `None` if not tunneled.
 
 ---
 

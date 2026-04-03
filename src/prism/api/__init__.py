@@ -10,3 +10,4 @@ from prism.api.clusters import (
     scale_cluster,
     wait_until_ready,
 )
+from prism.api.types import ManagedClusterResult

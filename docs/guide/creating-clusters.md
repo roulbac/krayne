@@ -140,7 +140,7 @@ info = create_cluster(config, wait=True, timeout=600)
 
 ### Managed cluster (automatic cleanup)
 
-Use `managed_cluster` as a context manager to create a cluster that is automatically deleted when you're done:
+Use `managed_cluster` as a context manager to create a cluster that is automatically deleted when you're done. By default, port-forward tunnels are opened so all service URLs resolve to `localhost`:
 
 ```python
 import ray
@@ -152,14 +152,23 @@ config = ClusterConfig(
     worker_groups=[WorkerGroupConfig(replicas=2, gpus=1, gpu_type="a100")],
 )
 
-with managed_cluster(config, timeout=600) as cluster:
-    ray.init(cluster.client_url)
+with managed_cluster(config, timeout=600) as result:
+    ray.init(result.client_url)        # ray://localhost:...
+    print(result.dashboard_url)        # http://localhost:...
     # ... run distributed work ...
     ray.shutdown()
-# Cluster is automatically deleted here, even if an exception occurs
+# Tunnels closed, then cluster deleted — even if an exception occurs
 ```
 
 This is useful for scripts, CI pipelines, and notebooks where you want guaranteed cleanup.
+
+!!! tip "Disabling tunnels"
+    If you're running inside the same Kubernetes cluster (e.g. in a pod or notebook on the cluster), you can skip tunnels and use in-cluster IPs directly:
+
+    ```python
+    with managed_cluster(config, tunnel=False) as result:
+        ray.init(result.client_url)    # ray://10.0.0.1:10001
+    ```
 
 ### Loading from YAML
 
