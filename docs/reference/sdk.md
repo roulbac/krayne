@@ -427,6 +427,19 @@ class ManagedClusterResult:
 
 URL properties (`dashboard_url`, `client_url`, `notebook_url`, `code_server_url`, `ssh_url`) delegate to `tunnel_session` when available, falling back to `cluster` URLs. Passthrough properties `name`, `namespace`, and `status` delegate to `cluster`.
 
+**Accessing URLs:**
+
+```python
+with managed_cluster(config) as result:
+    # Top-level properties return tunnel (localhost) URLs when tunnel=True
+    result.client_url              # ray://localhost:12346
+    result.dashboard_url           # http://localhost:12345
+
+    # Access in-cluster IPs directly via result.cluster
+    result.cluster.client_url      # ray://10.0.0.1:10001
+    result.cluster.dashboard_url   # http://10.0.0.1:8265
+```
+
 ### `TunnelSession`
 
 Active tunnel session with local URLs for all forwarded services.

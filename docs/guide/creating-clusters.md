@@ -153,8 +153,12 @@ config = ClusterConfig(
 )
 
 with managed_cluster(config, timeout=600) as result:
-    ray.init(result.client_url)        # ray://localhost:...
-    print(result.dashboard_url)        # http://localhost:...
+    ray.init(result.client_url)        # ray://localhost:... (tunneled)
+    print(result.dashboard_url)        # http://localhost:... (tunneled)
+
+    # In-cluster IPs are always available via result.cluster
+    print(result.cluster.client_url)   # ray://10.0.0.1:10001
+
     # ... run distributed work ...
     ray.shutdown()
 # Tunnels closed, then cluster deleted — even if an exception occurs

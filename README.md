@@ -53,9 +53,11 @@ from prism.config import ClusterConfig
 config = ClusterConfig(name="my-cluster")
 
 with managed_cluster(config) as result:
-    print(result.dashboard_url)   # http://localhost:...
-    print(result.client_url)      # ray://localhost:...
-    print(result.notebook_url)    # http://localhost:...
+    print(result.dashboard_url)          # http://localhost:... (tunneled)
+    print(result.client_url)             # ray://localhost:...  (tunneled)
+
+    # In-cluster IPs available via result.cluster
+    print(result.cluster.dashboard_url)  # http://10.0.0.1:8265
 # Tunnels closed, then cluster deleted
 ```
 
