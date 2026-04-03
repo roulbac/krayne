@@ -5,6 +5,21 @@ description = "CLI and SDK for creating, managing, and scaling Ray clusters on K
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
+keywords = ["ray", "kubernetes", "kuberay", "ml", "distributed-computing", "cluster-management", "cli", "sdk"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Clustering",
+    "Topic :: System :: Systems Administration",
+    "Typing :: Typed",
+]
 dependencies = [
     "typer>=0.9,<1",
     "rich>=13,<14",
@@ -13,6 +28,13 @@ dependencies = [
     "pyyaml>=6,<7",
     "questionary>=2,<3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/roulbac/krayne"
+Documentation = "https://roulbac.github.io/krayne/"
+Repository = "https://github.com/roulbac/krayne"
+Issues = "https://github.com/roulbac/krayne/issues"
+Changelog = "https://github.com/roulbac/krayne/releases"
 
 [project.scripts]
 krayne = "krayne.cli.app:app"
