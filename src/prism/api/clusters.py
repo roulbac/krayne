@@ -9,6 +9,7 @@ from prism.api.types import (
     ClusterDetails,
     ClusterInfo,
     HeadNodeInfo,
+    ManagedClusterResult,
     TunnelSession,
     WorkerGroupInfo,
 )
@@ -165,22 +166,45 @@ def managed_cluster(
     client: KubeClient | None = None,
     kubeconfig: str | None = None,
     timeout: int = 300,
-) -> Generator[ClusterInfo, None, None]:
+    tunnel: bool = True,
+) -> Generator[ManagedClusterResult, None, None]:
     """Context manager that creates a Ray cluster, waits for readiness, and deletes it on exit.
+
+    When *tunnel* is ``True`` (the default), port-forward tunnels are
+    opened to all detected services after the cluster becomes ready.
+    Access cluster URLs via ``result.cluster`` and tunnel URLs via
+    ``result.tunnel``.
 
     Usage::
 
-        with managed_cluster(config) as info:
-            # info is a ClusterInfo with a ready cluster
-            ray.init(info.client_url)
+        with managed_cluster(config) as managed:
+            ray.init(managed.tunnel.client_url)   # ray://localhost:...
+            print(managed.cluster.client_url)      # ray://10.0.0.1:10001
             ...
-        # cluster is deleted here
+        # tunnels closed, then cluster deleted
     """
+    from prism.tunnel import start_tunnels, stop_tunnels
+
     kube = _resolve_client(client, kubeconfig)
     info = create_cluster(config, client=kube, wait=True, timeout=timeout)
+    session: TunnelSession | None = None
     try:
-        yield info
+        if tunnel:
+            services = get_cluster_services(
+                config.name, config.namespace, client=kube
+            )
+            tunnel_infos = start_tunnels(
+                config.name, config.namespace, services, kubeconfig=kubeconfig
+            )
+            session = TunnelSession(
+                cluster_name=config.name,
+                namespace=config.namespace,
+                tunnels=tunnel_infos,
+            )
+        yield ManagedClusterResult(cluster=info, tunnel=session)
     finally:
+        if session is not None:
+            stop_tunnels(config.name, config.namespace)
         delete_cluster(config.name, config.namespace, client=kube)
 
 

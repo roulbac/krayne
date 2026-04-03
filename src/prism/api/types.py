@@ -90,3 +90,11 @@ class TunnelSession:
     @property
     def ssh_url(self) -> str | None:
         return self._url_for("ssh")
+
+
+@dataclass(frozen=True)
+class ManagedClusterResult:
+    """Aggregated result from a managed_cluster context manager."""
+
+    cluster: ClusterInfo
+    tunnel: TunnelSession | None

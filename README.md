@@ -30,8 +30,8 @@ config = ClusterConfig(
     worker_groups=[WorkerGroupConfig(replicas=2)],
 )
 
-with managed_cluster(config) as cluster:
-    ray.init(cluster.client_url)
+with managed_cluster(config) as managed:
+    ray.init(managed.tunnel.client_url)     # ray://localhost:... (tunneled)
 
     @ray.remote
     def hello(x):
@@ -41,24 +41,25 @@ with managed_cluster(config) as cluster:
     print(ray.get(futures))
 
     ray.shutdown()
-# Cluster is automatically deleted when the context exits
+# Tunnels closed, then cluster deleted
 ```
 
-Need local access to the dashboard, notebook, or other services? Use `open_tunnel`:
+Tunnels are opened by default — access the dashboard, notebook, and other services via `localhost`:
 
 ```python
-from prism.api import managed_cluster, open_tunnel
+from prism.api import managed_cluster
 from prism.config import ClusterConfig
 
 config = ClusterConfig(name="my-cluster")
 
-with managed_cluster(config) as cluster:
-    with open_tunnel(cluster.name, cluster.namespace) as session:
-        print(session.dashboard_url)   # http://localhost:...
-        print(session.client_url)      # ray://localhost:...
-        print(session.notebook_url)    # http://localhost:...
-    # Tunnels are closed here
-# Cluster is deleted here
+with managed_cluster(config) as managed:
+    # Tunnel (localhost) URLs via managed.tunnel
+    print(managed.tunnel.dashboard_url)  # http://localhost:...
+    print(managed.tunnel.client_url)     # ray://localhost:...
+
+    # In-cluster IPs via managed.cluster
+    print(managed.cluster.dashboard_url) # http://10.0.0.1:8265
+# Tunnels closed, then cluster deleted
 ```
 
 ## Features
