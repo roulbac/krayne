@@ -44,6 +44,23 @@ with managed_cluster(config) as cluster:
 # Cluster is automatically deleted when the context exits
 ```
 
+Need local access to the dashboard, notebook, or other services? Use `open_tunnel`:
+
+```python
+from prism.api import managed_cluster, open_tunnel
+from prism.config import ClusterConfig
+
+config = ClusterConfig(name="my-cluster")
+
+with managed_cluster(config) as cluster:
+    with open_tunnel(cluster.name, cluster.namespace) as session:
+        print(session.dashboard_url)   # http://localhost:...
+        print(session.client_url)      # ray://localhost:...
+        print(session.notebook_url)    # http://localhost:...
+    # Tunnels are closed here
+# Cluster is deleted here
+```
+
 ## Features
 
 - **Zero-config defaults** — every command works with no flags. Sensible defaults get you a working cluster instantly.
