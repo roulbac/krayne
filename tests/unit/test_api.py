@@ -209,9 +209,9 @@ class TestManagedCluster:
         with managed_cluster(cfg, client=mock_client, tunnel=False) as result:
             assert isinstance(result, ManagedClusterResult)
             assert isinstance(result.cluster, ClusterInfo)
-            assert result.name == "test"
-            assert result.status == "ready"
-            assert result.tunnel_session is None
+            assert result.cluster.name == "test"
+            assert result.cluster.status == "ready"
+            assert result.tunnel is None
         mock_client.create_ray_cluster.assert_called_once()
         mock_client.delete_ray_cluster.assert_called_once_with("test", "default")
 
@@ -219,7 +219,7 @@ class TestManagedCluster:
         cfg = ClusterConfig(name="test")
         with pytest.raises(RuntimeError, match="boom"):
             with managed_cluster(cfg, client=mock_client, tunnel=False) as result:
-                assert result.name == "test"
+                assert result.cluster.name == "test"
                 raise RuntimeError("boom")
         mock_client.delete_ray_cluster.assert_called_once_with("test", "default")
 
@@ -244,10 +244,10 @@ class TestManagedCluster:
         cfg = ClusterConfig(name="test")
         with managed_cluster(cfg, client=mock_client) as result:
             assert isinstance(result, ManagedClusterResult)
-            assert result.tunnel_session is not None
-            assert len(result.tunnel_session.tunnels) == 2
-            assert result.dashboard_url == "http://localhost:12345"
-            assert result.client_url == "ray://localhost:12346"
+            assert result.tunnel is not None
+            assert len(result.tunnel.tunnels) == 2
+            assert result.tunnel.dashboard_url == "http://localhost:12345"
+            assert result.tunnel.client_url == "ray://localhost:12346"
         mock_start.assert_called_once()
         mock_stop.assert_called_once_with("test", "default")
         mock_client.delete_ray_cluster.assert_called_once_with("test", "default")
@@ -257,7 +257,7 @@ class TestManagedCluster:
     def test_tunnel_false_skips_tunnels(self, mock_start, mock_stop, mock_client):
         cfg = ClusterConfig(name="test")
         with managed_cluster(cfg, client=mock_client, tunnel=False) as result:
-            assert result.tunnel_session is None
+            assert result.tunnel is None
         mock_start.assert_not_called()
         mock_stop.assert_not_called()
         mock_client.delete_ray_cluster.assert_called_once_with("test", "default")
@@ -287,7 +287,7 @@ class TestManagedCluster:
 
 
 class TestManagedClusterResult:
-    def test_urls_delegate_to_tunnel_when_present(self):
+    def test_cluster_and_tunnel_accessed_separately(self):
         from prism.tunnel import TunnelInfo
 
         cluster = ClusterInfo(
@@ -301,32 +301,25 @@ class TestManagedClusterResult:
             TunnelInfo(service="client", remote_port=10001, local_port=22222, local_url="ray://localhost:22222"),
         ]
         session = TunnelSession(cluster_name="c", namespace="ns", tunnels=tunnels)
-        result = ManagedClusterResult(cluster=cluster, tunnel_session=session)
-        assert result.dashboard_url == "http://localhost:11111"
-        assert result.client_url == "ray://localhost:22222"
+        result = ManagedClusterResult(cluster=cluster, tunnel=session)
+        # Tunnel URLs via result.tunnel
+        assert result.tunnel.dashboard_url == "http://localhost:11111"
+        assert result.tunnel.client_url == "ray://localhost:22222"
+        # Cluster URLs via result.cluster
+        assert result.cluster.dashboard_url == "http://10.0.0.1:8265"
+        assert result.cluster.client_url == "ray://10.0.0.1:10001"
 
-    def test_urls_fallback_to_cluster_when_no_tunnel(self):
+    def test_tunnel_none_when_disabled(self):
         cluster = ClusterInfo(
             name="c", namespace="ns", status="ready", head_ip="10.0.0.1",
             dashboard_url="http://10.0.0.1:8265", client_url="ray://10.0.0.1:10001",
             notebook_url=None, code_server_url=None, ssh_url=None,
             num_workers=1, created_at="now",
         )
-        result = ManagedClusterResult(cluster=cluster, tunnel_session=None)
-        assert result.dashboard_url == "http://10.0.0.1:8265"
-        assert result.client_url == "ray://10.0.0.1:10001"
-        assert result.notebook_url is None
-
-    def test_passthrough_properties(self):
-        cluster = ClusterInfo(
-            name="my-cluster", namespace="ml", status="ready", head_ip="10.0.0.1",
-            dashboard_url=None, client_url=None, notebook_url=None,
-            code_server_url=None, ssh_url=None, num_workers=2, created_at="now",
-        )
-        result = ManagedClusterResult(cluster=cluster, tunnel_session=None)
-        assert result.name == "my-cluster"
-        assert result.namespace == "ml"
-        assert result.status == "ready"
+        result = ManagedClusterResult(cluster=cluster, tunnel=None)
+        assert result.tunnel is None
+        assert result.cluster.dashboard_url == "http://10.0.0.1:8265"
+        assert result.cluster.client_url == "ray://10.0.0.1:10001"
 
 
 class TestKubeconfigPassthrough:

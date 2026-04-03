@@ -272,17 +272,19 @@ config = ClusterConfig(
     worker_groups=[WorkerGroupConfig(replicas=2, gpus=1, gpu_type="a100")],
 )
 
-# Tunnels are opened by default — URLs resolve to localhost
-with managed_cluster(config, timeout=600) as result:
-    ray.init(result.client_url)        # ray://localhost:...
-    print(result.dashboard_url)        # http://localhost:...
+# Tunnels are opened by default
+with managed_cluster(config, timeout=600) as managed:
+    ray.init(managed.tunnel.client_url)     # ray://localhost:...
+    print(managed.tunnel.dashboard_url)     # http://localhost:...
+    print(managed.cluster.client_url)       # ray://10.0.0.1:10001
     # ... run distributed work ...
     ray.shutdown()
 # Tunnels closed, then cluster deleted
 
 # Use tunnel=False for in-cluster access (e.g. running inside the same K8s cluster)
-with managed_cluster(config, tunnel=False) as result:
-    ray.init(result.client_url)        # ray://10.0.0.1:10001
+with managed_cluster(config, tunnel=False) as managed:
+    ray.init(managed.cluster.client_url)    # ray://10.0.0.1:10001
+    assert managed.tunnel is None
 ```
 
 ---
@@ -422,22 +424,20 @@ Aggregated result from `managed_cluster`, combining cluster info with an optiona
 @dataclass(frozen=True)
 class ManagedClusterResult:
     cluster: ClusterInfo              # Cluster information
-    tunnel_session: TunnelSession | None  # Tunnel session (None if tunnel=False)
+    tunnel: TunnelSession | None      # Tunnel session (None if tunnel=False)
 ```
 
-URL properties (`dashboard_url`, `client_url`, `notebook_url`, `code_server_url`, `ssh_url`) delegate to `tunnel_session` when available, falling back to `cluster` URLs. Passthrough properties `name`, `namespace`, and `status` delegate to `cluster`.
-
-**Accessing URLs:**
+Access cluster URLs via `result.cluster` and tunnel URLs via `result.tunnel`:
 
 ```python
-with managed_cluster(config) as result:
-    # Top-level properties return tunnel (localhost) URLs when tunnel=True
-    result.client_url              # ray://localhost:12346
-    result.dashboard_url           # http://localhost:12345
+with managed_cluster(config) as managed:
+    # Tunnel (localhost) URLs
+    managed.tunnel.client_url       # ray://localhost:12346
+    managed.tunnel.dashboard_url    # http://localhost:12345
 
-    # Access in-cluster IPs directly via result.cluster
-    result.cluster.client_url      # ray://10.0.0.1:10001
-    result.cluster.dashboard_url   # http://10.0.0.1:8265
+    # In-cluster IPs
+    managed.cluster.client_url      # ray://10.0.0.1:10001
+    managed.cluster.dashboard_url   # http://10.0.0.1:8265
 ```
 
 ### `TunnelSession`

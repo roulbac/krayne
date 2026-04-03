@@ -97,46 +97,4 @@ class ManagedClusterResult:
     """Aggregated result from a managed_cluster context manager."""
 
     cluster: ClusterInfo
-    tunnel_session: TunnelSession | None
-
-    @property
-    def name(self) -> str:
-        return self.cluster.name
-
-    @property
-    def namespace(self) -> str:
-        return self.cluster.namespace
-
-    @property
-    def status(self) -> str:
-        return self.cluster.status
-
-    @property
-    def dashboard_url(self) -> str | None:
-        if self.tunnel_session is not None:
-            return self.tunnel_session.dashboard_url
-        return self.cluster.dashboard_url
-
-    @property
-    def client_url(self) -> str | None:
-        if self.tunnel_session is not None:
-            return self.tunnel_session.client_url
-        return self.cluster.client_url
-
-    @property
-    def notebook_url(self) -> str | None:
-        if self.tunnel_session is not None:
-            return self.tunnel_session.notebook_url
-        return self.cluster.notebook_url
-
-    @property
-    def code_server_url(self) -> str | None:
-        if self.tunnel_session is not None:
-            return self.tunnel_session.code_server_url
-        return self.cluster.code_server_url
-
-    @property
-    def ssh_url(self) -> str | None:
-        if self.tunnel_session is not None:
-            return self.tunnel_session.ssh_url
-        return self.cluster.ssh_url
+    tunnel: TunnelSession | None

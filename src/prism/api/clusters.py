@@ -172,13 +172,14 @@ def managed_cluster(
 
     When *tunnel* is ``True`` (the default), port-forward tunnels are
     opened to all detected services after the cluster becomes ready.
-    The yielded :class:`ManagedClusterResult` provides URL properties
-    that resolve to local tunnel URLs when available.
+    Access cluster URLs via ``result.cluster`` and tunnel URLs via
+    ``result.tunnel``.
 
     Usage::
 
-        with managed_cluster(config) as result:
-            ray.init(result.client_url)   # uses local tunnel URL
+        with managed_cluster(config) as managed:
+            ray.init(managed.tunnel.client_url)   # ray://localhost:...
+            print(managed.cluster.client_url)      # ray://10.0.0.1:10001
             ...
         # tunnels closed, then cluster deleted
     """
@@ -186,23 +187,23 @@ def managed_cluster(
 
     kube = _resolve_client(client, kubeconfig)
     info = create_cluster(config, client=kube, wait=True, timeout=timeout)
-    tunnel_session: TunnelSession | None = None
+    session: TunnelSession | None = None
     try:
         if tunnel:
             services = get_cluster_services(
                 config.name, config.namespace, client=kube
             )
-            tunnels = start_tunnels(
+            tunnel_infos = start_tunnels(
                 config.name, config.namespace, services, kubeconfig=kubeconfig
             )
-            tunnel_session = TunnelSession(
+            session = TunnelSession(
                 cluster_name=config.name,
                 namespace=config.namespace,
-                tunnels=tunnels,
+                tunnels=tunnel_infos,
             )
-        yield ManagedClusterResult(cluster=info, tunnel_session=tunnel_session)
+        yield ManagedClusterResult(cluster=info, tunnel=session)
     finally:
-        if tunnel_session is not None:
+        if session is not None:
             stop_tunnels(config.name, config.namespace)
         delete_cluster(config.name, config.namespace, client=kube)
 

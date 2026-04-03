@@ -30,8 +30,8 @@ config = ClusterConfig(
     worker_groups=[WorkerGroupConfig(replicas=2)],
 )
 
-with managed_cluster(config) as result:
-    ray.init(result.client_url)        # ray://localhost:... (tunneled)
+with managed_cluster(config) as managed:
+    ray.init(managed.tunnel.client_url)     # ray://localhost:... (tunneled)
 
     @ray.remote
     def hello(x):
@@ -52,12 +52,13 @@ from prism.config import ClusterConfig
 
 config = ClusterConfig(name="my-cluster")
 
-with managed_cluster(config) as result:
-    print(result.dashboard_url)          # http://localhost:... (tunneled)
-    print(result.client_url)             # ray://localhost:...  (tunneled)
+with managed_cluster(config) as managed:
+    # Tunnel (localhost) URLs via managed.tunnel
+    print(managed.tunnel.dashboard_url)  # http://localhost:...
+    print(managed.tunnel.client_url)     # ray://localhost:...
 
-    # In-cluster IPs available via result.cluster
-    print(result.cluster.dashboard_url)  # http://10.0.0.1:8265
+    # In-cluster IPs via managed.cluster
+    print(managed.cluster.dashboard_url) # http://10.0.0.1:8265
 # Tunnels closed, then cluster deleted
 ```
 
