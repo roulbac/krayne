@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from prism.tunnel import TunnelInfo
+    from krayne.tunnel import TunnelInfo
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,4 @@
-"""Integration tests: full cluster lifecycle against the prism sandbox (local k3s + KubeRay).
+"""Integration tests: full cluster lifecycle against the krayne sandbox (local k3s + KubeRay).
 
 Requirements:
   - Docker running
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from prism.api import (
+from krayne.api import (
     create_cluster,
     delete_cluster,
     describe_cluster,
@@ -21,9 +21,9 @@ from prism.api import (
     list_clusters,
     scale_cluster,
 )
-from prism.config import ClusterConfig
-from prism.config.models import HeadNodeConfig, WorkerGroupConfig
-from prism.errors import ClusterNotFoundError
+from krayne.config import ClusterConfig
+from krayne.config.models import HeadNodeConfig, WorkerGroupConfig
+from krayne.errors import ClusterNotFoundError
 
 pytestmark = pytest.mark.integration
 

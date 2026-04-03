@@ -5,7 +5,7 @@ import time
 from collections.abc import Generator
 from typing import Any
 
-from prism.api.types import (
+from krayne.api.types import (
     ClusterDetails,
     ClusterInfo,
     HeadNodeInfo,
@@ -13,11 +13,11 @@ from prism.api.types import (
     TunnelSession,
     WorkerGroupInfo,
 )
-from prism.config.models import ClusterConfig
-from prism.config.settings import load_prism_settings
-from prism.errors import ClusterTimeoutError
-from prism.kube.client import DefaultKubeClient, KubeClient, _extract_status
-from prism.kube.manifest import RAY_IMAGE, build_manifest
+from krayne.config.models import ClusterConfig
+from krayne.config.settings import load_krayne_settings
+from krayne.errors import ClusterTimeoutError
+from krayne.kube.client import DefaultKubeClient, KubeClient, _extract_status
+from krayne.kube.manifest import RAY_IMAGE, build_manifest
 
 
 def _resolve_client(
@@ -28,7 +28,7 @@ def _resolve_client(
     if client is not None:
         return client
     if kubeconfig is None:
-        settings = load_prism_settings()
+        settings = load_krayne_settings()
         kubeconfig = settings.kubeconfig
         if context is None:
             context = settings.kube_context
@@ -108,7 +108,7 @@ def get_cluster_services(
     kubeconfig: str | None = None,
 ) -> list[str]:
     """Return the list of service names exposed on the cluster head node."""
-    from prism.tunnel import detect_services
+    from krayne.tunnel import detect_services
 
     kube = _resolve_client(client, kubeconfig)
     obj = kube.get_ray_cluster(name, namespace)
@@ -136,9 +136,9 @@ def scale_cluster(
             spec["maxReplicas"] = replicas
             break
     else:
-        from prism.errors import PrismError
+        from krayne.errors import KrayneError
 
-        raise PrismError(
+        raise KrayneError(
             f"Worker group '{worker_group}' not found in cluster '{name}'"
         )
 
@@ -183,7 +183,7 @@ def managed_cluster(
             ...
         # tunnels closed, then cluster deleted
     """
-    from prism.tunnel import start_tunnels, stop_tunnels
+    from krayne.tunnel import start_tunnels, stop_tunnels
 
     kube = _resolve_client(client, kubeconfig)
     info = create_cluster(config, client=kube, wait=True, timeout=timeout)
@@ -227,7 +227,7 @@ def open_tunnel(
             print(session.dashboard_url)
         # tunnels are closed here
     """
-    from prism.tunnel import start_tunnels, stop_tunnels
+    from krayne.tunnel import start_tunnels, stop_tunnels
 
     kube = _resolve_client(client, kubeconfig)
     services = get_cluster_services(name, namespace, client=kube)

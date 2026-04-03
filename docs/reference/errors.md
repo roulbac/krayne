@@ -1,10 +1,10 @@
 # Error Types
 
-Prism defines a flat exception hierarchy rooted at `PrismError`. All exceptions are importable from `prism.errors`.
+Krayne defines a flat exception hierarchy rooted at `KrayneError`. All exceptions are importable from `krayne.errors`.
 
 ```python
-from prism.errors import (
-    PrismError,
+from krayne.errors import (
+    KrayneError,
     ClusterNotFoundError,
     ClusterAlreadyExistsError,
     ConfigValidationError,
@@ -18,8 +18,8 @@ from prism.errors import (
 
 ```mermaid
 classDiagram
-  class PrismError {
-    Base exception for all Prism errors
+  class KrayneError {
+    Base exception for all Krayne errors
   }
   class ClusterNotFoundError {
     +name: str
@@ -50,35 +50,35 @@ classDiagram
   class SandboxAlreadyExistsError
   class SandboxNotFoundError
 
-  PrismError <|-- ClusterNotFoundError
-  PrismError <|-- ClusterAlreadyExistsError
-  PrismError <|-- ConfigValidationError
-  PrismError <|-- ClusterTimeoutError
-  PrismError <|-- KubeConnectionError
-  PrismError <|-- NamespaceNotFoundError
-  PrismError <|-- SandboxError
+  KrayneError <|-- ClusterNotFoundError
+  KrayneError <|-- ClusterAlreadyExistsError
+  KrayneError <|-- ConfigValidationError
+  KrayneError <|-- ClusterTimeoutError
+  KrayneError <|-- KubeConnectionError
+  KrayneError <|-- NamespaceNotFoundError
+  KrayneError <|-- SandboxError
   SandboxError <|-- DockerNotFoundError
   SandboxError <|-- SandboxAlreadyExistsError
   SandboxError <|-- SandboxNotFoundError
 ```
 
-All exceptions inherit from `PrismError`, so you can catch all Prism errors with a single handler.
+All exceptions inherit from `KrayneError`, so you can catch all Krayne errors with a single handler.
 
 ---
 
 ## Exceptions
 
-### `PrismError`
+### `KrayneError`
 
-Base exception for all Prism errors. Catch this to handle any Prism-specific error.
+Base exception for all Krayne errors. Catch this to handle any Krayne-specific error.
 
 ```python
-from prism.errors import PrismError
+from krayne.errors import KrayneError
 
 try:
     info = create_cluster(config)
-except PrismError as e:
-    print(f"Prism error: {e}")
+except KrayneError as e:
+    print(f"Krayne error: {e}")
 ```
 
 ---
@@ -97,7 +97,7 @@ Raised when an operation targets a cluster that does not exist.
 **Raised by:** `get_cluster`, `describe_cluster`, `scale_cluster`, `delete_cluster`, `wait_until_ready`
 
 ```python
-from prism.errors import ClusterNotFoundError
+from krayne.errors import ClusterNotFoundError
 
 try:
     info = get_cluster("nonexistent")
@@ -129,7 +129,7 @@ Raised when cluster configuration is invalid — wraps Pydantic `ValidationError
 **Raised by:** `load_config_from_yaml`, `ClusterConfig` construction
 
 ```python
-from prism.errors import ConfigValidationError
+from krayne.errors import ConfigValidationError
 
 try:
     config = load_config_from_yaml("bad-config.yaml")
@@ -215,7 +215,7 @@ Raised when attempting to tear down a sandbox that doesn't exist.
 | `get_cluster` | `ClusterNotFoundError`, `KubeConnectionError` |
 | `list_clusters` | `KubeConnectionError` |
 | `describe_cluster` | `ClusterNotFoundError`, `KubeConnectionError` |
-| `scale_cluster` | `ClusterNotFoundError`, `PrismError` (worker group not found), `KubeConnectionError` |
+| `scale_cluster` | `ClusterNotFoundError`, `KrayneError` (worker group not found), `KubeConnectionError` |
 | `delete_cluster` | `ClusterNotFoundError`, `KubeConnectionError` |
 | `wait_until_ready` | `ClusterTimeoutError`, `ClusterNotFoundError`, `KubeConnectionError` |
 | `setup_sandbox` | `DockerNotFoundError`, `SandboxAlreadyExistsError` |

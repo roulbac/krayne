@@ -11,17 +11,17 @@ Get from zero to a running Ray cluster in under 5 minutes.
     - A Kubernetes cluster with the [KubeRay operator](https://ray-project.github.io/kuberay/) installed
     - Docker (for the local sandbox — no existing cluster needed)
 
-## 1. Install Prism
+## 1. Install Krayne
 
 ```bash
-pip install prism-sdk
+pip install krayne
 ```
 
 Verify the installation:
 
 ```bash
-$ prism --version
-prism 0.1.0
+$ krayne --version
+krayne 0.1.0
 ```
 
 ## 2. Connect to a cluster
@@ -33,7 +33,7 @@ Choose one of two paths:
     Spin up a local k3s cluster with KubeRay pre-installed:
 
     ```bash
-    prism sandbox setup
+    krayne sandbox setup
     ```
 
     ```title="Terminal output"
@@ -48,54 +48,54 @@ Choose one of two paths:
       Operator Ready        ✓ ready
     ╭─ Sandbox Ready ─────────────────────────────────╮
     │  Status        running                          │
-    │  Kubeconfig    ~/.prism/sandbox-kubeconfig       │
+    │  Kubeconfig    ~/.krayne/sandbox-kubeconfig       │
     ╰─────────────────────────────────────────────────╯
     ╭─ Next Steps ────────────────────────────────────╮
-    │  1.  prism init — select the sandbox            │
+    │  1.  krayne init — select the sandbox            │
     │      kubeconfig and context                     │
-    │  2.  prism create my-cluster — launch your      │
+    │  2.  krayne create my-cluster — launch your      │
     │      first Ray cluster                          │
     ╰─────────────────────────────────────────────────╯
     ```
 
     The sandbox requires Docker with at least 2 CPUs and 6 GB RAM.
 
-    Then run `prism init` to select the sandbox kubeconfig:
+    Then run `krayne init` to select the sandbox kubeconfig:
 
     ```bash
-    prism init
+    krayne init
     ```
 
-    Select **"Sandbox kubeconfig"** when prompted. Prism auto-selects the `default` context:
+    Select **"Sandbox kubeconfig"** when prompted. Krayne auto-selects the `default` context:
 
     ```title="Terminal output"
-    ? Select kubeconfig source: Sandbox kubeconfig (~/.prism/sandbox-kubeconfig)
+    ? Select kubeconfig source: Sandbox kubeconfig (~/.krayne/sandbox-kubeconfig)
     Auto-selected context: default
-    ╭─ Prism Initialized ────────────────────────────╮
-    │  Kubeconfig    ~/.prism/sandbox-kubeconfig      │
+    ╭─ Krayne Initialized ────────────────────────────╮
+    │  Kubeconfig    ~/.krayne/sandbox-kubeconfig      │
     │  Context       default                          │
     ╰─────────────────────────────────────────────────╯
     ```
 
 === "Existing Kubernetes Cluster"
 
-    Point Prism at your kubeconfig:
+    Point Krayne at your kubeconfig:
 
     ```bash
-    prism init
+    krayne init
     ```
 
-    This interactively selects your kubeconfig file and Kubernetes context, then saves the settings to `~/.prism/config.yaml`.
+    This interactively selects your kubeconfig file and Kubernetes context, then saves the settings to `~/.krayne/config.yaml`.
 
     !!! tip "Non-interactive mode"
         ```bash
-        prism init --kubeconfig ~/.kube/config --context my-context
+        krayne init --kubeconfig ~/.kube/config --context my-context
         ```
 
 ## 3. Create your first cluster
 
 ```bash
-prism create my-first-cluster --wait
+krayne create my-first-cluster --wait
 ```
 
 The `--wait` flag blocks until all pods are running:
@@ -114,7 +114,7 @@ The `--wait` flag blocks until all pods are running:
 ```
 
 !!! tip "Local access"
-    To access cluster services from your machine, use `prism tun-open my-first-cluster` to create localhost port-forwards. Use `prism tun-close my-first-cluster` to stop.
+    To access cluster services from your machine, use `krayne tun-open my-first-cluster` to create localhost port-forwards. Use `krayne tun-close my-first-cluster` to stop.
 
 This creates a cluster with sensible defaults:
 
@@ -127,7 +127,7 @@ This creates a cluster with sensible defaults:
 List all clusters:
 
 ```bash
-$ prism get
+$ krayne get
 ```
 
 ```title="Terminal output"
@@ -141,7 +141,7 @@ $ prism get
 Get detailed information:
 
 ```bash
-$ prism describe my-first-cluster
+$ krayne describe my-first-cluster
 ```
 
 ```title="Terminal output (sandbox)"
@@ -172,13 +172,13 @@ Worker Groups
 ## 5. Clean up
 
 ```bash
-prism delete my-first-cluster --force
+krayne delete my-first-cluster --force
 ```
 
 If you used the sandbox, you can tear it down:
 
 ```bash
-prism sandbox teardown
+krayne sandbox teardown
 ```
 
 ---

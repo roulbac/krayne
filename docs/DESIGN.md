@@ -1,8 +1,8 @@
 # Design Document
 
-## What is Prism
+## What is Krayne
 
-**Prism** is an open-source Python package that provides a CLI and programmatic SDK for creating, managing, and scaling Ray clusters on Kubernetes. It wraps the KubeRay operator behind a clean, opinionated interface so that ML practitioners can get distributed compute without touching Kubernetes manifests.
+**Krayne** is an open-source Python package that provides a CLI and programmatic SDK for creating, managing, and scaling Ray clusters on Kubernetes. It wraps the KubeRay operator behind a clean, opinionated interface so that ML practitioners can get distributed compute without touching Kubernetes manifests.
 
 ---
 
@@ -10,15 +10,15 @@
 
 ### In Scope
 
-- **CLI (`prism`):** Command-line tool for interactive cluster management, built with Typer and Rich
-- **Python SDK (`prism.api`):** Programmatic API that mirrors the CLI
+- **CLI (`krayne`):** Command-line tool for interactive cluster management, built with Typer and Rich
+- **Python SDK (`krayne.api`):** Programmatic API that mirrors the CLI
 - **Cluster lifecycle:** Create, describe, list, scale, and delete Ray clusters
 - **Config model:** Pydantic-based cluster configuration with sensible defaults and YAML override support
 - **Developer experience:** Pre-installed notebook server, Code Server, SSH access
 
 ### Out of Scope
 
-- The KubeRay operator itself (Prism consumes it, does not ship it)
+- The KubeRay operator itself (Krayne consumes it, does not ship it)
 - GKE/EKS/AKS cluster provisioning or node pool management
 - Workflow orchestration, experiment tracking, observability, model serving
 
@@ -42,19 +42,19 @@ See [Architecture](architecture.md) for the full module overview and dependency 
 
 | Module | Path | Responsibility |
 |---|---|---|
-| **CLI** | `prism/cli/` | Typer commands. Parses args, calls SDK, formats output. |
-| **SDK** | `prism/api/` | Functional API: `create_cluster()`, `get_cluster()`, etc. |
-| **Config** | `prism/config/` | Pydantic models, YAML loading, validation. |
-| **K8s Client** | `prism/kube/` | `KubeClient` Protocol, `DefaultKubeClient`, `build_manifest()`. |
-| **Output** | `prism/output/` | Rich formatters for CLI display and JSON output. |
+| **CLI** | `krayne/cli/` | Typer commands. Parses args, calls SDK, formats output. |
+| **SDK** | `krayne/api/` | Functional API: `create_cluster()`, `get_cluster()`, etc. |
+| **Config** | `krayne/config/` | Pydantic models, YAML loading, validation. |
+| **K8s Client** | `krayne/kube/` | `KubeClient` Protocol, `DefaultKubeClient`, `build_manifest()`. |
+| **Output** | `krayne/output/` | Rich formatters for CLI display and JSON output. |
 
 ---
 
 ## Error Handling
 
-All exceptions inherit from `PrismError`. See [Error Handling](reference/errors.md) for the full hierarchy.
+All exceptions inherit from `KrayneError`. See [Error Handling](reference/errors.md) for the full hierarchy.
 
-The CLI catches `PrismError` and renders a Rich panel. `--debug` shows the full traceback.
+The CLI catches `KrayneError` and renders a Rich panel. `--debug` shows the full traceback.
 
 ---
 

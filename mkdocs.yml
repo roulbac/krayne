@@ -1,8 +1,8 @@
-site_name: Prism
+site_name: Krayne
 site_description: CLI and SDK for creating, managing, and scaling Ray clusters on Kubernetes
-site_url: https://roulbac.github.io/prism/
-repo_url: https://github.com/roulbac/prism
-repo_name: roulbac/prism
+site_url: https://roulbac.github.io/krayne/
+repo_url: https://github.com/roulbac/krayne
+repo_name: roulbac/krayne
 
 theme:
   name: material

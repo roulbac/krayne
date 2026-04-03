@@ -1,4 +1,4 @@
-from prism.sandbox.manager import (
+from krayne.sandbox.manager import (
     SETUP_STEPS,
     sandbox_status,
     setup_sandbox,

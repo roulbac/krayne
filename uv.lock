@@ -666,7 +666,7 @@ wheels = [
 ]
 
 [[package]]
-name = "prism-sdk"
+name = "krayne"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

@@ -1,6 +1,6 @@
 # Configuration
 
-Prism uses [Pydantic v2](https://docs.pydantic.dev/) models for all cluster configuration. This provides type validation, sensible defaults, and clear error messages for invalid input.
+Krayne uses [Pydantic v2](https://docs.pydantic.dev/) models for all cluster configuration. This provides type validation, sensible defaults, and clear error messages for invalid input.
 
 ---
 
@@ -33,13 +33,13 @@ The only required field is `name`. Everything else has a default:
 === "CLI"
 
     ```bash
-    prism create my-cluster
+    krayne create my-cluster
     ```
 
 === "Python"
 
     ```python
-    from prism.config import ClusterConfig
+    from krayne.config import ClusterConfig
     config = ClusterConfig(name="my-cluster")
     ```
 
@@ -83,7 +83,7 @@ services:
 ```
 
 ```bash
-prism create my-experiment --file cluster.yaml --wait
+krayne create my-experiment --file cluster.yaml --wait
 ```
 
 ### Overriding YAML values with CLI flags
@@ -92,13 +92,13 @@ CLI flags take precedence over YAML values:
 
 ```bash
 # YAML sets workers=1, but this creates 4
-prism create my-experiment --file cluster.yaml --workers 4
+krayne create my-experiment --file cluster.yaml --workers 4
 ```
 
 ### Loading YAML from Python
 
 ```python
-from prism.config import load_config_from_yaml
+from krayne.config import load_config_from_yaml
 
 # Basic load
 config = load_config_from_yaml("cluster.yaml")
@@ -134,7 +134,7 @@ config = load_config_from_yaml(
 `ClusterConfig` uses Pydantic's `extra = "forbid"` mode — unknown fields in YAML or keyword arguments raise a `ConfigValidationError`:
 
 ```python
-from prism.config import ClusterConfig
+from krayne.config import ClusterConfig
 
 # This raises ConfigValidationError — "unknown_field" is not a valid field
 config = ClusterConfig(name="test", unknown_field="value")

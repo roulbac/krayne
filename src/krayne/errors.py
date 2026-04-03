@@ -1,8 +1,8 @@
-class PrismError(Exception):
-    """Base exception for all Prism errors."""
+class KrayneError(Exception):
+    """Base exception for all Krayne errors."""
 
 
-class ClusterNotFoundError(PrismError):
+class ClusterNotFoundError(KrayneError):
     """Raised when a cluster does not exist."""
 
     def __init__(self, name: str, namespace: str) -> None:
@@ -11,7 +11,7 @@ class ClusterNotFoundError(PrismError):
         super().__init__(f"Cluster '{name}' not found in namespace '{namespace}'")
 
 
-class ClusterAlreadyExistsError(PrismError):
+class ClusterAlreadyExistsError(KrayneError):
     """Raised when creating a cluster that already exists."""
 
     def __init__(self, name: str, namespace: str) -> None:
@@ -22,11 +22,11 @@ class ClusterAlreadyExistsError(PrismError):
         )
 
 
-class ConfigValidationError(PrismError):
+class ConfigValidationError(KrayneError):
     """Raised when cluster configuration is invalid."""
 
 
-class ClusterTimeoutError(PrismError):
+class ClusterTimeoutError(KrayneError):
     """Raised when waiting for a cluster exceeds the timeout."""
 
     def __init__(self, name: str, namespace: str, timeout: int) -> None:
@@ -38,11 +38,11 @@ class ClusterTimeoutError(PrismError):
         )
 
 
-class KubeConnectionError(PrismError):
+class KubeConnectionError(KrayneError):
     """Raised when the Kubernetes API is unreachable."""
 
 
-class NamespaceNotFoundError(PrismError):
+class NamespaceNotFoundError(KrayneError):
     """Raised when the specified namespace does not exist."""
 
     def __init__(self, namespace: str) -> None:
@@ -50,7 +50,7 @@ class NamespaceNotFoundError(PrismError):
         super().__init__(f"Namespace '{namespace}' not found")
 
 
-class SandboxError(PrismError):
+class SandboxError(KrayneError):
     """Base exception for sandbox-related errors."""
 
 
@@ -69,8 +69,8 @@ class SandboxAlreadyExistsError(SandboxError):
 
     def __init__(self) -> None:
         super().__init__(
-            "Sandbox 'prism-sandbox' already exists. "
-            "Run 'prism sandbox teardown' first."
+            "Sandbox 'krayne-sandbox' already exists. "
+            "Run 'krayne sandbox teardown' first."
         )
 
 
@@ -78,4 +78,4 @@ class SandboxNotFoundError(SandboxError):
     """No sandbox container to tear down."""
 
     def __init__(self) -> None:
-        super().__init__("No sandbox found. Run 'prism sandbox setup' first.")
+        super().__init__("No sandbox found. Run 'krayne sandbox setup' first.")

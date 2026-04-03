@@ -1,6 +1,6 @@
 # Managing Clusters
 
-Once a cluster is created, Prism provides commands to list, inspect, scale, and delete clusters.
+Once a cluster is created, Krayne provides commands to list, inspect, scale, and delete clusters.
 
 ---
 
@@ -11,7 +11,7 @@ List all Ray clusters in a namespace:
 === "CLI"
 
     ```bash
-    $ prism get
+    $ krayne get
     ```
 
     ```title="Terminal output"
@@ -26,13 +26,13 @@ List all Ray clusters in a namespace:
     List clusters in a specific namespace:
 
     ```bash
-    prism get -n ml-team
+    krayne get -n ml-team
     ```
 
 === "Python SDK"
 
     ```python
-    from prism.api import list_clusters
+    from krayne.api import list_clusters
 
     clusters = list_clusters(namespace="default")
     for cluster in clusters:
@@ -48,7 +48,7 @@ Get detailed information about a specific cluster, including resource breakdowns
 === "CLI"
 
     ```bash
-    $ prism describe my-cluster
+    $ krayne describe my-cluster
     ```
 
     ```title="Terminal output"
@@ -79,7 +79,7 @@ Get detailed information about a specific cluster, including resource breakdowns
 === "Python SDK"
 
     ```python
-    from prism.api import describe_cluster
+    from krayne.api import describe_cluster
 
     details = describe_cluster("my-cluster")
     print(f"Head: {details.head.cpus} CPUs, {details.head.memory}")
@@ -97,7 +97,7 @@ Scale a worker group up or down:
 
     ```bash
     # Scale default worker group to 4 replicas
-    prism scale my-cluster --replicas 4
+    krayne scale my-cluster --replicas 4
     ```
 
     ```title="Terminal output"
@@ -112,13 +112,13 @@ Scale a worker group up or down:
     Scale a named worker group:
 
     ```bash
-    prism scale my-cluster --worker-group gpu-workers --replicas 8 -n ml-team
+    krayne scale my-cluster --worker-group gpu-workers --replicas 8 -n ml-team
     ```
 
 === "Python SDK"
 
     ```python
-    from prism.api import scale_cluster
+    from krayne.api import scale_cluster
 
     info = scale_cluster("my-cluster", "default", "worker", replicas=4)
     print(f"Workers: {info.num_workers}")
@@ -134,7 +134,7 @@ Scale a worker group up or down:
 === "CLI"
 
     ```bash
-    $ prism delete my-cluster
+    $ krayne delete my-cluster
     ```
 
     ```title="Terminal output"
@@ -145,13 +145,13 @@ Scale a worker group up or down:
     Skip the confirmation prompt with `--force`:
 
     ```bash
-    prism delete my-cluster --force
+    krayne delete my-cluster --force
     ```
 
 === "Python SDK"
 
     ```python
-    from prism.api import delete_cluster
+    from krayne.api import delete_cluster
 
     delete_cluster("my-cluster", namespace="default")
     ```
@@ -167,13 +167,13 @@ All CLI commands support `--output json` for scripting and piping:
 
 ```bash
 # List as JSON
-prism get --output json
+krayne get --output json
 
 # Parse with jq
-prism get --output json | jq '.[].name'
+krayne get --output json | jq '.[].name'
 
 # Describe as JSON
-prism describe my-cluster -o json
+krayne describe my-cluster -o json
 ```
 
 ```json title="Example JSON output"
@@ -195,7 +195,7 @@ prism describe my-cluster -o json
 If you created a cluster without `--wait`, you can wait for it later using the SDK:
 
 ```python
-from prism.api import wait_until_ready
+from krayne.api import wait_until_ready
 
 info = wait_until_ready("my-cluster", timeout=300)
 print(f"Cluster ready: {info.status}")

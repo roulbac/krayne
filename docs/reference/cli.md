@@ -1,6 +1,6 @@
 # CLI Reference
 
-Prism provides a command-line interface built with [Typer](https://typer.tiangolo.com/) and [Rich](https://rich.readthedocs.io/) for managing Ray clusters on Kubernetes.
+Krayne provides a command-line interface built with [Typer](https://typer.tiangolo.com/) and [Rich](https://rich.readthedocs.io/) for managing Ray clusters on Kubernetes.
 
 ## Global options
 
@@ -15,12 +15,12 @@ These options are available on every command:
 
 ---
 
-## `prism init`
+## `krayne init`
 
-Initialize Prism with kubeconfig and Kubernetes context. Saves settings to `~/.prism/config.yaml`.
+Initialize Krayne with kubeconfig and Kubernetes context. Saves settings to `~/.krayne/config.yaml`.
 
 ```
-prism init [OPTIONS]
+krayne init [OPTIONS]
 ```
 
 **Options:**
@@ -34,30 +34,30 @@ prism init [OPTIONS]
 
 ```bash
 # Interactive mode — select kubeconfig and context from menus
-prism init
+krayne init
 
 # Non-interactive mode
-prism init --kubeconfig ~/.kube/config --context my-context
+krayne init --kubeconfig ~/.kube/config --context my-context
 ```
 
 ```title="Terminal output"
-╭─ Prism Initialized ─────────────────────────╮
+╭─ Krayne Initialized ─────────────────────────╮
 │  Kubeconfig:   ~/.kube/config               │
 │  Context:      my-context                   │
 ╰─────────────────────────────────────────────╯
 ```
 
 !!! note
-    In interactive mode, Prism presents a menu to select the kubeconfig source (default location, sandbox, or custom path), then lists available contexts.
+    In interactive mode, Krayne presents a menu to select the kubeconfig source (default location, sandbox, or custom path), then lists available contexts.
 
 ---
 
-## `prism create`
+## `krayne create`
 
 Create a new Ray cluster.
 
 ```
-prism create <name> [OPTIONS]
+krayne create <name> [OPTIONS]
 ```
 
 **Arguments:**
@@ -84,16 +84,16 @@ prism create <name> [OPTIONS]
 
 ```bash
 # Minimal — all defaults
-prism create my-cluster
+krayne create my-cluster
 
 # GPU cluster with 2 workers
-prism create gpu-cluster --gpus-per-worker 1 --worker-gpu-type a100 --workers 2
+krayne create gpu-cluster --gpus-per-worker 1 --worker-gpu-type a100 --workers 2
 
 # From YAML config, wait for ready
-prism create my-cluster --file cluster.yaml --wait --timeout 600
+krayne create my-cluster --file cluster.yaml --wait --timeout 600
 
 # JSON output
-prism create my-cluster --output json
+krayne create my-cluster --output json
 ```
 
 ```title="Terminal output"
@@ -110,19 +110,19 @@ prism create my-cluster --output json
 ```
 
 !!! tip "Local access"
-    Use `prism tun-open <cluster-name>` to create localhost mirrors of all cluster services via `kubectl port-forward`. Use `prism tun-close <cluster-name>` to stop.
+    Use `krayne tun-open <cluster-name>` to create localhost mirrors of all cluster services via `kubectl port-forward`. Use `krayne tun-close <cluster-name>` to stop.
 
 !!! note
     When using `--file`, the `name` argument and any CLI flags override the corresponding values in the YAML file.
 
 ---
 
-## `prism get`
+## `krayne get`
 
 List all Ray clusters in a namespace.
 
 ```
-prism get [OPTIONS]
+krayne get [OPTIONS]
 ```
 
 **Options:**
@@ -135,13 +135,13 @@ prism get [OPTIONS]
 
 ```bash
 # List clusters in default namespace
-prism get
+krayne get
 
 # List clusters in a specific namespace
-prism get -n ml-team
+krayne get -n ml-team
 
 # JSON output for scripting
-prism get --output json
+krayne get --output json
 ```
 
 ```title="Terminal output"
@@ -155,12 +155,12 @@ prism get --output json
 
 ---
 
-## `prism describe`
+## `krayne describe`
 
 Show detailed information about a cluster, including head node and worker group resource allocations.
 
 ```
-prism describe <name> [OPTIONS]
+krayne describe <name> [OPTIONS]
 ```
 
 **Arguments:**
@@ -178,8 +178,8 @@ prism describe <name> [OPTIONS]
 **Examples:**
 
 ```bash
-prism describe my-cluster
-prism describe my-cluster -n ml-team --output json
+krayne describe my-cluster
+krayne describe my-cluster -n ml-team --output json
 ```
 
 ```title="Terminal output"
@@ -210,12 +210,12 @@ Worker Groups
 
 ---
 
-## `prism scale`
+## `krayne scale`
 
 Scale a worker group of a cluster to a target replica count.
 
 ```
-prism scale <name> [OPTIONS]
+krayne scale <name> [OPTIONS]
 ```
 
 **Arguments:**
@@ -236,10 +236,10 @@ prism scale <name> [OPTIONS]
 
 ```bash
 # Scale default worker group to 4 replicas
-prism scale my-cluster --replicas 4
+krayne scale my-cluster --replicas 4
 
 # Scale a named worker group
-prism scale my-cluster --worker-group gpu-workers --replicas 8 -n ml-team
+krayne scale my-cluster --worker-group gpu-workers --replicas 8 -n ml-team
 ```
 
 ```title="Terminal output"
@@ -253,12 +253,12 @@ prism scale my-cluster --worker-group gpu-workers --replicas 8 -n ml-team
 
 ---
 
-## `prism delete`
+## `krayne delete`
 
 Delete a Ray cluster.
 
 ```
-prism delete <name> [OPTIONS]
+krayne delete <name> [OPTIONS]
 ```
 
 **Arguments:**
@@ -278,13 +278,13 @@ prism delete <name> [OPTIONS]
 
 ```bash
 # Interactive confirmation
-prism delete my-cluster
+krayne delete my-cluster
 
 # Skip confirmation
-prism delete my-cluster --force
+krayne delete my-cluster --force
 
 # Delete from specific namespace
-prism delete my-cluster -n ml-team --force
+krayne delete my-cluster -n ml-team --force
 ```
 
 ```title="Terminal output"
@@ -294,14 +294,14 @@ Cluster 'my-cluster' deleted.
 
 ---
 
-## `prism tun-open`
+## `krayne tun-open`
 
 Start tunnels for cluster services to localhost via `kubectl port-forward`. Processes run in the background — use `tun-close` to stop them.
 
 Both commands are **idempotent**: starting an already-active tunnel is a no-op (shows the existing tunnel info), and closing a non-existent tunnel is a no-op.
 
 ```
-prism tun-open <name> [OPTIONS]
+krayne tun-open <name> [OPTIONS]
 ```
 
 **Arguments:**
@@ -322,13 +322,13 @@ Local ports are deterministically assigned from the cluster name and namespace, 
 
 ```bash
 # Start tunnels for all services on a cluster
-prism tun-open my-cluster
+krayne tun-open my-cluster
 
 # Start tunnels in a specific namespace
-prism tun-open my-cluster -n ml-team
+krayne tun-open my-cluster -n ml-team
 
 # Get tunnel info as JSON
-prism tun-open my-cluster --output json
+krayne tun-open my-cluster --output json
 ```
 
 ```title="Terminal output"
@@ -348,12 +348,12 @@ prism tun-open my-cluster --output json
 
 ---
 
-## `prism tun-close`
+## `krayne tun-close`
 
 Stop tunnels for a cluster. Terminates all background `kubectl port-forward` processes.
 
 ```
-prism tun-close <name> [OPTIONS]
+krayne tun-close <name> [OPTIONS]
 ```
 
 **Arguments:**
@@ -371,21 +371,21 @@ prism tun-close <name> [OPTIONS]
 **Examples:**
 
 ```bash
-prism tun-close my-cluster
-prism tun-close my-cluster -n ml-team
+krayne tun-close my-cluster
+krayne tun-close my-cluster -n ml-team
 ```
 
 ---
 
-## `prism sandbox setup`
+## `krayne sandbox setup`
 
 Set up a local k3s cluster with KubeRay for development.
 
 ```
-prism sandbox setup
+krayne sandbox setup
 ```
 
-Requires Docker with at least 2 CPUs and 6 GB RAM. Creates a k3s container named `prism-sandbox` and installs the KubeRay operator.
+Requires Docker with at least 2 CPUs and 6 GB RAM. Creates a k3s container named `krayne-sandbox` and installs the KubeRay operator.
 
 ```title="Terminal output"
           Sandbox Setup
@@ -399,46 +399,46 @@ Requires Docker with at least 2 CPUs and 6 GB RAM. Creates a k3s container named
   Operator Ready        ✓ ready
 ╭─ Sandbox Ready ─────────────────────────────────╮
 │  Status        running                          │
-│  Kubeconfig    ~/.prism/sandbox-kubeconfig       │
+│  Kubeconfig    ~/.krayne/sandbox-kubeconfig       │
 ╰─────────────────────────────────────────────────╯
 ╭─ Next Steps ────────────────────────────────────╮
-│  1.  prism init — select the sandbox            │
+│  1.  krayne init — select the sandbox            │
 │      kubeconfig and context                     │
-│  2.  prism create my-cluster — launch your      │
+│  2.  krayne create my-cluster — launch your      │
 │      first Ray cluster                          │
 ╰─────────────────────────────────────────────────╯
 ```
 
-After setup, run `prism init` to select the sandbox kubeconfig and context.
+After setup, run `krayne init` to select the sandbox kubeconfig and context.
 
 ---
 
-## `prism sandbox teardown`
+## `krayne sandbox teardown`
 
 Tear down the local sandbox cluster.
 
 ```
-prism sandbox teardown
+krayne sandbox teardown
 ```
 
-Removes the Docker container, deletes the sandbox kubeconfig, and clears Prism settings if they point to the sandbox.
+Removes the Docker container, deletes the sandbox kubeconfig, and clears Krayne settings if they point to the sandbox.
 
 ---
 
-## `prism sandbox status`
+## `krayne sandbox status`
 
 Show current status of the sandbox.
 
 ```
-prism sandbox status
+krayne sandbox status
 ```
 
 ```title="Terminal output"
 ╭─ Sandbox Status ────────────────────────────────╮
 │  Running:      Yes                              │
-│  Container:    prism-sandbox                    │
+│  Container:    krayne-sandbox                    │
 │  K3S Version:  v1.35.2+k3s1                    │
-│  Kubeconfig:   ~/.prism/sandbox-kubeconfig      │
+│  Kubeconfig:   ~/.krayne/sandbox-kubeconfig      │
 │  Created:      2026-04-01 10:00:00              │
 ╰─────────────────────────────────────────────────╯
 ```
@@ -452,8 +452,8 @@ prism sandbox status
 Rich-formatted tables and panels for human-readable output:
 
 ```bash
-prism get
-prism describe my-cluster
+krayne get
+krayne describe my-cluster
 ```
 
 ### JSON
@@ -461,8 +461,8 @@ prism describe my-cluster
 Machine-readable JSON output, useful for scripting:
 
 ```bash
-prism get --output json
-prism describe my-cluster -o json | jq '.info.status'
+krayne get --output json
+krayne describe my-cluster -o json | jq '.info.status'
 ```
 
 ---
@@ -472,7 +472,7 @@ prism describe my-cluster -o json | jq '.info.status'
 Errors are displayed as Rich panels by default. Use `--debug` to see full Python tracebacks:
 
 ```bash
-prism describe nonexistent-cluster --debug
+krayne describe nonexistent-cluster --debug
 ```
 
 ```title="Terminal output"
@@ -482,4 +482,4 @@ prism describe nonexistent-cluster --debug
 ╰────────────────────────────────────────────╯
 ```
 
-All errors are instances of `PrismError` subclasses. See [Error Types](errors.md) for the full exception hierarchy.
+All errors are instances of `KrayneError` subclasses. See [Error Types](errors.md) for the full exception hierarchy.

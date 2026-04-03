@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from prism.api.types import ClusterDetails, ClusterInfo, HeadNodeInfo, WorkerGroupInfo
-from prism.cli.app import app
+from krayne.api.types import ClusterDetails, ClusterInfo, HeadNodeInfo, WorkerGroupInfo
+from krayne.cli.app import app
 
 runner = CliRunner()
 
@@ -43,22 +43,22 @@ class TestVersion:
 
 
 class TestCreate:
-    @patch("prism.cli.app._get_cluster", return_value=_INFO)
-    @patch("prism.cli.app._create_cluster", return_value=_INFO)
+    @patch("krayne.cli.app._get_cluster", return_value=_INFO)
+    @patch("krayne.cli.app._create_cluster", return_value=_INFO)
     def test_create_basic(self, mock_create, mock_get):
         result = runner.invoke(app, ["create", "my-cluster"])
         assert result.exit_code == 0
         assert "Cluster Ready" in result.output
         mock_create.assert_called_once()
 
-    @patch("prism.cli.app._create_cluster", return_value=_INFO)
+    @patch("krayne.cli.app._create_cluster", return_value=_INFO)
     def test_create_json_output(self, mock_create):
         result = runner.invoke(app, ["--output", "json", "create", "my-cluster"])
         assert result.exit_code == 0
         assert "test" in result.output
 
-    @patch("prism.cli.app._get_cluster")
-    @patch("prism.cli.app._create_cluster")
+    @patch("krayne.cli.app._get_cluster")
+    @patch("krayne.cli.app._create_cluster")
     def test_create_timeout_stops_polling(self, mock_create, mock_get):
         pending = ClusterInfo(
             name="test", namespace="default", status="pending",
@@ -73,20 +73,20 @@ class TestCreate:
 
 
 class TestGet:
-    @patch("prism.cli.app._list_clusters", return_value=[_INFO])
+    @patch("krayne.cli.app._list_clusters", return_value=[_INFO])
     def test_get_clusters(self, mock_list):
         result = runner.invoke(app, ["get"])
         assert result.exit_code == 0
         assert "test" in result.output
 
-    @patch("prism.cli.app._list_clusters", return_value=[])
+    @patch("krayne.cli.app._list_clusters", return_value=[])
     def test_get_empty(self, mock_list):
         result = runner.invoke(app, ["get"])
         assert result.exit_code == 0
 
 
 class TestDescribe:
-    @patch("prism.cli.app._describe_cluster", return_value=_DETAILS)
+    @patch("krayne.cli.app._describe_cluster", return_value=_DETAILS)
     def test_describe(self, mock_describe):
         result = runner.invoke(app, ["describe", "test"])
         assert result.exit_code == 0
@@ -94,27 +94,27 @@ class TestDescribe:
 
 
 class TestScale:
-    @patch("prism.cli.app._scale_cluster", return_value=_INFO)
+    @patch("krayne.cli.app._scale_cluster", return_value=_INFO)
     def test_scale(self, mock_scale):
         result = runner.invoke(app, ["scale", "test", "--replicas", "4"])
         assert result.exit_code == 0
 
 
 class TestDelete:
-    @patch("prism.cli.app._delete_cluster")
+    @patch("krayne.cli.app._delete_cluster")
     def test_delete_with_force(self, mock_delete):
         result = runner.invoke(app, ["delete", "test", "--force"])
         assert result.exit_code == 0
         assert "deleted" in result.output
         mock_delete.assert_called_once()
 
-    @patch("prism.cli.app._delete_cluster")
+    @patch("krayne.cli.app._delete_cluster")
     def test_delete_confirm_yes(self, mock_delete):
         result = runner.invoke(app, ["delete", "test"], input="y\n")
         assert result.exit_code == 0
         mock_delete.assert_called_once()
 
-    @patch("prism.cli.app._delete_cluster")
+    @patch("krayne.cli.app._delete_cluster")
     def test_delete_confirm_no(self, mock_delete):
         result = runner.invoke(app, ["delete", "test"], input="n\n")
         assert result.exit_code != 0
@@ -133,7 +133,7 @@ class TestInit:
         "current-context: my-context\n"
     )
 
-    @patch("prism.cli.app.save_prism_settings")
+    @patch("krayne.cli.app.save_krayne_settings")
     def test_init_headless(self, mock_save, tmp_path):
         kubeconfig = tmp_path / "kubeconfig"
         kubeconfig.write_text(self.KUBECONFIG_YAML)
@@ -144,7 +144,7 @@ class TestInit:
         assert "Initialized" in result.output
         mock_save.assert_called_once()
 
-    @patch("prism.cli.app.save_prism_settings")
+    @patch("krayne.cli.app.save_krayne_settings")
     def test_init_interactive(self, mock_save, tmp_path):
         kubeconfig = tmp_path / "kubeconfig"
         kubeconfig.write_text(self.KUBECONFIG_YAML)
@@ -178,7 +178,7 @@ class TestInit:
 
 
 class TestGlobalKubeconfig:
-    @patch("prism.cli.app._list_clusters", return_value=[_INFO])
+    @patch("krayne.cli.app._list_clusters", return_value=[_INFO])
     def test_kubeconfig_flag_passed(self, mock_list, tmp_path):
         kubeconfig = tmp_path / "kubeconfig"
         kubeconfig.write_text("apiVersion: v1")
@@ -190,7 +190,7 @@ class TestGlobalKubeconfig:
 
 
 class TestSandboxSetup:
-    @patch("prism.cli.app._setup_sandbox", return_value="/home/user/.prism/sandbox-kubeconfig")
+    @patch("krayne.cli.app._setup_sandbox", return_value="/home/user/.krayne/sandbox-kubeconfig")
     def test_sandbox_setup(self, mock_setup):
         result = runner.invoke(app, ["sandbox", "setup"])
         assert result.exit_code == 0
@@ -199,7 +199,7 @@ class TestSandboxSetup:
 
 
 class TestSandboxTeardown:
-    @patch("prism.cli.app._teardown_sandbox")
+    @patch("krayne.cli.app._teardown_sandbox")
     def test_sandbox_teardown(self, mock_teardown):
         result = runner.invoke(app, ["sandbox", "teardown"])
         assert result.exit_code == 0
@@ -208,14 +208,14 @@ class TestSandboxTeardown:
 
 
 class TestSandboxStatusCli:
-    @patch("prism.cli.app._sandbox_status")
+    @patch("krayne.cli.app._sandbox_status")
     def test_sandbox_status(self, mock_status):
-        from prism.sandbox.manager import SandboxStatus
+        from krayne.sandbox.manager import SandboxStatus
 
         mock_status.return_value = SandboxStatus(
             running=True,
             container_id="abc123",
-            kubeconfig="/home/user/.prism/sandbox-kubeconfig",
+            kubeconfig="/home/user/.krayne/sandbox-kubeconfig",
             k3s_version="rancher/k3s:v1.35.2-k3s1",
             created_at="2026-01-01T00:00:00Z",
         )
@@ -225,10 +225,10 @@ class TestSandboxStatusCli:
 
 
 class TestTunOpen:
-    @patch("prism.tunnel.is_tunnel_active", return_value=False)
-    @patch("prism.tunnel.start_tunnels")
-    @patch("prism.cli.app._get_cluster_services", return_value=["dashboard", "client"])
-    @patch("prism.cli.app._get_cluster", return_value=_INFO)
+    @patch("krayne.tunnel.is_tunnel_active", return_value=False)
+    @patch("krayne.tunnel.start_tunnels")
+    @patch("krayne.cli.app._get_cluster_services", return_value=["dashboard", "client"])
+    @patch("krayne.cli.app._get_cluster", return_value=_INFO)
     def test_tun_open_not_ready(self, mock_get, mock_services, mock_tunnels, mock_active):
         not_ready = ClusterInfo(
             name="test", namespace="default", status="pending",
@@ -242,12 +242,12 @@ class TestTunOpen:
         assert "not ready" in result.output.lower()
         mock_tunnels.assert_not_called()
 
-    @patch("prism.tunnel.is_tunnel_active", return_value=False)
-    @patch("prism.tunnel.start_tunnels")
-    @patch("prism.cli.app._get_cluster_services", return_value=["dashboard", "client"])
-    @patch("prism.cli.app._get_cluster", return_value=_INFO)
+    @patch("krayne.tunnel.is_tunnel_active", return_value=False)
+    @patch("krayne.tunnel.start_tunnels")
+    @patch("krayne.cli.app._get_cluster_services", return_value=["dashboard", "client"])
+    @patch("krayne.cli.app._get_cluster", return_value=_INFO)
     def test_tun_open_json_output(self, mock_get, mock_services, mock_tunnels, mock_active):
-        from prism.tunnel import TunnelInfo
+        from krayne.tunnel import TunnelInfo
 
         tunnels = [
             TunnelInfo(service="dashboard", remote_port=8265, local_port=12345, local_url="http://localhost:12345"),
@@ -257,10 +257,10 @@ class TestTunOpen:
         assert result.exit_code == 0
         assert "dashboard" in result.output
 
-    @patch("prism.tunnel.load_tunnel_state")
-    @patch("prism.tunnel.is_tunnel_active", return_value=True)
+    @patch("krayne.tunnel.load_tunnel_state")
+    @patch("krayne.tunnel.is_tunnel_active", return_value=True)
     def test_tun_open_idempotent(self, mock_active, mock_load):
-        from prism.tunnel import TunnelInfo, TunnelState
+        from krayne.tunnel import TunnelInfo, TunnelState
 
         state = TunnelState(
             cluster_name="test", namespace="default",
@@ -274,13 +274,13 @@ class TestTunOpen:
 
 
 class TestTunClose:
-    @patch("prism.tunnel.stop_tunnels", return_value=True)
+    @patch("krayne.tunnel.stop_tunnels", return_value=True)
     def test_tun_close_active(self, mock_stop):
         result = runner.invoke(app, ["tun-close", "test"])
         assert result.exit_code == 0
         assert "stopped" in result.output.lower()
 
-    @patch("prism.tunnel.stop_tunnels", return_value=False)
+    @patch("krayne.tunnel.stop_tunnels", return_value=False)
     def test_tun_close_noop(self, mock_stop):
         result = runner.invoke(app, ["tun-close", "test"])
         assert result.exit_code == 0

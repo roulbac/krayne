@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from prism.tunnel import (
+from krayne.tunnel import (
     PORT_RANGE_END,
     PORT_RANGE_START,
     SERVICE_PORTS,
@@ -112,9 +112,9 @@ class TestDetectServices:
 class TestStartTunnels:
     @pytest.fixture(autouse=True)
     def _isolate_tunnel_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("prism.tunnel.TUNNEL_DIR", tmp_path / "tunnels")
+        monkeypatch.setattr("krayne.tunnel.TUNNEL_DIR", tmp_path / "tunnels")
 
-    @patch("prism.tunnel.subprocess.Popen")
+    @patch("krayne.tunnel.subprocess.Popen")
     def test_launches_kubectl_processes(self, mock_popen):
         mock_proc = MagicMock()
         mock_proc.pid = 1234
@@ -135,7 +135,7 @@ class TestStartTunnels:
         assert "-n" in first_call_args
         assert "default" in first_call_args
 
-    @patch("prism.tunnel.subprocess.Popen")
+    @patch("krayne.tunnel.subprocess.Popen")
     def test_kubeconfig_passed(self, mock_popen):
         mock_popen.return_value = MagicMock(pid=99)
 
@@ -147,7 +147,7 @@ class TestStartTunnels:
         assert "--kubeconfig" in call_args
         assert "/my/kubeconfig" in call_args
 
-    @patch("prism.tunnel.subprocess.Popen")
+    @patch("krayne.tunnel.subprocess.Popen")
     def test_tunnel_info_fields(self, mock_popen):
         mock_popen.return_value = MagicMock(pid=42)
 
@@ -159,7 +159,7 @@ class TestStartTunnels:
         assert t.local_port == local_port_for("c", "ns", "dashboard")
         assert t.local_url == f"http://localhost:{t.local_port}"
 
-    @patch("prism.tunnel.subprocess.Popen")
+    @patch("krayne.tunnel.subprocess.Popen")
     def test_unknown_service_skipped(self, mock_popen):
         mock_popen.return_value = MagicMock(pid=1)
 
@@ -171,10 +171,10 @@ class TestStartTunnels:
 class TestIdempotency:
     @pytest.fixture(autouse=True)
     def _isolate_tunnel_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("prism.tunnel.TUNNEL_DIR", tmp_path / "tunnels")
+        monkeypatch.setattr("krayne.tunnel.TUNNEL_DIR", tmp_path / "tunnels")
 
-    @patch("prism.tunnel._pid_alive", return_value=True)
-    @patch("prism.tunnel.subprocess.Popen")
+    @patch("krayne.tunnel._pid_alive", return_value=True)
+    @patch("krayne.tunnel.subprocess.Popen")
     def test_start_is_idempotent(self, mock_popen, mock_alive):
         mock_popen.return_value = MagicMock(pid=100)
 
@@ -187,7 +187,7 @@ class TestIdempotency:
         assert mock_popen.call_count == 1  # still 1
         assert tunnels1 == tunnels2
 
-    @patch("prism.tunnel.subprocess.Popen")
+    @patch("krayne.tunnel.subprocess.Popen")
     def test_stop_is_idempotent(self, mock_popen):
         mock_popen.return_value = MagicMock(pid=100)
 
@@ -206,9 +206,9 @@ class TestTunnelState:
     @pytest.fixture(autouse=True)
     def _isolate_tunnel_dir(self, tmp_path, monkeypatch):
         self.tunnel_dir = tmp_path / "tunnels"
-        monkeypatch.setattr("prism.tunnel.TUNNEL_DIR", self.tunnel_dir)
+        monkeypatch.setattr("krayne.tunnel.TUNNEL_DIR", self.tunnel_dir)
 
-    @patch("prism.tunnel.subprocess.Popen")
+    @patch("krayne.tunnel.subprocess.Popen")
     def test_state_persisted_to_disk(self, mock_popen):
         mock_popen.return_value = MagicMock(pid=555)
 
@@ -220,7 +220,7 @@ class TestTunnelState:
         assert data["cluster_name"] == "my-cluster"
         assert data["pids"] == [555]
 
-    @patch("prism.tunnel.subprocess.Popen")
+    @patch("krayne.tunnel.subprocess.Popen")
     def test_state_removed_on_stop(self, mock_popen):
         mock_popen.return_value = MagicMock(pid=555)
 
@@ -230,8 +230,8 @@ class TestTunnelState:
         state_file = self.tunnel_dir / "default" / "my-cluster.json"
         assert not state_file.exists()
 
-    @patch("prism.tunnel._pid_alive", return_value=True)
-    @patch("prism.tunnel.subprocess.Popen")
+    @patch("krayne.tunnel._pid_alive", return_value=True)
+    @patch("krayne.tunnel.subprocess.Popen")
     def test_is_tunnel_active_true(self, mock_popen, mock_alive):
         mock_popen.return_value = MagicMock(pid=123)
         start_tunnels("c", "ns", ["dashboard"])
@@ -240,8 +240,8 @@ class TestTunnelState:
     def test_is_tunnel_active_false_when_no_state(self):
         assert is_tunnel_active("c", "ns") is False
 
-    @patch("prism.tunnel._pid_alive", return_value=False)
-    @patch("prism.tunnel.subprocess.Popen")
+    @patch("krayne.tunnel._pid_alive", return_value=False)
+    @patch("krayne.tunnel.subprocess.Popen")
     def test_stale_state_cleaned_up(self, mock_popen, mock_alive):
         mock_popen.return_value = MagicMock(pid=999)
         start_tunnels("c", "ns", ["dashboard"])

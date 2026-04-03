@@ -2,19 +2,17 @@
 
 **CLI and SDK for creating, managing, and scaling Ray clusters on Kubernetes.**
 
-Prism wraps the [KubeRay](https://ray-project.github.io/kuberay/) operator behind a clean, opinionated interface so ML practitioners can get distributed compute without touching Kubernetes manifests.
-
-> *A prism takes a single beam of light and organizes it into something structured and useful. Prism does the same for Ray clusters.*
+Krayne wraps the [KubeRay](https://ray-project.github.io/kuberay/) operator behind a clean, opinionated interface so ML practitioners can get distributed compute without touching Kubernetes manifests.
 
 ---
 
-## Why Prism?
+## Why Krayne?
 
 Running Ray on Kubernetes typically requires writing verbose YAML manifests for the `RayCluster` custom resource, understanding Kubernetes CRDs, pod specs, resource requests, and node selectors, stitching together `kubectl` commands for lifecycle management, and manually configuring services like dashboards, notebooks, and SSH. This is a significant barrier for ML practitioners who just want distributed compute.
 
-Prism eliminates that friction:
+Krayne eliminates that friction:
 
-- **One command to a working cluster** — `prism create my-cluster` gives you a Ray cluster with notebooks and SSH ready to go.
+- **One command to a working cluster** — `krayne create my-cluster` gives you a Ray cluster with notebooks and SSH ready to go.
 - **SDK for automation** — the same operations are available as Python functions for pipelines, scripts, and notebooks.
 - **No Kubernetes knowledge required** — sensible defaults handle resource allocation, service configuration, and manifest generation.
 - **Full escape hatch** — power users can override any setting via YAML or drop down to raw KubeRay manifests.
@@ -25,8 +23,8 @@ Prism eliminates that friction:
 
 ```mermaid
 graph LR
-  User["You"] -->|"CLI or Python"| Prism["Prism"]
-  Prism -->|"builds manifest"| KubeRay["KubeRay CRD"]
+  User["You"] -->|"CLI or Python"| Krayne["Krayne"]
+  Krayne -->|"builds manifest"| KubeRay["KubeRay CRD"]
   KubeRay -->|"reconciles"| Ray["Ray Cluster"]
   Ray -->|"serves"| Services["Dashboard\nNotebook\nSSH"]
 ```
@@ -37,23 +35,23 @@ Both the CLI and SDK produce the same result — a fully configured Ray cluster 
 
     ```bash
     # Create a GPU cluster with 2 workers
-    prism create my-experiment --gpus-per-worker 1 --workers 2 --wait
+    krayne create my-experiment --gpus-per-worker 1 --workers 2 --wait
 
     # Check status
-    prism describe my-experiment
+    krayne describe my-experiment
 
     # Scale up
-    prism scale my-experiment --replicas 4
+    krayne scale my-experiment --replicas 4
 
     # Clean up
-    prism delete my-experiment --force
+    krayne delete my-experiment --force
     ```
 
 === "Python SDK"
 
     ```python
-    from prism.api import create_cluster, scale_cluster, delete_cluster
-    from prism.config import ClusterConfig, WorkerGroupConfig
+    from krayne.api import create_cluster, scale_cluster, delete_cluster
+    from krayne.config import ClusterConfig, WorkerGroupConfig
 
     config = ClusterConfig(
         name="my-experiment",
@@ -110,11 +108,11 @@ graph TD
 
 | Module | Responsibility |
 |---|---|
-| **CLI** (`prism.cli`) | Parse arguments, call SDK, format output |
-| **SDK** (`prism.api`) | All business logic as free functions |
-| **Config** (`prism.config`) | Pydantic models + YAML loading |
-| **KubeClient** (`prism.kube`) | Kubernetes API calls + manifest building |
-| **Output** (`prism.output`) | Rich tables and panels for terminal display |
+| **CLI** (`krayne.cli`) | Parse arguments, call SDK, format output |
+| **SDK** (`krayne.api`) | All business logic as free functions |
+| **Config** (`krayne.config`) | Pydantic models + YAML loading |
+| **KubeClient** (`krayne.kube`) | Kubernetes API calls + manifest building |
+| **Output** (`krayne.output`) | Rich tables and panels for terminal display |
 
 The CLI is a thin wrapper — every operation available from the command line is available as a Python function with the same semantics.
 
@@ -124,10 +122,10 @@ The CLI is a thin wrapper — every operation available from the command line is
 
 | Feature | Description |
 |---|---|
-| **Zero-config defaults** | `prism create my-cluster` just works — sensible CPU, memory, and service defaults |
+| **Zero-config defaults** | `krayne create my-cluster` just works — sensible CPU, memory, and service defaults |
 | **GPU support** | One flag to add GPUs: `--gpus-per-worker 1 --worker-gpu-type a100` |
 | **YAML configuration** | Full cluster spec in a YAML file for version control and reproducibility |
-| **Local sandbox** | `prism sandbox setup` spins up a local k3s cluster with KubeRay for development |
+| **Local sandbox** | `krayne sandbox setup` spins up a local k3s cluster with KubeRay for development |
 | **JSON output** | Every command supports `--output json` for scripting and pipelines |
 | **Functional SDK** | Stateless free functions — no classes to instantiate, no state to manage |
 | **Testable by design** | `KubeClient` Protocol enables mock injection without patching imports |
@@ -142,7 +140,7 @@ The CLI is a thin wrapper — every operation available from the command line is
 
     ---
 
-    Install Prism and create your first cluster in under 5 minutes.
+    Install Krayne and create your first cluster in under 5 minutes.
 
     [:octicons-arrow-right-24: Quickstart](quickstart.md)
 
@@ -158,7 +156,7 @@ The CLI is a thin wrapper — every operation available from the command line is
 
     ---
 
-    Full reference for every `prism` command, flag, and option.
+    Full reference for every `krayne` command, flag, and option.
 
     [:octicons-arrow-right-24: CLI Reference](../reference/cli.md)
 
@@ -166,7 +164,7 @@ The CLI is a thin wrapper — every operation available from the command line is
 
     ---
 
-    Use Prism programmatically in scripts, notebooks, and pipelines.
+    Use Krayne programmatically in scripts, notebooks, and pipelines.
 
     [:octicons-arrow-right-24: SDK Reference](../reference/sdk.md)
 

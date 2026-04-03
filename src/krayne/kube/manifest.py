@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import platform
 
-from prism.config.models import ClusterConfig, HeadNodeConfig, ServicesConfig, WorkerGroupConfig
+from krayne.config.models import ClusterConfig, HeadNodeConfig, ServicesConfig, WorkerGroupConfig
 
 _RAY_VERSION = os.environ.get("PRISM_RAY_VERSION", "latest")
 RAY_IMAGE = (
@@ -30,7 +30,7 @@ def build_manifest(config: ClusterConfig) -> dict:
             "name": config.name,
             "namespace": config.namespace,
             "labels": {
-                "app.kubernetes.io/managed-by": "prism",
+                "app.kubernetes.io/managed-by": "krayne",
                 "app.kubernetes.io/name": config.name,
             },
         },

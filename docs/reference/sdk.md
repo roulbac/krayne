@@ -1,9 +1,9 @@
 # Python SDK Reference
 
-The Prism SDK is a set of stateless functions for managing Ray clusters programmatically. All functions live in the `prism.api` module.
+The Krayne SDK is a set of stateless functions for managing Ray clusters programmatically. All functions live in the `krayne.api` module.
 
 ```python
-from prism.api import (
+from krayne.api import (
     create_cluster,
     get_cluster,
     list_clusters,
@@ -63,8 +63,8 @@ def create_cluster(
 **Example:**
 
 ```python
-from prism.api import create_cluster
-from prism.config import ClusterConfig, WorkerGroupConfig
+from krayne.api import create_cluster
+from krayne.config import ClusterConfig, WorkerGroupConfig
 
 config = ClusterConfig(
     name="training-run",
@@ -193,7 +193,7 @@ def scale_cluster(
 
 **Returns:** [`ClusterInfo`](#clusterinfo)
 
-**Raises:** `PrismError` (worker group not found), `ClusterNotFoundError`, `KubeConnectionError`
+**Raises:** `KrayneError` (worker group not found), `ClusterNotFoundError`, `KubeConnectionError`
 
 ---
 
@@ -264,8 +264,8 @@ The cluster is always deleted on exit, even if an exception occurs inside the `w
 
 ```python
 import ray
-from prism.api import managed_cluster
-from prism.config import ClusterConfig, WorkerGroupConfig
+from krayne.api import managed_cluster
+from krayne.config import ClusterConfig, WorkerGroupConfig
 
 config = ClusterConfig(
     name="experiment",
@@ -352,7 +352,7 @@ get_cluster_services(
 
 ## Return types
 
-All return types are immutable frozen dataclasses defined in `prism.api.types`.
+All return types are immutable frozen dataclasses defined in `krayne.api.types`.
 
 ### `ClusterInfo`
 
@@ -481,8 +481,8 @@ Any object that implements these methods satisfies the protocol — no inheritan
 
 ```python
 from unittest.mock import MagicMock
-from prism.api import create_cluster
-from prism.config import ClusterConfig
+from krayne.api import create_cluster
+from krayne.config import ClusterConfig
 
 mock_client = MagicMock()
 mock_client.create_ray_cluster.return_value = {

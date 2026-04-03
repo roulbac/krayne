@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from prism.errors import SandboxNotFoundError
-from prism.kube.client import DefaultKubeClient
-from prism.sandbox.manager import setup_sandbox, teardown_sandbox
+from krayne.errors import SandboxNotFoundError
+from krayne.kube.client import DefaultKubeClient
+from krayne.sandbox.manager import setup_sandbox, teardown_sandbox
 
 
 def _maybe_teardown_sandbox() -> None:
