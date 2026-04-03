@@ -70,6 +70,7 @@ nav:
     - Local Sandbox: guide/sandbox.md
     - Creating Clusters: guide/creating-clusters.md
     - Managing Clusters: guide/managing-clusters.md
+    - Interactive TUI: guide/interactive-tui.md
     - Configuration: guide/configuration.md
     - Error Handling: guide/error-handling.md
   - API Reference:

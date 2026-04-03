@@ -60,10 +60,23 @@ with managed_cluster(config) as managed:
 # Tunnels closed, then cluster deleted
 ```
 
+## Interactive TUI
+
+Krayne also ships with **ikrayne**, a k9s-style interactive terminal UI:
+
+```bash
+ikrayne
+```
+
+![ikrayne demo](docs/assets/ikrayne-demo.gif)
+
+Navigate clusters, create with prefilled forms, scale, delete, and toggle tunnels — all with keyboard shortcuts. See the [Interactive TUI guide](https://roulbac.github.io/krayne/guide/interactive-tui/) for details.
+
 ## Features
 
 - **Zero-config defaults** — every command works with no flags. Sensible defaults get you a working cluster instantly.
 - **CLI and SDK** — the CLI is a thin shell over the Python SDK. Anything you do from the terminal, you can do from code.
+- **Interactive TUI** — k9s-style terminal UI for keyboard-driven cluster management.
 - **Functional API** — stateless free functions, not class hierarchies. Easy to test, easy to compose.
 - **Pydantic config** — validated configuration with YAML override support. No silent failures.
 - **Rich output** — beautiful terminal tables via Rich, with `--output json` for scripting.
@@ -76,6 +89,7 @@ krayne get                List clusters in a namespace
 krayne describe <name>    Show detailed cluster info
 krayne scale <name>       Scale a worker group
 krayne delete <name>      Delete a cluster
+ikrayne                   Launch interactive TUI
 ```
 
 All commands support `-n/--namespace`, `--output json`, and `--debug` flags.

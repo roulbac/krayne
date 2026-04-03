@@ -1,0 +1,185 @@
+/* ikrayne — global styles */
+
+Screen {
+    background: $surface;
+}
+
+/* ── Cluster list ─────────────────────────────────── */
+
+#cluster-list-screen {
+    layout: vertical;
+}
+
+#header-bar {
+    dock: top;
+    height: 1;
+    background: $primary;
+    color: $text;
+    padding: 0 1;
+    text-style: bold;
+}
+
+#namespace-label {
+    dock: top;
+    height: 1;
+    background: $primary-darken-2;
+    color: $text;
+    padding: 0 1;
+}
+
+DataTable {
+    height: 1fr;
+}
+
+#filter-container {
+    dock: bottom;
+    height: auto;
+    display: none;
+}
+
+#filter-container.visible {
+    display: block;
+}
+
+#filter-input {
+    height: 1;
+}
+
+/* ── Detail screen ────────────────────────────────── */
+
+#detail-screen {
+    layout: vertical;
+    padding: 1 2;
+    overflow-y: auto;
+}
+
+#detail-screen Static {
+    margin-bottom: 1;
+}
+
+.section-title {
+    text-style: bold;
+    color: $accent;
+    margin-top: 1;
+}
+
+.detail-row {
+    margin-left: 2;
+}
+
+/* ── Forms ────────────────────────────────────────── */
+
+#create-form-screen {
+    layout: vertical;
+    padding: 1 2;
+    overflow-y: auto;
+}
+
+.form-section {
+    margin-top: 1;
+    margin-bottom: 1;
+}
+
+.form-section-title {
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+.form-row {
+    layout: horizontal;
+    height: auto;
+    margin-bottom: 1;
+}
+
+.form-row Label {
+    width: 16;
+    padding-top: 1;
+}
+
+.form-row Input {
+    width: 1fr;
+}
+
+.form-row Switch {
+    width: auto;
+}
+
+.form-buttons {
+    layout: horizontal;
+    height: auto;
+    margin-top: 2;
+    align-horizontal: center;
+}
+
+.form-buttons Button {
+    margin: 0 2;
+}
+
+#form-error {
+    color: $error;
+    margin: 1 0;
+    display: none;
+}
+
+#form-error.visible {
+    display: block;
+}
+
+/* ── Modal screens ────────────────────────────────── */
+
+ModalScreen {
+    align: center middle;
+}
+
+#delete-dialog, #scale-dialog, #namespace-dialog, #help-dialog {
+    width: 60;
+    height: auto;
+    max-height: 80%;
+    border: thick $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+#scale-dialog Input, #namespace-dialog Input {
+    margin: 1 0;
+}
+
+.dialog-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+.dialog-buttons {
+    layout: horizontal;
+    height: auto;
+    margin-top: 1;
+    align-horizontal: center;
+}
+
+.dialog-buttons Button {
+    margin: 0 2;
+}
+
+/* ── Help screen ──────────────────────────────────── */
+
+#help-dialog {
+    width: 70;
+    max-height: 90%;
+    overflow-y: auto;
+}
+
+.help-row {
+    layout: horizontal;
+    height: auto;
+}
+
+.help-key {
+    width: 12;
+    text-style: bold;
+    color: $accent;
+}
+
+.help-desc {
+    width: 1fr;
+}
