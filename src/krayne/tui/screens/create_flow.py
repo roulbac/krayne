@@ -31,8 +31,8 @@ class CreateFlowScreen(Screen):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=False),
         Binding("ctrl+s", "submit", "Create", show=False),
-        Binding("f5", "prev_tab", "Prev Tab", show=False, priority=True),
-        Binding("f6", "next_tab", "Next Tab", show=False, priority=True),
+        Binding("shift+left", "prev_tab", "Prev Tab", show=False, priority=True),
+        Binding("shift+right", "next_tab", "Next Tab", show=False, priority=True),
     ]
 
     def __init__(self) -> None:
@@ -129,7 +129,7 @@ class CreateFlowScreen(Screen):
         bar = self.query_one(StatusBar)
         bar.set_hints([
             ("Tab/Shift+Tab", "Next/Prev field"),
-            ("F5/F6", "Prev/Next tab"),
+            ("Shift+\u2190\u2192", "Switch tab"),
             ("Ctrl+S", "Create"),
             ("Esc", "Cancel"),
         ])
