@@ -31,8 +31,8 @@ class CreateFlowScreen(Screen):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=False),
         Binding("ctrl+s", "submit", "Create", show=False),
-        Binding("ctrl+n", "next_tab", "Next Tab", show=False),
-        Binding("ctrl+b", "prev_tab", "Prev Tab", show=False),
+        Binding("ctrl+n", "next_tab", "Next Tab", show=False, priority=True),
+        Binding("ctrl+b", "prev_tab", "Prev Tab", show=False, priority=True),
     ]
 
     def __init__(self) -> None:
