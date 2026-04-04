@@ -109,6 +109,7 @@ class CreateFlowScreen(Screen):
                 # ── Tab 5: Review ───────────────────
                 with TabPane("Review", id="tab-review"):
                     yield Static("[dim]Switch to this tab to preview your cluster config[/dim]", id="review-content")
+                    yield Button("Create", variant="primary", id="btn-review-create")
 
             yield Static("", id="form-error")
 
@@ -217,7 +218,7 @@ class CreateFlowScreen(Screen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn_id = event.button.id
-        if btn_id == "btn-create":
+        if btn_id in ("btn-create", "btn-review-create"):
             self.action_submit()
         elif btn_id == "btn-cancel":
             self.action_cancel()
