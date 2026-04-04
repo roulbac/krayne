@@ -40,7 +40,7 @@ class CreateFlowScreen(Screen):
         self._extra_worker_groups: int = 0
         self._creating: bool = False
         self._prev_tab: str = "tab-cluster"
-        self._mounted: bool = False
+        self._user_switched: bool = False
 
     def compose(self):
         header = HeaderBar()
@@ -124,16 +124,18 @@ class CreateFlowScreen(Screen):
         self.query_one("#input-namespace", Input).value = self.app.namespace
         self.query_one("#input-name", Input).focus()
         self._set_status_hints()
-        self._mounted = True
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
-        if not self._mounted:
+        if not self._user_switched:
+            # First activation is automatic (mount) — skip validation
+            self._user_switched = True
             return
         # Validate the tab we're leaving; if invalid, snap back
         error = self._validate_tab(self._prev_tab)
         if error:
             self.notify(error, severity="error", timeout=5)
             tabs = self.query_one("#create-tabs", TabbedContent)
+            self._user_switched = False  # prevent re-validation on snap-back
             tabs.active = self._prev_tab
             return
         self._prev_tab = event.pane.id
