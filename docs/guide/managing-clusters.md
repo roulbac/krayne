@@ -14,14 +14,7 @@ List all Ray clusters in a namespace:
     $ krayne get
     ```
 
-    ```title="Terminal output"
-                                Ray Clusters
-    ┏━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
-    ┃ Name       ┃ Namespace ┃ Status  ┃ Workers ┃ Created              ┃
-    ┡━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
-    │ my-cluster │ default   │ running │       1 │ 2026-04-04T14:54:39Z │
-    └────────────┴───────────┴─────────┴─────────┴──────────────────────┘
-    ```
+    ![krayne get output](../assets/cli-get.png)
 
     List clusters in a specific namespace:
 
@@ -51,35 +44,7 @@ Get detailed information about a specific cluster, including resource breakdowns
     $ krayne describe my-cluster
     ```
 
-    ```title="Terminal output"
-    ╭────────────────────────────── Cluster Details ───────────────────────────────╮
-    │   Name           my-cluster                                                  │
-    │   Namespace      default                                                     │
-    │   Status         ready                                                       │
-    │   Client         ray://10.42.0.14:10001                                      │
-    │   Dashboard      http://10.42.0.14:8265                                      │
-    │   Notebook       http://10.42.0.14:8888                                      │
-    │   Code Server    http://10.42.0.14:8443                                      │
-    │   SSH            ssh://10.42.0.14:22                                         │
-    │   Ray Image      rayproject/ray:latest-aarch64                               │
-    ╰──────────────────────────────────────────────────────────────────────────────╯
-                           Head Node
-    ┏━━━━━━┳━━━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-    ┃ CPUs ┃ Memory ┃ GPUs ┃ Image                         ┃
-    ┡━━━━━━╇━━━━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-    │    1 │ 4Gi    │    0 │ rayproject/ray:latest-aarch64 │
-    └──────┴────────┴──────┴───────────────────────────────┘
-                         Worker Groups
-    ┏━━━━━━━━┳━━━━━━━━━━┳━━━━━━┳━━━━━━━━┳━━━━━━┳━━━━━━━━━━┓
-    ┃ Group  ┃ Replicas ┃ CPUs ┃ Memory ┃ GPUs ┃ GPU Type ┃
-    ┡━━━━━━━━╇━━━━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━━╇━━━━━━━━━━┩
-    │ worker │        1 │    1 │ 2Gi    │    0 │ -        │
-    └────────┴──────────┴──────┴────────┴──────┴──────────┘
-    ╭────────────────────────────────── Tunnels ───────────────────────────────────╮
-    │   Tunnels    closed                                                          │
-    │              Run tun-open to connect                                         │
-    ╰──────────────────────────────────────────────────────────────────────────────╯
-    ```
+    ![krayne describe output](../assets/cli-describe.png)
 
 === "Python SDK"
 
@@ -105,19 +70,7 @@ Scale a worker group up or down:
     krayne scale my-cluster --replicas 4
     ```
 
-    ```title="Terminal output"
-    ╭─────────────────────────────── Cluster Ready ────────────────────────────────╮
-    │   Name               my-cluster                                              │
-    │   Namespace          default                                                 │
-    │   Status             ready                                                   │
-    │   Cluster Address    ray://10.42.0.14:10001                                  │
-    │   Dashboard          http://10.42.0.14:8265                                  │
-    │   Notebook           http://10.42.0.14:8888                                  │
-    │   Code Server        http://10.42.0.14:8443                                  │
-    │   SSH                ssh://10.42.0.14:22                                     │
-    │   Workers            4                                                       │
-    ╰──────────────────────────────────────────────────────────────────────────────╯
-    ```
+    ![krayne scale output](../assets/cli-scale.png)
 
     Scale a named worker group:
 
@@ -147,9 +100,7 @@ Scale a worker group up or down:
     $ krayne delete my-cluster
     ```
 
-    ```title="Terminal output"
-    Cluster 'my-cluster' deleted.
-    ```
+    ![krayne delete output](../assets/cli-delete.png)
 
     Skip the confirmation prompt with `--force`:
 

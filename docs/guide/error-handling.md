@@ -8,12 +8,7 @@ Krayne provides clear, actionable error messages in both the CLI and SDK. All er
 
 By default, errors are displayed as Rich panels with a clean message:
 
-```title="Terminal output"
-$ krayne describe nonexistent-cluster
-╭─────────────────────────────────── Error ────────────────────────────────────╮
-│ Cluster 'nonexistent-cluster' not found in namespace 'default'               │
-╰──────────────────────────────────────────────────────────────────────────────╯
-```
+![krayne error output](../assets/cli-error.png)
 
 ### Debug mode
 
