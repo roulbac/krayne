@@ -28,16 +28,11 @@ from krayne.tui.widgets.status_bar import StatusBar
 class CreateFlowScreen(Screen):
     """Full-screen tabbed create cluster flow."""
 
-    TAB_IDS = ["tab-cluster", "tab-head", "tab-workers", "tab-services", "tab-review"]
-
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=False),
         Binding("ctrl+s", "submit", "Create", show=False),
-        Binding("ctrl+1", "go_tab_1", "Cluster", show=False, priority=True),
-        Binding("ctrl+2", "go_tab_2", "Head Node", show=False, priority=True),
-        Binding("ctrl+3", "go_tab_3", "Workers", show=False, priority=True),
-        Binding("ctrl+4", "go_tab_4", "Services", show=False, priority=True),
-        Binding("ctrl+5", "go_tab_5", "Review", show=False, priority=True),
+        Binding("ctrl+comma", "prev_tab", "Prev Tab", show=False, priority=True),
+        Binding("ctrl+full_stop", "next_tab", "Next Tab", show=False, priority=True),
     ]
 
     def __init__(self) -> None:
@@ -134,7 +129,7 @@ class CreateFlowScreen(Screen):
         bar = self.query_one(StatusBar)
         bar.set_hints([
             ("Tab/Shift+Tab", "Next/Prev field"),
-            ("Ctrl+1-5", "Jump to tab"),
+            ("Ctrl+,/.", "Prev/Next tab"),
             ("Ctrl+S", "Create"),
             ("Esc", "Cancel"),
         ])
@@ -145,24 +140,11 @@ class CreateFlowScreen(Screen):
         if event.pane.id == "tab-review":
             self._update_review()
 
-    def _go_tab(self, index: int) -> None:
-        tabs = self.query_one("#create-tabs", TabbedContent)
-        tabs.active = self.TAB_IDS[index]
+    def action_next_tab(self) -> None:
+        self.query_one("#create-tabs Tabs").action_next_tab()
 
-    def action_go_tab_1(self) -> None:
-        self._go_tab(0)
-
-    def action_go_tab_2(self) -> None:
-        self._go_tab(1)
-
-    def action_go_tab_3(self) -> None:
-        self._go_tab(2)
-
-    def action_go_tab_4(self) -> None:
-        self._go_tab(3)
-
-    def action_go_tab_5(self) -> None:
-        self._go_tab(4)
+    def action_prev_tab(self) -> None:
+        self.query_one("#create-tabs Tabs").action_previous_tab()
 
     # ── Button dispatch ─────────────────────────────────
 
