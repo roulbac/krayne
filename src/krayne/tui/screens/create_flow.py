@@ -39,6 +39,7 @@ class CreateFlowScreen(Screen):
         super().__init__()
         self._extra_worker_groups: int = 0
         self._creating: bool = False
+        self._prev_tab: str = "tab-cluster"
 
     def compose(self):
         header = HeaderBar()
@@ -124,6 +125,14 @@ class CreateFlowScreen(Screen):
         self._set_status_hints()
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        # Validate the tab we're leaving; if invalid, snap back
+        error = self._validate_tab(self._prev_tab)
+        if error:
+            self.notify(error, severity="error", timeout=5)
+            tabs = self.query_one("#create-tabs", TabbedContent)
+            tabs.active = self._prev_tab
+            return
+        self._prev_tab = event.pane.id
         if event.pane.id == "tab-review":
             self._update_review()
 
@@ -136,13 +145,48 @@ class CreateFlowScreen(Screen):
             ("Esc", "Cancel"),
         ])
 
+    def _validate_tab(self, tab_id: str) -> str | None:
+        """Validate fields on the given tab. Returns error message or None."""
+        if tab_id == "tab-cluster":
+            name = self.query_one("#input-name", Input).value.strip()
+            if not name:
+                return "Cluster name is required"
+        elif tab_id == "tab-head":
+            cpus = self.query_one("#input-head-cpus", Input).value.strip()
+            memory = self.query_one("#input-head-memory", Input).value.strip()
+            if not cpus:
+                return "Head node CPUs is required"
+            if not memory:
+                return "Head node memory is required"
+        elif tab_id == "tab-workers":
+            for idx in range(self._extra_worker_groups + 1):
+                prefix = f"#input-wg{idx}"
+                replicas = self.query_one(f"{prefix}-replicas", Input).value.strip()
+                cpus = self.query_one(f"{prefix}-cpus", Input).value.strip()
+                memory = self.query_one(f"{prefix}-memory", Input).value.strip()
+                if not replicas:
+                    return f"Worker group {idx + 1}: replicas is required"
+                if not cpus:
+                    return f"Worker group {idx + 1}: CPUs is required"
+                if not memory:
+                    return f"Worker group {idx + 1}: memory is required"
+        return None
+
     def _switch_tab(self, offset: int) -> None:
         tabs = self.query_one("#create-tabs", TabbedContent)
-        tab_list = list(tabs.query(TabPane))
         active = tabs.active
+
+        # Validate current tab before switching
+        error = self._validate_tab(active)
+        if error:
+            self.notify(error, severity="error", timeout=5)
+            return
+
+        tab_list = list(tabs.query(TabPane))
         for i, pane in enumerate(tab_list):
             if pane.id == active:
                 target = tab_list[(i + offset) % len(tab_list)]
+                self._prev_tab = target.id
                 tabs.active = target.id
                 # Move focus into the new tab so Textual doesn't snap back
                 focusables = list(target.query("Input, Switch, Button"))
