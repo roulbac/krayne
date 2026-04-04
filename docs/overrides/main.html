@@ -3,6 +3,7 @@
 {% block extrahead %}
   <meta name="google-site-verification" content="Apib7-x98H0j5cPqHWwSMm6dNU4GmODRoqxLiDzdx9I" />
 
+  {% if page %}
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:title" content="{{ page.meta.title | default(page.title, true) }} — Krayne" />
@@ -16,4 +17,5 @@
   <meta name="twitter:title" content="{{ page.meta.title | default(page.title, true) }} — Krayne" />
   <meta name="twitter:description" content="{{ page.meta.description | default(config.site_description, true) }}" />
   <meta name="twitter:image" content="https://roulbac.github.io/krayne/assets/ikrayne-demo.gif" />
+  {% endif %}
 {% endblock %}
