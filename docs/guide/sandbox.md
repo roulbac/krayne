@@ -78,15 +78,7 @@ Select "Sandbox kubeconfig" when prompted. This saves the kubeconfig path and co
 krayne sandbox status
 ```
 
-```title="Terminal output"
-╭─ Sandbox Status ────────────────────────────────╮
-│  Running:      Yes                              │
-│  Container:    krayne-sandbox                    │
-│  K3S Version:  v1.35.2+k3s1                    │
-│  Kubeconfig:   ~/.krayne/sandbox-kubeconfig      │
-│  Created:      2026-04-01 10:00:00              │
-╰─────────────────────────────────────────────────╯
-```
+![krayne sandbox status output](../assets/cli-sandbox-status.png)
 
 ---
 

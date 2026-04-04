@@ -1,4 +1,4 @@
-"""Create cluster flow — guided creation with quick and advanced modes."""
+"""Create cluster flow — tabbed creation form."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from functools import partial
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Input, Label, Static, Switch
+from textual.widgets import Button, Input, Label, Static, Switch, TabbedContent, TabPane
 from textual.worker import Worker, WorkerState
 
 from krayne.api.clusters import create_cluster
@@ -26,18 +26,21 @@ from krayne.tui.widgets.status_bar import StatusBar
 
 
 class CreateFlowScreen(Screen):
-    """Full-screen create cluster flow with quick and advanced modes."""
+    """Full-screen tabbed create cluster flow."""
 
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=False),
         Binding("ctrl+s", "submit", "Create", show=False),
+        Binding("ctrl+y", "prev_tab", "Prev Tab", show=False, priority=True),
+        Binding("ctrl+t", "next_tab", "Next Tab", show=False, priority=True),
     ]
 
     def __init__(self) -> None:
         super().__init__()
-        self._advanced: bool = False
         self._extra_worker_groups: int = 0
         self._creating: bool = False
+
+    # ── UI ──────────────────────────────────────────────
 
     def compose(self):
         header = HeaderBar()
@@ -45,90 +48,67 @@ class CreateFlowScreen(Screen):
         yield header
 
         with Vertical(id="create-flow-screen"):
-            # Mode toggle
-            with Horizontal(id="create-mode-bar"):
-                yield Button("Quick", variant="primary", id="btn-mode-quick")
-                yield Button("Advanced", variant="default", id="btn-mode-advanced")
+            with TabbedContent(id="create-tabs"):
+                # ── Tab 1: Cluster ──────────────────
+                with TabPane("Cluster", id="tab-cluster"):
+                    yield Static("[bold]Cluster[/bold]", classes="form-section-title")
+                    with Horizontal(classes="form-row"):
+                        yield Label("Name:")
+                        yield Input(placeholder="my-cluster", id="input-name")
+                        yield Label("Namespace:")
+                        yield Input(value="default", id="input-namespace")
 
-            yield Static("", id="step-indicator")
+                # ── Tab 2: Head Node ────────────────
+                with TabPane("Head Node", id="tab-head"):
+                    yield Static("[bold]Head Node[/bold]", classes="form-section-title")
+                    with Horizontal(classes="form-row"):
+                        yield Label("CPUs:")
+                        yield Input(value=DEFAULT_CPUS, id="input-head-cpus")
+                        yield Label("Memory:")
+                        yield Input(value=DEFAULT_HEAD_MEMORY, id="input-head-memory")
+                    with Horizontal(classes="form-row"):
+                        yield Label("GPU Type:")
+                        yield Input(value="t4", id="input-head-gpu-type")
+                        yield Label("GPUs:")
+                        yield Input(value="0", id="input-head-gpus", type="integer")
 
-            # ── Quick + shared fields ───────────────
-            with Vertical(classes="form-section", id="section-basics"):
-                yield Static("[bold]Cluster[/bold]", classes="form-section-title")
-                with Horizontal(classes="form-row"):
-                    yield Label("Name:")
-                    yield Input(placeholder="my-cluster", id="input-name")
-                with Horizontal(classes="form-row"):
-                    yield Label("Namespace:")
-                    yield Input(value="default", id="input-namespace")
+                # ── Tab 3: Workers ──────────────────
+                with TabPane("Workers", id="tab-workers"):
+                    with Vertical(classes="form-section", id="section-wg0"):
+                        yield Static("[bold]Worker Group 1[/bold]", classes="form-section-title")
+                        with Horizontal(classes="form-row"):
+                            yield Label("Group Name:")
+                            yield Input(value="worker", id="input-wg0-name")
+                            yield Label("Replicas:")
+                            yield Input(value="1", id="input-wg0-replicas", type="integer")
+                        with Horizontal(classes="form-row"):
+                            yield Label("CPUs:")
+                            yield Input(value=DEFAULT_CPUS, id="input-wg0-cpus")
+                            yield Label("Memory:")
+                            yield Input(value=DEFAULT_MEMORY, id="input-wg0-memory")
+                        with Horizontal(classes="form-row"):
+                            yield Label("GPU Type:")
+                            yield Input(value="t4", id="input-wg0-gpu-type")
+                            yield Label("GPUs:")
+                            yield Input(value="0", id="input-wg0-gpus", type="integer")
 
-            # Quick mode: simple worker count
-            with Vertical(classes="form-section", id="section-quick-compute"):
-                yield Static("[bold]Workers[/bold]", classes="form-section-title")
-                with Horizontal(classes="form-row"):
-                    yield Label("Worker Count:")
-                    yield Input(value="1", id="input-quick-workers", type="integer")
-                with Horizontal(classes="form-row"):
-                    yield Label("Enable GPUs:")
-                    yield Switch(value=False, id="switch-quick-gpu")
-                with Horizontal(classes="form-row"):
-                    yield Label("GPU Type:")
-                    yield Input(value="t4", id="input-quick-gpu-type")
+                    yield Container(id="extra-wg-container")
+                    yield Button("+ Add Worker Group", variant="default", id="btn-add-wg")
 
-            # Advanced mode: head + worker groups
-            with Vertical(classes="form-section", id="section-advanced-head"):
-                yield Static("[bold]Head Node[/bold]", classes="form-section-title")
-                with Horizontal(classes="form-row"):
-                    yield Label("CPUs:")
-                    yield Input(value=DEFAULT_CPUS, id="input-head-cpus")
-                with Horizontal(classes="form-row"):
-                    yield Label("Memory:")
-                    yield Input(value=DEFAULT_HEAD_MEMORY, id="input-head-memory")
-                with Horizontal(classes="form-row"):
-                    yield Label("GPUs:")
-                    yield Input(value="0", id="input-head-gpus", type="integer")
+                # ── Tab 4: Services ─────────────────
+                with TabPane("Services", id="tab-services"):
+                    yield Static("[bold]Services[/bold]", classes="form-section-title")
+                    with Horizontal(classes="form-row"):
+                        yield Label("Notebook:")
+                        yield Switch(value=True, id="switch-notebook")
+                        yield Label("Code Server:")
+                        yield Switch(value=True, id="switch-code-server")
+                        yield Label("SSH:")
+                        yield Switch(value=True, id="switch-ssh")
 
-            with Vertical(classes="form-section", id="section-advanced-workers"):
-                yield Static("[bold]Worker Group 1[/bold]", classes="form-section-title")
-                with Horizontal(classes="form-row"):
-                    yield Label("Group Name:")
-                    yield Input(value="worker", id="input-wg0-name")
-                with Horizontal(classes="form-row"):
-                    yield Label("Replicas:")
-                    yield Input(value="1", id="input-wg0-replicas", type="integer")
-                with Horizontal(classes="form-row"):
-                    yield Label("CPUs:")
-                    yield Input(value=DEFAULT_CPUS, id="input-wg0-cpus")
-                with Horizontal(classes="form-row"):
-                    yield Label("Memory:")
-                    yield Input(value=DEFAULT_MEMORY, id="input-wg0-memory")
-                with Horizontal(classes="form-row"):
-                    yield Label("GPUs:")
-                    yield Input(value="0", id="input-wg0-gpus", type="integer")
-                with Horizontal(classes="form-row"):
-                    yield Label("GPU Type:")
-                    yield Input(value="t4", id="input-wg0-gpu-type")
-
-            # Extra worker groups container
-            yield Container(id="extra-wg-container")
-            yield Button("+ Add Worker Group", variant="default", id="btn-add-wg")
-
-            # Services
-            with Vertical(classes="form-section", id="section-services"):
-                yield Static("[bold]Services[/bold]", classes="form-section-title")
-                with Horizontal(classes="form-row"):
-                    yield Label("Notebook:")
-                    yield Switch(value=True, id="switch-notebook")
-                with Horizontal(classes="form-row"):
-                    yield Label("Code Server:")
-                    yield Switch(value=True, id="switch-code-server")
-                with Horizontal(classes="form-row"):
-                    yield Label("SSH:")
-                    yield Switch(value=True, id="switch-ssh")
-
-            # Review section
-            with Vertical(id="review-section"):
-                yield Static("", id="review-content")
+                # ── Tab 5: Review ───────────────────
+                with TabPane("Review", id="tab-review"):
+                    yield Static("", id="review-content")
 
             yield Static("", id="form-error")
 
@@ -141,55 +121,54 @@ class CreateFlowScreen(Screen):
 
     def on_mount(self) -> None:
         self.add_class(self.app.terminal_class)
-        # Set namespace from app
         self.query_one("#input-namespace", Input).value = self.app.namespace
         self.query_one("#input-name", Input).focus()
-        # Start in quick mode
-        self._set_mode(advanced=False)
         self._set_status_hints()
 
     def _set_status_hints(self) -> None:
         bar = self.query_one(StatusBar)
         bar.set_hints([
+            ("Tab/Shift+Tab", "Next/Prev field"),
+            ("Ctrl+Y/T", "Prev/Next tab"),
             ("Ctrl+S", "Create"),
             ("Esc", "Cancel"),
         ])
 
-    def _set_mode(self, advanced: bool) -> None:
-        self._advanced = advanced
+    TAB_IDS = ["tab-cluster", "tab-head", "tab-workers", "tab-services", "tab-review"]
 
-        # Toggle button styles
-        btn_quick = self.query_one("#btn-mode-quick", Button)
-        btn_adv = self.query_one("#btn-mode-advanced", Button)
-        btn_quick.variant = "default" if advanced else "primary"
-        btn_adv.variant = "primary" if advanced else "default"
+    # ── Tab navigation ──────────────────────────────────
 
-        # Toggle section visibility
-        self.query_one("#section-quick-compute").display = not advanced
-        self.query_one("#section-advanced-head").display = advanced
-        self.query_one("#section-advanced-workers").display = advanced
-        self.query_one("#extra-wg-container").display = advanced
-        self.query_one("#btn-add-wg").display = advanced
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        if event.pane.id == "tab-review":
+            self._update_review()
 
-        # Step indicator
-        step = self.query_one("#step-indicator", Static)
-        if advanced:
-            step.update("[dim]Advanced: Basics → Head → Workers → Services → Review[/dim]")
-        else:
-            step.update("[dim]Quick: Basics → Workers → Services → Create[/dim]")
+    def _go_tab(self, offset: int) -> None:
+        tabs = self.query_one("#create-tabs", TabbedContent)
+        current = tabs.active
+        idx = self.TAB_IDS.index(current) if current in self.TAB_IDS else 0
+        target_id = self.TAB_IDS[(idx + offset) % len(self.TAB_IDS)]
+        # Clear focus first so Textual doesn't snap back to the old tab
+        self.set_focus(None)
+        tabs.active = target_id
+
+    def action_next_tab(self) -> None:
+        self._go_tab(1)
+
+    def action_prev_tab(self) -> None:
+        self._go_tab(-1)
+
+    # ── Button dispatch ─────────────────────────────────
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn_id = event.button.id
-        if btn_id == "btn-mode-quick":
-            self._set_mode(advanced=False)
-        elif btn_id == "btn-mode-advanced":
-            self._set_mode(advanced=True)
-        elif btn_id == "btn-create":
+        if btn_id == "btn-create":
             self.action_submit()
         elif btn_id == "btn-cancel":
             self.action_cancel()
         elif btn_id == "btn-add-wg":
             self._add_worker_group()
+
+    # ── Worker groups ───────────────────────────────────
 
     def _add_worker_group(self) -> None:
         self._extra_worker_groups += 1
@@ -199,20 +178,24 @@ class CreateFlowScreen(Screen):
         section = Vertical(classes="form-section", id=f"section-wg{idx}")
         section.mount(Static(f"[bold]Worker Group {idx + 1}[/bold]", classes="form-section-title"))
 
-        for label_text, input_id, default in [
-            ("Group Name:", f"input-wg{idx}-name", f"worker-{idx + 1}"),
-            ("Replicas:", f"input-wg{idx}-replicas", "1"),
-            ("CPUs:", f"input-wg{idx}-cpus", DEFAULT_CPUS),
-            ("Memory:", f"input-wg{idx}-memory", DEFAULT_MEMORY),
-            ("GPUs:", f"input-wg{idx}-gpus", "0"),
-            ("GPU Type:", f"input-wg{idx}-gpu-type", "t4"),
-        ]:
+        pairs = [
+            [("Group Name:", f"input-wg{idx}-name", f"worker-{idx + 1}"),
+             ("Replicas:", f"input-wg{idx}-replicas", "1")],
+            [("CPUs:", f"input-wg{idx}-cpus", DEFAULT_CPUS),
+             ("Memory:", f"input-wg{idx}-memory", DEFAULT_MEMORY)],
+            [("GPU Type:", f"input-wg{idx}-gpu-type", "t4"),
+             ("GPUs:", f"input-wg{idx}-gpus", "0")],
+        ]
+        for pair in pairs:
             row = Horizontal(classes="form-row")
-            row.mount(Label(label_text))
-            row.mount(Input(value=default, id=input_id))
+            for label_text, input_id, default in pair:
+                row.mount(Label(label_text))
+                row.mount(Input(value=default, id=input_id))
             section.mount(row)
 
         container.mount(section)
+
+    # ── Actions ─────────────────────────────────────────
 
     def action_cancel(self) -> None:
         self.app.pop_screen()
@@ -223,19 +206,22 @@ class CreateFlowScreen(Screen):
         error_label = self.query_one("#form-error", Static)
         error_label.remove_class("visible")
 
+        # Validate all tabs
+        errors = self._validate_all()
+        if errors:
+            first_error = errors[0]
+            msg = f"{first_error[0]}: {first_error[1]}"
+            error_label.update(f"[red]{msg}[/red]")
+            error_label.add_class("visible")
+            self.notify(msg, severity="error", timeout=5)
+            return
+
         try:
             config = self._build_config()
-        except (ValueError, TypeError) as exc:
-            error_label.update(f"[red]{exc}[/red]")
-            error_label.add_class("visible")
-            return
         except Exception as exc:
             error_label.update(f"[red]{exc}[/red]")
             error_label.add_class("visible")
             return
-
-        # Show review
-        self._show_review(config)
 
         self._creating = True
         self.run_worker(
@@ -244,38 +230,41 @@ class CreateFlowScreen(Screen):
             name="create_cluster",
         )
 
+    # ── Validation ──────────────────────────────────────
+
+    def _validate_all(self) -> list[tuple[str, str]]:
+        """Validate all tabs. Returns list of (tab_label, error_message)."""
+        errors: list[tuple[str, str]] = []
+
+        # Cluster tab
+        if not self.query_one("#input-name", Input).value.strip():
+            errors.append(("Cluster", "Cluster name is required"))
+
+        # Head Node tab
+        if not self.query_one("#input-head-cpus", Input).value.strip():
+            errors.append(("Head Node", "CPUs is required"))
+        if not self.query_one("#input-head-memory", Input).value.strip():
+            errors.append(("Head Node", "Memory is required"))
+
+        # Workers tab
+        for idx in range(self._extra_worker_groups + 1):
+            prefix = f"#input-wg{idx}"
+            group_label = f"Worker group {idx + 1}"
+            if not self.query_one(f"{prefix}-replicas", Input).value.strip():
+                errors.append(("Workers", f"{group_label}: replicas is required"))
+            if not self.query_one(f"{prefix}-cpus", Input).value.strip():
+                errors.append(("Workers", f"{group_label}: CPUs is required"))
+            if not self.query_one(f"{prefix}-memory", Input).value.strip():
+                errors.append(("Workers", f"{group_label}: memory is required"))
+
+        return errors
+
+    # ── Config building ─────────────────────────────────
+
     def _build_config(self) -> ClusterConfig:
         name = self.query_one("#input-name", Input).value.strip()
-        if not name:
-            raise ValueError("Cluster name is required")
-
         namespace = self.query_one("#input-namespace", Input).value.strip() or "default"
 
-        if self._advanced:
-            return self._build_advanced_config(name, namespace)
-        else:
-            return self._build_quick_config(name, namespace)
-
-    def _build_quick_config(self, name: str, namespace: str) -> ClusterConfig:
-        workers = int(self.query_one("#input-quick-workers", Input).value.strip() or "1")
-        use_gpu = self.query_one("#switch-quick-gpu", Switch).value
-        gpu_type = self.query_one("#input-quick-gpu-type", Input).value.strip()
-
-        wg = WorkerGroupConfig(
-            name="worker",
-            replicas=workers,
-            gpus=1 if use_gpu else 0,
-            gpu_type=gpu_type if use_gpu else "t4",
-        )
-
-        return ClusterConfig(
-            name=name,
-            namespace=namespace,
-            worker_groups=[wg],
-            services=self._build_services(),
-        )
-
-    def _build_advanced_config(self, name: str, namespace: str) -> ClusterConfig:
         head = HeadNodeConfig(
             cpus=self.query_one("#input-head-cpus", Input).value.strip(),
             memory=self.query_one("#input-head-memory", Input).value.strip(),
@@ -283,11 +272,7 @@ class CreateFlowScreen(Screen):
         )
 
         worker_groups: list[WorkerGroupConfig] = []
-
-        # Primary worker group
         worker_groups.append(self._read_worker_group(0))
-
-        # Extra worker groups
         for i in range(1, self._extra_worker_groups + 1):
             try:
                 worker_groups.append(self._read_worker_group(i))
@@ -320,17 +305,62 @@ class CreateFlowScreen(Screen):
             ssh=self.query_one("#switch-ssh", Switch).value,
         )
 
-    def _show_review(self, config: ClusterConfig) -> None:
+    # ── Review ──────────────────────────────────────────
+
+    def _update_review(self) -> None:
+        """Refresh the review tab with current form state."""
+        errors = self._validate_all()
+
+        if errors:
+            lines = ["[bold]Review[/bold]", ""]
+            lines.append("[bold red]Fix the following before creating:[/bold red]")
+            lines.append("")
+            for tab_label, error_msg in errors:
+                lines.append(f"  [red]\u2717[/red] {tab_label}: {error_msg}")
+            self.query_one("#review-content", Static).update("\n".join(lines))
+            return
+
+        try:
+            config = self._build_config()
+        except Exception as exc:
+            self.query_one("#review-content", Static).update(
+                f"[red]Cannot preview: {exc}[/red]"
+            )
+            return
+
         lines: list[str] = []
-        lines.append("[bold]Creating cluster...[/bold]")
-        lines.append(f"  Name: {config.name}")
-        lines.append(f"  Namespace: {config.namespace}")
+        lines.append("[bold]Review[/bold]")
+        lines.append("")
+        lines.append(f"  [dim]Name:[/dim]       {config.name}")
+        lines.append(f"  [dim]Namespace:[/dim]  {config.namespace}")
+
+        lines.append("")
+        lines.append("[bold]Head Node[/bold]")
+        lines.append(f"  [dim]CPUs:[/dim]   {config.head.cpus}")
+        lines.append(f"  [dim]Memory:[/dim] {config.head.memory}")
+        lines.append(f"  [dim]GPUs:[/dim]   {config.head.gpus}")
+
+        lines.append("")
+        lines.append("[bold]Workers[/bold]")
         for wg in config.worker_groups:
-            lines.append(f"  Workers: {wg.name} x{wg.replicas}")
+            parts = [f"{wg.replicas} replica(s)", f"{wg.cpus} CPUs", f"{wg.memory} mem"]
             if wg.gpus:
-                lines.append(f"    GPUs: {wg.gpus} ({wg.gpu_type})")
-        review = self.query_one("#review-content", Static)
-        review.update("\n".join(lines))
+                parts.append(f"{wg.gpus} GPUs ({wg.gpu_type})")
+            lines.append(f"  {wg.name}: {', '.join(parts)}")
+
+        lines.append("")
+        lines.append("[bold]Services[/bold]")
+        svc = config.services
+        for name, enabled in [("Notebook", svc.notebook), ("Code Server", svc.code_server), ("SSH", svc.ssh)]:
+            icon = "[green]\u2713[/green]" if enabled else "[dim]\u2717[/dim]"
+            lines.append(f"  {icon} {name}")
+
+        lines.append("")
+        lines.append("[green]Ready to create \u2714[/green]")
+
+        self.query_one("#review-content", Static).update("\n".join(lines))
+
+    # ── Worker result handling ──────────────────────────
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.worker.name != "create_cluster":

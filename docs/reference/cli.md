@@ -96,18 +96,7 @@ krayne create my-cluster --file cluster.yaml --wait --timeout 600
 krayne create my-cluster --output json
 ```
 
-```title="Terminal output"
-╭─ Cluster Created ────────────────────────────╮
-│  Name               my-cluster               │
-│  Namespace          default                  │
-│  Status             ready                    │
-│  Cluster Address    ray://10.0.0.1:10001     │
-│  Dashboard          http://10.0.0.1:8265     │
-│  Notebook           http://10.0.0.1:8888     │
-│  SSH                ssh://10.0.0.1:22        │
-│  Workers            1                        │
-╰──────────────────────────────────────────────╯
-```
+![krayne create output](../assets/cli-create.png)
 
 !!! tip "Local access"
     Use `krayne tun-open <cluster-name>` to create localhost mirrors of all cluster services via `kubectl port-forward`. Use `krayne tun-close <cluster-name>` to stop.
@@ -144,14 +133,7 @@ krayne get -n ml-team
 krayne get --output json
 ```
 
-```title="Terminal output"
-┌────────────────┬───────────┬─────────┬─────────┬─────────────────────┐
-│ Name           │ Namespace │ Status  │ Workers │ Created             │
-├────────────────┼───────────┼─────────┼─────────┼─────────────────────┤
-│ my-cluster     │ default   │ ready   │ 1       │ 2026-04-01 10:30:00 │
-│ gpu-experiment │ default   │ ready   │ 2       │ 2026-04-01 09:15:00 │
-└────────────────┴───────────┴─────────┴─────────┴─────────────────────┘
-```
+![krayne get output](../assets/cli-get.png)
 
 ---
 
@@ -182,31 +164,7 @@ krayne describe my-cluster
 krayne describe my-cluster -n ml-team --output json
 ```
 
-```title="Terminal output"
-╭─ Cluster Details ────────────────────────╮
-│  Namespace:    default                   │
-│  Status:       ready                     │
-│  Client:       ray://10.0.0.1:10001     │
-│  Dashboard:    http://10.0.0.1:8265      │
-│  Notebook:     http://10.0.0.1:8888      │
-│  SSH:          ssh://10.0.0.1:22         │
-│  Ray Version:  unknown                   │
-╰──────────────────────────────────────────╯
-
-Head Node
-┌──────┬────────┬──────┬─────────────────────────┐
-│ CPUs │ Memory │ GPUs │ Image                   │
-├──────┼────────┼──────┼─────────────────────────┤
-│ 15   │ 48Gi   │ 0    │ rayproject/ray:2.41.0   │
-└──────┴────────┴──────┴─────────────────────────┘
-
-Worker Groups
-┌─────────┬──────────┬──────┬────────┬──────┬──────────┐
-│ Group   │ Replicas │ CPUs │ Memory │ GPUs │ GPU Type │
-├─────────┼──────────┼──────┼────────┼──────┼──────────┤
-│ worker  │ 1        │ 15   │ 48Gi   │ 0    │ —        │
-└─────────┴──────────┴──────┴────────┴──────┴──────────┘
-```
+![krayne describe output](../assets/cli-describe.png)
 
 ---
 
@@ -242,14 +200,7 @@ krayne scale my-cluster --replicas 4
 krayne scale my-cluster --worker-group gpu-workers --replicas 8 -n ml-team
 ```
 
-```title="Terminal output"
-╭─ Cluster Scaled ─────────────────────────╮
-│  Name:         my-cluster                │
-│  Namespace:    default                   │
-│  Status:       ready                     │
-│  Workers:      4                         │
-╰──────────────────────────────────────────╯
-```
+![krayne scale output](../assets/cli-scale.png)
 
 ---
 
@@ -287,10 +238,7 @@ krayne delete my-cluster --force
 krayne delete my-cluster -n ml-team --force
 ```
 
-```title="Terminal output"
-Are you sure you want to delete cluster 'my-cluster'? [y/N]: y
-Cluster 'my-cluster' deleted.
-```
+![krayne delete output](../assets/cli-delete.png)
 
 ---
 
@@ -331,17 +279,7 @@ krayne tun-open my-cluster -n ml-team
 krayne tun-open my-cluster --output json
 ```
 
-```title="Terminal output"
-╭─ Tunnel Active — my-cluster ────────────────────────────╮
-│  Service      Local URL                   Remote Port   │
-│  dashboard    http://localhost:34821       8265          │
-│  client       ray://localhost:28190        10001         │
-│  notebook     http://localhost:41337       8888          │
-│  ssh          ssh://localhost:19022        22            │
-│                                                         │
-│  Run tun-close to stop                                  │
-╰─────────────────────────────────────────────────────────╯
-```
+![krayne tun-open output](../assets/cli-tun-open.png)
 
 !!! note
     The cluster must be in `ready` or `running` state. Tunnels forward to the head Service (`svc/<name>-head-svc`), which survives pod restarts.
@@ -433,15 +371,7 @@ Show current status of the sandbox.
 krayne sandbox status
 ```
 
-```title="Terminal output"
-╭─ Sandbox Status ────────────────────────────────╮
-│  Running:      Yes                              │
-│  Container:    krayne-sandbox                    │
-│  K3S Version:  v1.35.2+k3s1                    │
-│  Kubeconfig:   ~/.krayne/sandbox-kubeconfig      │
-│  Created:      2026-04-01 10:00:00              │
-╰─────────────────────────────────────────────────╯
-```
+![krayne sandbox status output](../assets/cli-sandbox-status.png)
 
 ---
 
@@ -475,11 +405,6 @@ Errors are displayed as Rich panels by default. Use `--debug` to see full Python
 krayne describe nonexistent-cluster --debug
 ```
 
-```title="Terminal output"
-╭──── Error ─────────────────────────────────╮
-│ Cluster 'nonexistent-cluster' not found in │
-│ namespace 'default'                        │
-╰────────────────────────────────────────────╯
-```
+![krayne error output](../assets/cli-error.png)
 
 All errors are instances of `KrayneError` subclasses. See [Error Types](errors.md) for the full exception hierarchy.

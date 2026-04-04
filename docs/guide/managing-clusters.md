@@ -14,14 +14,7 @@ List all Ray clusters in a namespace:
     $ krayne get
     ```
 
-    ```title="Terminal output"
-    ┌────────────────┬───────────┬─────────┬─────────┬─────────────────────┐
-    │ Name           │ Namespace │ Status  │ Workers │ Created             │
-    ├────────────────┼───────────┼─────────┼─────────┼─────────────────────┤
-    │ my-cluster     │ default   │ ready   │ 1       │ 2026-04-01 10:30:00 │
-    │ gpu-experiment │ default   │ ready   │ 2       │ 2026-04-01 09:15:00 │
-    └────────────────┴───────────┴─────────┴─────────┴─────────────────────┘
-    ```
+    ![krayne get output](../assets/cli-get.png)
 
     List clusters in a specific namespace:
 
@@ -51,30 +44,7 @@ Get detailed information about a specific cluster, including resource breakdowns
     $ krayne describe my-cluster
     ```
 
-    ```title="Terminal output"
-    ╭─ Cluster: my-cluster ────────────────────╮
-    │  Namespace:    default                   │
-    │  Status:       ready                     │
-    │  Dashboard:    http://10.0.0.1:8265      │
-    │  Client URL:   ray://10.0.0.1:10001     │
-    │  Workers:      1                         │
-    │  Created:      2026-04-01 10:30:00       │
-    ╰──────────────────────────────────────────╯
-
-    Head Node
-    ┌──────┬────────┬──────┬─────────────────────────┐
-    │ CPUs │ Memory │ GPUs │ Image                   │
-    ├──────┼────────┼──────┼─────────────────────────┤
-    │ 15   │ 48Gi   │ 0    │ rayproject/ray:2.41.0   │
-    └──────┴────────┴──────┴─────────────────────────┘
-
-    Worker Groups
-    ┌─────────┬──────────┬──────┬────────┬──────┬──────────┐
-    │ Group   │ Replicas │ CPUs │ Memory │ GPUs │ GPU Type │
-    ├─────────┼──────────┼──────┼────────┼──────┼──────────┤
-    │ worker  │ 1        │ 15   │ 48Gi   │ 0    │ —        │
-    └─────────┴──────────┴──────┴────────┴──────┴──────────┘
-    ```
+    ![krayne describe output](../assets/cli-describe.png)
 
 === "Python SDK"
 
@@ -100,14 +70,7 @@ Scale a worker group up or down:
     krayne scale my-cluster --replicas 4
     ```
 
-    ```title="Terminal output"
-    ╭─ Cluster Scaled ─────────────────────────╮
-    │  Name:         my-cluster                │
-    │  Namespace:    default                   │
-    │  Status:       ready                     │
-    │  Workers:      4                         │
-    ╰──────────────────────────────────────────╯
-    ```
+    ![krayne scale output](../assets/cli-scale.png)
 
     Scale a named worker group:
 
@@ -137,10 +100,7 @@ Scale a worker group up or down:
     $ krayne delete my-cluster
     ```
 
-    ```title="Terminal output"
-    Are you sure you want to delete cluster 'my-cluster'? [y/N]: y
-    Cluster 'my-cluster' deleted.
-    ```
+    ![krayne delete output](../assets/cli-delete.png)
 
     Skip the confirmation prompt with `--force`:
 

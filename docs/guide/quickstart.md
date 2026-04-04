@@ -100,18 +100,7 @@ krayne create my-first-cluster --wait
 
 The `--wait` flag blocks until all pods are running:
 
-```title="Terminal output"
-╭─ Cluster Ready ──────────────────────────────╮
-│  Name               my-first-cluster         │
-│  Namespace          default                  │
-│  Status             ready                    │
-│  Cluster Address    ray://10.0.0.1:10001     │
-│  Dashboard          http://10.0.0.1:8265     │
-│  Notebook           http://10.0.0.1:8888     │
-│  SSH                ssh://10.0.0.1:22        │
-│  Workers            1                        │
-╰──────────────────────────────────────────────╯
-```
+![krayne create output](../assets/cli-create.png)
 
 !!! tip "Local access"
     To access cluster services from your machine, use `krayne tun-open my-first-cluster` to create localhost port-forwards. Use `krayne tun-close my-first-cluster` to stop.
@@ -130,13 +119,7 @@ List all clusters:
 $ krayne get
 ```
 
-```title="Terminal output"
-┌──────────────────┬───────────┬─────────┬─────────┬─────────────────────┐
-│ Name             │ Namespace │ Status  │ Workers │ Created             │
-├──────────────────┼───────────┼─────────┼─────────┼─────────────────────┤
-│ my-first-cluster │ default   │ ready   │ 1       │ 2026-04-01 10:30:00 │
-└──────────────────┴───────────┴─────────┴─────────┴─────────────────────┘
-```
+![krayne get output](../assets/cli-get.png)
 
 Get detailed information:
 
@@ -144,30 +127,7 @@ Get detailed information:
 $ krayne describe my-first-cluster
 ```
 
-```title="Terminal output (sandbox)"
-╭─ Cluster: my-first-cluster ──────────────╮
-│  Namespace:    default                   │
-│  Status:       ready                     │
-│  Dashboard:    http://localhost:30078     │
-│  Client URL:   ray://localhost:30064     │
-│  Workers:      1                         │
-│  Created:      2026-04-01 10:30:00       │
-╰──────────────────────────────────────────╯
-
-Head Node
-┌──────┬────────┬──────┬─────────────────────────┐
-│ CPUs │ Memory │ GPUs │ Image                   │
-├──────┼────────┼──────┼─────────────────────────┤
-│ 15   │ 48Gi   │ 0    │ rayproject/ray:2.41.0   │
-└──────┴────────┴──────┴─────────────────────────┘
-
-Worker Groups
-┌─────────┬──────────┬──────┬────────┬──────┬──────────┐
-│ Group   │ Replicas │ CPUs │ Memory │ GPUs │ GPU Type │
-├─────────┼──────────┼──────┼────────┼──────┼──────────┤
-│ worker  │ 1        │ 15   │ 48Gi   │ 0    │ —        │
-└─────────┴──────────┴──────┴────────┴──────┴──────────┘
-```
+![krayne describe output](../assets/cli-describe.png)
 
 ## 5. Clean up
 

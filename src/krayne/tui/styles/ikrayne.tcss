@@ -235,46 +235,47 @@ TabPane {
 
 #create-flow-screen {
     layout: vertical;
-    padding: 1 2;
-    overflow-y: auto;
+    padding: 0;
+    overflow-y: hidden;
 }
 
-#create-mode-bar {
-    height: auto;
-    layout: horizontal;
-    margin-bottom: 1;
+#create-tabs {
+    height: 1fr;
 }
 
-#step-indicator {
-    height: 1;
-    color: $text-muted;
-    margin-bottom: 1;
-}
 
 .form-section {
-    margin-top: 1;
-    margin-bottom: 1;
+    margin-top: 0;
+    margin-bottom: 0;
 }
 
 .form-section-title {
     text-style: bold;
     color: $accent;
-    margin-bottom: 1;
+    margin-bottom: 0;
 }
 
 .form-row {
     layout: horizontal;
     height: auto;
-    margin-bottom: 1;
+    margin-bottom: 0;
 }
 
 .form-row Label {
-    width: 16;
-    padding-top: 1;
+    width: 14;
+    height: 1;
 }
 
 .form-row Input {
-    width: 1fr;
+    width: 20;
+    height: 1;
+    border: none;
+    background: $surface-darken-1;
+    padding: 0 1;
+}
+
+.compact .form-row Input {
+    width: 16;
 }
 
 .form-row Switch {
@@ -282,14 +283,14 @@ TabPane {
 }
 
 .form-buttons {
+    dock: bottom;
     layout: horizontal;
-    height: auto;
-    margin-top: 2;
+    height: 3;
     align-horizontal: center;
 }
 
 .form-buttons Button {
-    margin: 0 2;
+    margin: 0 1;
 }
 
 #form-error {

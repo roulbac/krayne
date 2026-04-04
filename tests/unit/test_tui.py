@@ -292,8 +292,8 @@ async def test_create_flow_opens_on_c():
 
 
 @pytest.mark.asyncio
-async def test_create_flow_quick_mode_defaults():
-    """Create flow starts in quick mode with prefilled defaults."""
+async def test_create_flow_defaults():
+    """Create flow shows prefilled defaults for all resource fields."""
     with _patch_explorer(), _patch_tunnel_inactive():
         app = IKrayneApp()
         async with app.run_test(size=(120, 35)) as pilot:
@@ -303,13 +303,16 @@ async def test_create_flow_quick_mode_defaults():
 
             screen = app.screen
             assert screen.query_one("#input-namespace", Input).value == "default"
-            assert screen.query_one("#input-quick-workers", Input).value == "1"
+            # Head node fields present
+            assert screen.query_one("#input-head-cpus", Input).value != ""
+            assert screen.query_one("#input-head-memory", Input).value != ""
+            # Worker group fields present
+            assert screen.query_one("#input-wg0-cpus", Input).value != ""
+            assert screen.query_one("#input-wg0-memory", Input).value != ""
+            # Services default to on
             assert screen.query_one("#switch-notebook", Switch).value is True
             assert screen.query_one("#switch-code-server", Switch).value is True
             assert screen.query_one("#switch-ssh", Switch).value is True
-            # Quick mode sections visible, advanced hidden
-            assert screen.query_one("#section-quick-compute").display is True
-            assert screen.query_one("#section-advanced-head").display is False
 
 
 @pytest.mark.asyncio
@@ -351,8 +354,8 @@ async def test_create_flow_escape_returns():
 
 
 @pytest.mark.asyncio
-async def test_create_flow_advanced_mode_toggle():
-    """Toggling to advanced mode shows head node and worker group fields."""
+async def test_create_flow_has_all_resource_tabs():
+    """Create flow has Head Node and Workers tabs with resource fields."""
     with _patch_explorer(), _patch_tunnel_inactive():
         app = IKrayneApp()
         async with app.run_test(size=(120, 35)) as pilot:
@@ -361,14 +364,14 @@ async def test_create_flow_advanced_mode_toggle():
             await pilot.pause()
 
             screen = app.screen
-            # Click advanced button
-            btn_adv = screen.query_one("#btn-mode-advanced", Button)
-            btn_adv.press()
-            await pilot.pause()
-
-            assert screen.query_one("#section-quick-compute").display is False
-            assert screen.query_one("#section-advanced-head").display is True
-            assert screen.query_one("#section-advanced-workers").display is True
+            # Head node tab exists with resource fields
+            assert screen.query_one("#input-head-cpus", Input) is not None
+            assert screen.query_one("#input-head-memory", Input) is not None
+            assert screen.query_one("#input-head-gpus", Input) is not None
+            # Worker group tab exists with resource fields
+            assert screen.query_one("#input-wg0-cpus", Input) is not None
+            assert screen.query_one("#input-wg0-memory", Input) is not None
+            assert screen.query_one("#input-wg0-gpus", Input) is not None
 
 
 # ── Scale flow tests ────────────────────────────────

@@ -18,15 +18,7 @@ This returns immediately after submitting the cluster to Kubernetes. To wait unt
 krayne create my-cluster --wait
 ```
 
-```title="Terminal output"
-╭─ Cluster Created ────────────────────────╮
-│  Name:         my-cluster                │
-│  Namespace:    default                   │
-│  Status:       ready                     │
-│  Dashboard:    http://10.0.0.1:8265      │
-│  Workers:      1                         │
-╰──────────────────────────────────────────╯
-```
+![krayne create output](../assets/cli-create.png)
 
 The default cluster includes:
 
