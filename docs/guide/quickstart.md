@@ -101,16 +101,17 @@ krayne create my-first-cluster --wait
 The `--wait` flag blocks until all pods are running:
 
 ```title="Terminal output"
-╭─ Cluster Ready ──────────────────────────────╮
-│  Name               my-first-cluster         │
-│  Namespace          default                  │
-│  Status             ready                    │
-│  Cluster Address    ray://10.0.0.1:10001     │
-│  Dashboard          http://10.0.0.1:8265     │
-│  Notebook           http://10.0.0.1:8888     │
-│  SSH                ssh://10.0.0.1:22        │
-│  Workers            1                        │
-╰──────────────────────────────────────────────╯
+╭─────────────────────────────── Cluster Ready ────────────────────────────────╮
+│   Name               my-first-cluster                                        │
+│   Namespace          default                                                 │
+│   Status             running                                                 │
+│   Cluster Address    ray://10.42.0.14:10001                                  │
+│   Dashboard          http://10.42.0.14:8265                                  │
+│   Notebook           http://10.42.0.14:8888                                  │
+│   Code Server        http://10.42.0.14:8443                                  │
+│   SSH                ssh://10.42.0.14:22                                     │
+│   Workers            1                                                       │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 !!! tip "Local access"
@@ -131,11 +132,12 @@ $ krayne get
 ```
 
 ```title="Terminal output"
-┌──────────────────┬───────────┬─────────┬─────────┬─────────────────────┐
-│ Name             │ Namespace │ Status  │ Workers │ Created             │
-├──────────────────┼───────────┼─────────┼─────────┼─────────────────────┤
-│ my-first-cluster │ default   │ ready   │ 1       │ 2026-04-01 10:30:00 │
-└──────────────────┴───────────┴─────────┴─────────┴─────────────────────┘
+                            Ray Clusters
+┏━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Name             ┃ Namespace ┃ Status  ┃ Workers ┃ Created              ┃
+┡━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
+│ my-first-cluster │ default   │ running │       1 │ 2026-04-04T14:54:39Z │
+└──────────────────┴───────────┴─────────┴─────────┴──────────────────────┘
 ```
 
 Get detailed information:
@@ -144,29 +146,34 @@ Get detailed information:
 $ krayne describe my-first-cluster
 ```
 
-```title="Terminal output (sandbox)"
-╭─ Cluster: my-first-cluster ──────────────╮
-│  Namespace:    default                   │
-│  Status:       ready                     │
-│  Dashboard:    http://localhost:30078     │
-│  Client URL:   ray://localhost:30064     │
-│  Workers:      1                         │
-│  Created:      2026-04-01 10:30:00       │
-╰──────────────────────────────────────────╯
-
-Head Node
-┌──────┬────────┬──────┬─────────────────────────┐
-│ CPUs │ Memory │ GPUs │ Image                   │
-├──────┼────────┼──────┼─────────────────────────┤
-│ 15   │ 48Gi   │ 0    │ rayproject/ray:2.41.0   │
-└──────┴────────┴──────┴─────────────────────────┘
-
-Worker Groups
-┌─────────┬──────────┬──────┬────────┬──────┬──────────┐
-│ Group   │ Replicas │ CPUs │ Memory │ GPUs │ GPU Type │
-├─────────┼──────────┼──────┼────────┼──────┼──────────┤
-│ worker  │ 1        │ 15   │ 48Gi   │ 0    │ —        │
-└─────────┴──────────┴──────┴────────┴──────┴──────────┘
+```title="Terminal output"
+╭────────────────────────────── Cluster Details ───────────────────────────────╮
+│   Name           my-first-cluster                                            │
+│   Namespace      default                                                     │
+│   Status         ready                                                       │
+│   Client         ray://10.42.0.14:10001                                      │
+│   Dashboard      http://10.42.0.14:8265                                      │
+│   Notebook       http://10.42.0.14:8888                                      │
+│   Code Server    http://10.42.0.14:8443                                      │
+│   SSH            ssh://10.42.0.14:22                                         │
+│   Ray Image      rayproject/ray:latest-aarch64                               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+                       Head Node
+┏━━━━━━┳━━━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ CPUs ┃ Memory ┃ GPUs ┃ Image                         ┃
+┡━━━━━━╇━━━━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│    1 │ 4Gi    │    0 │ rayproject/ray:latest-aarch64 │
+└──────┴────────┴──────┴───────────────────────────────┘
+                     Worker Groups
+┏━━━━━━━━┳━━━━━━━━━━┳━━━━━━┳━━━━━━━━┳━━━━━━┳━━━━━━━━━━┓
+┃ Group  ┃ Replicas ┃ CPUs ┃ Memory ┃ GPUs ┃ GPU Type ┃
+┡━━━━━━━━╇━━━━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━━╇━━━━━━━━━━┩
+│ worker │        1 │    1 │ 2Gi    │    0 │ -        │
+└────────┴──────────┴──────┴────────┴──────┴──────────┘
+╭────────────────────────────────── Tunnels ───────────────────────────────────╮
+│   Tunnels    closed                                                          │
+│              Run tun-open to connect                                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ## 5. Clean up

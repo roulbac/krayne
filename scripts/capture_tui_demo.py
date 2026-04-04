@@ -8,8 +8,10 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import cairosvg
+import tempfile
+
 from PIL import Image
+from playwright.sync_api import sync_playwright
 
 from krayne.api.types import ClusterDetails, ClusterInfo, HeadNodeInfo, WorkerGroupInfo
 from krayne.tui.app import IKrayneApp
@@ -73,9 +75,30 @@ SERVICES = ["dashboard", "notebook", "client", "code-server"]
 OUT_DIR = Path(__file__).resolve().parent.parent / "docs" / "assets"
 
 
-def svg_to_pil(svg_text: str, scale: float = 1.0) -> Image.Image:
-    """Convert SVG text to a PIL Image."""
-    png_data = cairosvg.svg2png(bytestring=svg_text.encode("utf-8"), scale=scale)
+def _create_browser():
+    """Create a Playwright browser for SVG rendering."""
+    pw = sync_playwright().start()
+    browser = pw.chromium.launch()
+    return pw, browser
+
+
+def svg_to_pil(svg_text: str, browser) -> Image.Image:
+    """Convert SVG text to a PIL Image using a real browser for correct font rendering."""
+    with tempfile.NamedTemporaryFile(suffix=".svg", mode="w", delete=False) as f:
+        f.write(svg_text)
+        svg_path = f.name
+
+    page = browser.new_page()
+    page.goto(f"file://{svg_path}")
+    # Wait for fonts to load
+    page.wait_for_timeout(500)
+    # Get the SVG element dimensions
+    svg_el = page.query_selector("svg")
+    box = svg_el.bounding_box()
+    png_data = page.screenshot(clip={"x": box["x"], "y": box["y"], "width": box["width"], "height": box["height"]})
+    page.close()
+
+    Path(svg_path).unlink()
     return Image.open(io.BytesIO(png_data))
 
 
@@ -92,9 +115,14 @@ async def _switch_tab(app, tabs_id: str, tab_id: str, pilot) -> None:
     await _pause(pilot)
 
 
-async def capture_frames() -> list[Image.Image]:
-    """Drive the TUI and capture screenshots at key moments."""
-    frames: list[Image.Image] = []
+async def capture_svgs() -> list[str]:
+    """Drive the TUI and capture SVG screenshots at key moments."""
+    frames: list[str] = []
+
+    def screenshot() -> str:
+        svg = app.export_screenshot()
+        frames.append(svg)
+        return svg
 
     explorer_patches = [
         patch("krayne.tui.screens.explorer.list_clusters", return_value=CLUSTERS),
@@ -116,35 +144,35 @@ async def capture_frames() -> list[Image.Image]:
         async with app.run_test(size=(100, 30)) as pilot:
             # ── Frame 1: Cluster explorer ──────────────
             await _pause(pilot, 5)
-            frames.append(svg_to_pil(app.export_screenshot()))
+            screenshot()
 
             # ── Frame 2: Open create form (Cluster tab) ──
             await pilot.press("c")
             await _pause(pilot)
-            frames.append(svg_to_pil(app.export_screenshot()))
+            screenshot()
 
             # ── Frame 3: Head Node tab ─────────────────
             await _switch_tab(app, "create-tabs", "tab-head", pilot)
-            frames.append(svg_to_pil(app.export_screenshot()))
+            screenshot()
 
             # ── Frame 4: Workers tab ───────────────────
             await _switch_tab(app, "create-tabs", "tab-workers", pilot)
-            frames.append(svg_to_pil(app.export_screenshot()))
+            screenshot()
 
             # ── Frame 5: Services tab ──────────────────
             await _switch_tab(app, "create-tabs", "tab-services", pilot)
-            frames.append(svg_to_pil(app.export_screenshot()))
+            screenshot()
 
             # ── Frame 6: Review tab ────────────────────
             # Fill in the name first so review shows a summary
             app.screen.query_one("#input-name").value = "my-cluster"
             await _switch_tab(app, "create-tabs", "tab-review", pilot)
-            frames.append(svg_to_pil(app.export_screenshot()))
+            screenshot()
 
             # ── Frame 7: Back to explorer ──────────────
             await pilot.press("escape")
             await _pause(pilot)
-            frames.append(svg_to_pil(app.export_screenshot()))
+            screenshot()
 
             # ── Frame 8: Detail screen (Overview) ──────
             table = app.screen.query_one("DataTable")
@@ -152,15 +180,15 @@ async def capture_frames() -> list[Image.Image]:
             await pilot.pause()
             await pilot.press("enter")
             await _pause(pilot, 5)
-            frames.append(svg_to_pil(app.export_screenshot()))
+            screenshot()
 
             # ── Frame 9: Detail Workers tab ────────────
             await _switch_tab(app, "detail-tabs", "tab-workers", pilot)
-            frames.append(svg_to_pil(app.export_screenshot()))
+            screenshot()
 
             # ── Frame 10: Detail Services tab ──────────
             await _switch_tab(app, "detail-tabs", "tab-services", pilot)
-            frames.append(svg_to_pil(app.export_screenshot()))
+            screenshot()
     finally:
         for p in all_patches:
             p.stop()
@@ -172,9 +200,15 @@ def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     gif_path = OUT_DIR / "ikrayne-demo.gif"
 
-    print("Capturing TUI frames...")
-    frames = asyncio.run(capture_frames())
-    print(f"Captured {len(frames)} frames")
+    print("Capturing TUI SVGs...")
+    svgs = asyncio.run(capture_svgs())
+    print(f"Captured {len(svgs)} frames")
+
+    print("Rendering SVGs with browser...")
+    pw, browser = _create_browser()
+    frames = [svg_to_pil(svg, browser) for svg in svgs]
+    browser.close()
+    pw.stop()
 
     if not frames:
         print("No frames captured!", file=sys.stderr)

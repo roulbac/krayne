@@ -10,10 +10,9 @@ By default, errors are displayed as Rich panels with a clean message:
 
 ```title="Terminal output"
 $ krayne describe nonexistent-cluster
-╭──── Error ─────────────────────────────────╮
-│ Cluster 'nonexistent-cluster' not found in │
-│ namespace 'default'                        │
-╰────────────────────────────────────────────╯
+╭─────────────────────────────────── Error ────────────────────────────────────╮
+│ Cluster 'nonexistent-cluster' not found in namespace 'default'               │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ### Debug mode

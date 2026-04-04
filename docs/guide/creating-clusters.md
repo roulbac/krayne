@@ -19,13 +19,17 @@ krayne create my-cluster --wait
 ```
 
 ```title="Terminal output"
-╭─ Cluster Created ────────────────────────╮
-│  Name:         my-cluster                │
-│  Namespace:    default                   │
-│  Status:       ready                     │
-│  Dashboard:    http://10.0.0.1:8265      │
-│  Workers:      1                         │
-╰──────────────────────────────────────────╯
+╭─────────────────────────────── Cluster Ready ────────────────────────────────╮
+│   Name               my-cluster                                              │
+│   Namespace          default                                                 │
+│   Status             running                                                 │
+│   Cluster Address    ray://10.42.0.14:10001                                  │
+│   Dashboard          http://10.42.0.14:8265                                  │
+│   Notebook           http://10.42.0.14:8888                                  │
+│   Code Server        http://10.42.0.14:8443                                  │
+│   SSH                ssh://10.42.0.14:22                                     │
+│   Workers            1                                                       │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 The default cluster includes:

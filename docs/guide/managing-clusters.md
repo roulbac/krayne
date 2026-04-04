@@ -15,12 +15,12 @@ List all Ray clusters in a namespace:
     ```
 
     ```title="Terminal output"
-    ┌────────────────┬───────────┬─────────┬─────────┬─────────────────────┐
-    │ Name           │ Namespace │ Status  │ Workers │ Created             │
-    ├────────────────┼───────────┼─────────┼─────────┼─────────────────────┤
-    │ my-cluster     │ default   │ ready   │ 1       │ 2026-04-01 10:30:00 │
-    │ gpu-experiment │ default   │ ready   │ 2       │ 2026-04-01 09:15:00 │
-    └────────────────┴───────────┴─────────┴─────────┴─────────────────────┘
+                                Ray Clusters
+    ┏━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
+    ┃ Name       ┃ Namespace ┃ Status  ┃ Workers ┃ Created              ┃
+    ┡━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
+    │ my-cluster │ default   │ running │       1 │ 2026-04-04T14:54:39Z │
+    └────────────┴───────────┴─────────┴─────────┴──────────────────────┘
     ```
 
     List clusters in a specific namespace:
@@ -52,28 +52,33 @@ Get detailed information about a specific cluster, including resource breakdowns
     ```
 
     ```title="Terminal output"
-    ╭─ Cluster: my-cluster ────────────────────╮
-    │  Namespace:    default                   │
-    │  Status:       ready                     │
-    │  Dashboard:    http://10.0.0.1:8265      │
-    │  Client URL:   ray://10.0.0.1:10001     │
-    │  Workers:      1                         │
-    │  Created:      2026-04-01 10:30:00       │
-    ╰──────────────────────────────────────────╯
-
-    Head Node
-    ┌──────┬────────┬──────┬─────────────────────────┐
-    │ CPUs │ Memory │ GPUs │ Image                   │
-    ├──────┼────────┼──────┼─────────────────────────┤
-    │ 15   │ 48Gi   │ 0    │ rayproject/ray:2.41.0   │
-    └──────┴────────┴──────┴─────────────────────────┘
-
-    Worker Groups
-    ┌─────────┬──────────┬──────┬────────┬──────┬──────────┐
-    │ Group   │ Replicas │ CPUs │ Memory │ GPUs │ GPU Type │
-    ├─────────┼──────────┼──────┼────────┼──────┼──────────┤
-    │ worker  │ 1        │ 15   │ 48Gi   │ 0    │ —        │
-    └─────────┴──────────┴──────┴────────┴──────┴──────────┘
+    ╭────────────────────────────── Cluster Details ───────────────────────────────╮
+    │   Name           my-cluster                                                  │
+    │   Namespace      default                                                     │
+    │   Status         ready                                                       │
+    │   Client         ray://10.42.0.14:10001                                      │
+    │   Dashboard      http://10.42.0.14:8265                                      │
+    │   Notebook       http://10.42.0.14:8888                                      │
+    │   Code Server    http://10.42.0.14:8443                                      │
+    │   SSH            ssh://10.42.0.14:22                                         │
+    │   Ray Image      rayproject/ray:latest-aarch64                               │
+    ╰──────────────────────────────────────────────────────────────────────────────╯
+                           Head Node
+    ┏━━━━━━┳━━━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+    ┃ CPUs ┃ Memory ┃ GPUs ┃ Image                         ┃
+    ┡━━━━━━╇━━━━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+    │    1 │ 4Gi    │    0 │ rayproject/ray:latest-aarch64 │
+    └──────┴────────┴──────┴───────────────────────────────┘
+                         Worker Groups
+    ┏━━━━━━━━┳━━━━━━━━━━┳━━━━━━┳━━━━━━━━┳━━━━━━┳━━━━━━━━━━┓
+    ┃ Group  ┃ Replicas ┃ CPUs ┃ Memory ┃ GPUs ┃ GPU Type ┃
+    ┡━━━━━━━━╇━━━━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━━╇━━━━━━━━━━┩
+    │ worker │        1 │    1 │ 2Gi    │    0 │ -        │
+    └────────┴──────────┴──────┴────────┴──────┴──────────┘
+    ╭────────────────────────────────── Tunnels ───────────────────────────────────╮
+    │   Tunnels    closed                                                          │
+    │              Run tun-open to connect                                         │
+    ╰──────────────────────────────────────────────────────────────────────────────╯
     ```
 
 === "Python SDK"
@@ -101,12 +106,17 @@ Scale a worker group up or down:
     ```
 
     ```title="Terminal output"
-    ╭─ Cluster Scaled ─────────────────────────╮
-    │  Name:         my-cluster                │
-    │  Namespace:    default                   │
-    │  Status:       ready                     │
-    │  Workers:      4                         │
-    ╰──────────────────────────────────────────╯
+    ╭─────────────────────────────── Cluster Ready ────────────────────────────────╮
+    │   Name               my-cluster                                              │
+    │   Namespace          default                                                 │
+    │   Status             ready                                                   │
+    │   Cluster Address    ray://10.42.0.14:10001                                  │
+    │   Dashboard          http://10.42.0.14:8265                                  │
+    │   Notebook           http://10.42.0.14:8888                                  │
+    │   Code Server        http://10.42.0.14:8443                                  │
+    │   SSH                ssh://10.42.0.14:22                                     │
+    │   Workers            4                                                       │
+    ╰──────────────────────────────────────────────────────────────────────────────╯
     ```
 
     Scale a named worker group:
@@ -138,7 +148,6 @@ Scale a worker group up or down:
     ```
 
     ```title="Terminal output"
-    Are you sure you want to delete cluster 'my-cluster'? [y/N]: y
     Cluster 'my-cluster' deleted.
     ```
 

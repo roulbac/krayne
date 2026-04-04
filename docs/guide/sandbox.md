@@ -79,13 +79,13 @@ krayne sandbox status
 ```
 
 ```title="Terminal output"
-╭─ Sandbox Status ────────────────────────────────╮
-│  Running:      Yes                              │
-│  Container:    krayne-sandbox                    │
-│  K3S Version:  v1.35.2+k3s1                    │
-│  Kubeconfig:   ~/.krayne/sandbox-kubeconfig      │
-│  Created:      2026-04-01 10:00:00              │
-╰─────────────────────────────────────────────────╯
+╭─────────────────────────────── Sandbox Status ───────────────────────────────╮
+│   Running         yes                                                        │
+│   Container ID    e5669b82e099                                               │
+│   K3S Image       rancher/k3s:v1.35.2-k3s1                                   │
+│   Kubeconfig      /Users/reda/.krayne/sandbox-kubeconfig                     │
+│   Created         2026-04-04T02:11:13.708979286Z                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ---
