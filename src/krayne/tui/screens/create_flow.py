@@ -31,6 +31,8 @@ class CreateFlowScreen(Screen):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=False),
         Binding("ctrl+s", "submit", "Create", show=False),
+        Binding("ctrl+n", "next_tab", "Next Tab", show=False),
+        Binding("ctrl+p", "prev_tab", "Prev Tab", show=False),
     ]
 
     def __init__(self) -> None:
@@ -134,10 +136,30 @@ class CreateFlowScreen(Screen):
         bar = self.query_one(StatusBar)
         bar.set_hints([
             ("Tab/Shift+Tab", "Next/Prev field"),
-            ("\u2190\u2192", "Switch tab"),
+            ("Ctrl+N/P", "Next/Prev tab"),
             ("Ctrl+S", "Create"),
             ("Esc", "Cancel"),
         ])
+
+    def action_next_tab(self) -> None:
+        tabs = self.query_one("#create-tabs", TabbedContent)
+        tab_list = list(tabs.query(TabPane))
+        active = tabs.active
+        for i, pane in enumerate(tab_list):
+            if pane.id == active:
+                next_pane = tab_list[(i + 1) % len(tab_list)]
+                tabs.active = next_pane.id
+                break
+
+    def action_prev_tab(self) -> None:
+        tabs = self.query_one("#create-tabs", TabbedContent)
+        tab_list = list(tabs.query(TabPane))
+        active = tabs.active
+        for i, pane in enumerate(tab_list):
+            if pane.id == active:
+                prev_pane = tab_list[(i - 1) % len(tab_list)]
+                tabs.active = prev_pane.id
+                break
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn_id = event.button.id
