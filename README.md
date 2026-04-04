@@ -4,6 +4,13 @@
 
 Krayne wraps the [KubeRay](https://ray-project.github.io/kuberay/) operator behind a clean, opinionated interface so ML practitioners can get distributed compute without touching Kubernetes manifests.
 
+A fast and intuitive terminal TUI (Terminal User Interface) is also available.
+
+![ikrayne demo](docs/assets/ikrayne-demo.gif)
+
+Navigate clusters, create with prefilled forms, scale, delete, and toggle tunnels — all with keyboard shortcuts. See the [Interactive TUI guide](https://roulbac.github.io/krayne/guide/interactive-tui/) for details.
+
+
 ## Quickstart
 
 ```bash
@@ -67,10 +74,6 @@ Krayne also ships with **ikrayne**, a k9s-style interactive terminal UI:
 ```bash
 ikrayne
 ```
-
-![ikrayne demo](docs/assets/ikrayne-demo.gif)
-
-Navigate clusters, create with prefilled forms, scale, delete, and toggle tunnels — all with keyboard shortcuts. See the [Interactive TUI guide](https://roulbac.github.io/krayne/guide/interactive-tui/) for details.
 
 ## Features
 
