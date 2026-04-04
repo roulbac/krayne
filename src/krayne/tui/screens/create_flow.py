@@ -39,8 +39,8 @@ class CreateFlowScreen(Screen):
         super().__init__()
         self._extra_worker_groups: int = 0
         self._creating: bool = False
-        self._prev_tab: str = "tab-cluster"
-        self._skip_validation: bool = True  # skip the initial mount activation
+
+    # ── UI ──────────────────────────────────────────────
 
     def compose(self):
         header = HeaderBar()
@@ -108,9 +108,7 @@ class CreateFlowScreen(Screen):
 
                 # ── Tab 5: Review ───────────────────
                 with TabPane("Review", id="tab-review"):
-                    review = Static("", id="review-content")
-                    review.can_focus = True
-                    yield review
+                    yield Static("", id="review-content")
 
             yield Static("", id="form-error")
 
@@ -127,31 +125,6 @@ class CreateFlowScreen(Screen):
         self.query_one("#input-name", Input).focus()
         self._set_status_hints()
 
-    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
-        # Update review content immediately to avoid stale content flash
-        if event.pane.id == "tab-review":
-            self._update_review()
-
-        if self._skip_validation:
-            self._skip_validation = False
-            self._prev_tab = event.pane.id
-        else:
-            # Validate the tab we're leaving; if invalid, snap back
-            error = self._validate_tab(self._prev_tab)
-            if error:
-                self.notify(error, severity="error", timeout=5)
-                tabs = self.query_one("#create-tabs", TabbedContent)
-                self._skip_validation = True  # suppress validation on the snap-back event
-                tabs.active = self._prev_tab
-                return
-            self._prev_tab = event.pane.id
-        # Move focus into the new tab so Textual doesn't snap back
-        focusables = list(event.pane.query("Input, Switch, Button, Static#review-content"))
-        if focusables:
-            focusables[0].focus()
-        else:
-            self.set_focus(None)
-
     def _set_status_hints(self) -> None:
         bar = self.query_one(StatusBar)
         bar.set_hints([
@@ -161,61 +134,19 @@ class CreateFlowScreen(Screen):
             ("Esc", "Cancel"),
         ])
 
-    def _validate_tab(self, tab_id: str) -> str | None:
-        """Validate fields on the given tab. Returns error message or None."""
-        if tab_id == "tab-cluster":
-            name = self.query_one("#input-name", Input).value.strip()
-            if not name:
-                return "Cluster name is required"
-        elif tab_id == "tab-head":
-            cpus = self.query_one("#input-head-cpus", Input).value.strip()
-            memory = self.query_one("#input-head-memory", Input).value.strip()
-            if not cpus:
-                return "Head node CPUs is required"
-            if not memory:
-                return "Head node memory is required"
-        elif tab_id == "tab-workers":
-            for idx in range(self._extra_worker_groups + 1):
-                prefix = f"#input-wg{idx}"
-                replicas = self.query_one(f"{prefix}-replicas", Input).value.strip()
-                cpus = self.query_one(f"{prefix}-cpus", Input).value.strip()
-                memory = self.query_one(f"{prefix}-memory", Input).value.strip()
-                if not replicas:
-                    return f"Worker group {idx + 1}: replicas is required"
-                if not cpus:
-                    return f"Worker group {idx + 1}: CPUs is required"
-                if not memory:
-                    return f"Worker group {idx + 1}: memory is required"
-        return None
+    # ── Tab navigation ──────────────────────────────────
 
-    def _switch_tab(self, offset: int) -> None:
-        tabs = self.query_one("#create-tabs", TabbedContent)
-        active = tabs.active
-
-        # Validate current tab before switching
-        error = self._validate_tab(active)
-        if error:
-            self.notify(error, severity="error", timeout=5)
-            return
-
-        tab_list = list(tabs.query(TabPane))
-        for i, pane in enumerate(tab_list):
-            if pane.id == active:
-                target = tab_list[(i + offset) % len(tab_list)]
-                self._prev_tab = target.id
-                self._skip_validation = True  # already validated above
-                tabs.active = target.id
-                # Move focus into the new tab so Textual doesn't snap back
-                focusables = list(target.query("Input, Switch, Button"))
-                if focusables:
-                    focusables[0].focus()
-                break
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        if event.pane.id == "tab-review":
+            self._update_review()
 
     def action_next_tab(self) -> None:
-        self._switch_tab(1)
+        self.query_one("#create-tabs Tabs").action_next_tab()
 
     def action_prev_tab(self) -> None:
-        self._switch_tab(-1)
+        self.query_one("#create-tabs Tabs").action_previous_tab()
+
+    # ── Button dispatch ─────────────────────────────────
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn_id = event.button.id
@@ -226,6 +157,8 @@ class CreateFlowScreen(Screen):
         elif btn_id == "btn-add-wg":
             self._add_worker_group()
 
+    # ── Worker groups ───────────────────────────────────
+
     def _add_worker_group(self) -> None:
         self._extra_worker_groups += 1
         idx = self._extra_worker_groups
@@ -234,7 +167,6 @@ class CreateFlowScreen(Screen):
         section = Vertical(classes="form-section", id=f"section-wg{idx}")
         section.mount(Static(f"[bold]Worker Group {idx + 1}[/bold]", classes="form-section-title"))
 
-        # Two-column paired rows
         pairs = [
             [("Group Name:", f"input-wg{idx}-name", f"worker-{idx + 1}"),
              ("Replicas:", f"input-wg{idx}-replicas", "1")],
@@ -252,6 +184,8 @@ class CreateFlowScreen(Screen):
 
         container.mount(section)
 
+    # ── Actions ─────────────────────────────────────────
+
     def action_cancel(self) -> None:
         self.app.pop_screen()
 
@@ -261,12 +195,18 @@ class CreateFlowScreen(Screen):
         error_label = self.query_one("#form-error", Static)
         error_label.remove_class("visible")
 
+        # Validate all tabs
+        errors = self._validate_all()
+        if errors:
+            first_error = errors[0]
+            msg = f"{first_error[0]}: {first_error[1]}"
+            error_label.update(f"[red]{msg}[/red]")
+            error_label.add_class("visible")
+            self.notify(msg, severity="error", timeout=5)
+            return
+
         try:
             config = self._build_config()
-        except (ValueError, TypeError) as exc:
-            error_label.update(f"[red]{exc}[/red]")
-            error_label.add_class("visible")
-            return
         except Exception as exc:
             error_label.update(f"[red]{exc}[/red]")
             error_label.add_class("visible")
@@ -279,11 +219,39 @@ class CreateFlowScreen(Screen):
             name="create_cluster",
         )
 
+    # ── Validation ──────────────────────────────────────
+
+    def _validate_all(self) -> list[tuple[str, str]]:
+        """Validate all tabs. Returns list of (tab_label, error_message)."""
+        errors: list[tuple[str, str]] = []
+
+        # Cluster tab
+        if not self.query_one("#input-name", Input).value.strip():
+            errors.append(("Cluster", "Cluster name is required"))
+
+        # Head Node tab
+        if not self.query_one("#input-head-cpus", Input).value.strip():
+            errors.append(("Head Node", "CPUs is required"))
+        if not self.query_one("#input-head-memory", Input).value.strip():
+            errors.append(("Head Node", "Memory is required"))
+
+        # Workers tab
+        for idx in range(self._extra_worker_groups + 1):
+            prefix = f"#input-wg{idx}"
+            group_label = f"Worker group {idx + 1}"
+            if not self.query_one(f"{prefix}-replicas", Input).value.strip():
+                errors.append(("Workers", f"{group_label}: replicas is required"))
+            if not self.query_one(f"{prefix}-cpus", Input).value.strip():
+                errors.append(("Workers", f"{group_label}: CPUs is required"))
+            if not self.query_one(f"{prefix}-memory", Input).value.strip():
+                errors.append(("Workers", f"{group_label}: memory is required"))
+
+        return errors
+
+    # ── Config building ─────────────────────────────────
+
     def _build_config(self) -> ClusterConfig:
         name = self.query_one("#input-name", Input).value.strip()
-        if not name:
-            raise ValueError("Cluster name is required")
-
         namespace = self.query_one("#input-namespace", Input).value.strip() or "default"
 
         head = HeadNodeConfig(
@@ -326,24 +294,18 @@ class CreateFlowScreen(Screen):
             ssh=self.query_one("#switch-ssh", Switch).value,
         )
 
+    # ── Review ──────────────────────────────────────────
+
     def _update_review(self) -> None:
         """Refresh the review tab with current form state."""
-        # Validate all tabs first and collect errors
-        errors: list[str] = []
-        for tab_id, tab_label in [
-            ("tab-cluster", "Cluster"),
-            ("tab-head", "Head Node"),
-            ("tab-workers", "Workers"),
-        ]:
-            error = self._validate_tab(tab_id)
-            if error:
-                errors.append(f"[red]\u2717[/red] {tab_label}: {error}")
+        errors = self._validate_all()
 
         if errors:
             lines = ["[bold]Review[/bold]", ""]
             lines.append("[bold red]Fix the following before creating:[/bold red]")
             lines.append("")
-            lines.extend(errors)
+            for tab_label, error_msg in errors:
+                lines.append(f"  [red]\u2717[/red] {tab_label}: {error_msg}")
             self.query_one("#review-content", Static).update("\n".join(lines))
             return
 
@@ -386,6 +348,8 @@ class CreateFlowScreen(Screen):
         lines.append("[green]Ready to create \u2714[/green]")
 
         self.query_one("#review-content", Static).update("\n".join(lines))
+
+    # ── Worker result handling ──────────────────────────
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.worker.name != "create_cluster":
