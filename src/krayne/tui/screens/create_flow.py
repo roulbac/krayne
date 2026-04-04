@@ -1,4 +1,4 @@
-"""Create cluster flow — guided creation with quick and advanced modes."""
+"""Create cluster flow — tabbed creation form."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from krayne.tui.widgets.status_bar import StatusBar
 
 
 class CreateFlowScreen(Screen):
-    """Full-screen create cluster flow with quick and advanced modes."""
+    """Full-screen tabbed create cluster flow."""
 
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=False),
@@ -35,7 +35,6 @@ class CreateFlowScreen(Screen):
 
     def __init__(self) -> None:
         super().__init__()
-        self._advanced: bool = False
         self._extra_worker_groups: int = 0
         self._creating: bool = False
 
@@ -45,11 +44,6 @@ class CreateFlowScreen(Screen):
         yield header
 
         with Vertical(id="create-flow-screen"):
-            # Mode toggle
-            with Horizontal(id="create-mode-bar"):
-                yield Button("Quick", variant="primary", id="btn-mode-quick")
-                yield Button("Advanced", variant="default", id="btn-mode-advanced")
-
             with TabbedContent(id="create-tabs"):
                 # ── Tab 1: Cluster ──────────────────
                 with TabPane("Cluster", id="tab-cluster"):
@@ -61,36 +55,22 @@ class CreateFlowScreen(Screen):
                         yield Label("Namespace:")
                         yield Input(value="default", id="input-namespace")
 
-                # ── Tab 2: Compute ──────────────────
-                with TabPane("Compute", id="tab-compute"):
-                    # Quick mode content
-                    with Vertical(id="section-quick-compute"):
-                        yield Static("[bold]Workers[/bold]", classes="form-section-title")
-                        with Horizontal(classes="form-row"):
-                            yield Label("Worker Count:")
-                            yield Input(value="1", id="input-quick-workers", type="integer")
-                        with Horizontal(classes="form-row"):
-                            yield Label("Enable GPUs:")
-                            yield Switch(value=False, id="switch-quick-gpu")
-                        with Horizontal(classes="form-row"):
-                            yield Label("GPU Type:")
-                            yield Input(value="t4", id="input-quick-gpu-type")
+                # ── Tab 2: Head Node ────────────────
+                with TabPane("Head Node", id="tab-head"):
+                    yield Static("[bold]Head Node[/bold]", classes="form-section-title")
+                    with Horizontal(classes="form-row"):
+                        yield Label("CPUs:")
+                        yield Input(value=DEFAULT_CPUS, id="input-head-cpus")
+                    with Horizontal(classes="form-row"):
+                        yield Label("Memory:")
+                        yield Input(value=DEFAULT_HEAD_MEMORY, id="input-head-memory")
+                    with Horizontal(classes="form-row"):
+                        yield Label("GPUs:")
+                        yield Input(value="0", id="input-head-gpus", type="integer")
 
-                    # Advanced mode: head node
-                    with Vertical(id="section-advanced-head"):
-                        yield Static("[bold]Head Node[/bold]", classes="form-section-title")
-                        with Horizontal(classes="form-row"):
-                            yield Label("CPUs:")
-                            yield Input(value=DEFAULT_CPUS, id="input-head-cpus")
-                        with Horizontal(classes="form-row"):
-                            yield Label("Memory:")
-                            yield Input(value=DEFAULT_HEAD_MEMORY, id="input-head-memory")
-                        with Horizontal(classes="form-row"):
-                            yield Label("GPUs:")
-                            yield Input(value="0", id="input-head-gpus", type="integer")
-
-                    # Advanced mode: worker groups
-                    with Vertical(id="section-advanced-workers"):
+                # ── Tab 3: Workers ──────────────────
+                with TabPane("Workers", id="tab-workers"):
+                    with Vertical(classes="form-section", id="section-wg0"):
                         yield Static("[bold]Worker Group 1[/bold]", classes="form-section-title")
                         with Horizontal(classes="form-row"):
                             yield Label("Group Name:")
@@ -111,11 +91,10 @@ class CreateFlowScreen(Screen):
                             yield Label("GPU Type:")
                             yield Input(value="t4", id="input-wg0-gpu-type")
 
-                    # Extra worker groups container
                     yield Container(id="extra-wg-container")
                     yield Button("+ Add Worker Group", variant="default", id="btn-add-wg")
 
-                # ── Tab 3: Services ─────────────────
+                # ── Tab 4: Services ─────────────────
                 with TabPane("Services", id="tab-services"):
                     yield Static("[bold]Services[/bold]", classes="form-section-title")
                     with Horizontal(classes="form-row"):
@@ -128,7 +107,7 @@ class CreateFlowScreen(Screen):
                         yield Label("SSH:")
                         yield Switch(value=True, id="switch-ssh")
 
-                # ── Tab 4: Review ───────────────────
+                # ── Tab 5: Review ───────────────────
                 with TabPane("Review", id="tab-review"):
                     yield Static("[dim]Switch to this tab to preview your cluster config[/dim]", id="review-content")
 
@@ -143,11 +122,8 @@ class CreateFlowScreen(Screen):
 
     def on_mount(self) -> None:
         self.add_class(self.app.terminal_class)
-        # Set namespace from app
         self.query_one("#input-namespace", Input).value = self.app.namespace
         self.query_one("#input-name", Input).focus()
-        # Start in quick mode
-        self._set_mode(advanced=False)
         self._set_status_hints()
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
@@ -157,33 +133,15 @@ class CreateFlowScreen(Screen):
     def _set_status_hints(self) -> None:
         bar = self.query_one(StatusBar)
         bar.set_hints([
+            ("Tab/Shift+Tab", "Next/Prev field"),
+            ("\u2190\u2192", "Switch tab"),
             ("Ctrl+S", "Create"),
             ("Esc", "Cancel"),
         ])
 
-    def _set_mode(self, advanced: bool) -> None:
-        self._advanced = advanced
-
-        # Toggle button styles
-        btn_quick = self.query_one("#btn-mode-quick", Button)
-        btn_adv = self.query_one("#btn-mode-advanced", Button)
-        btn_quick.variant = "default" if advanced else "primary"
-        btn_adv.variant = "primary" if advanced else "default"
-
-        # Toggle section visibility within Compute tab
-        self.query_one("#section-quick-compute").display = not advanced
-        self.query_one("#section-advanced-head").display = advanced
-        self.query_one("#section-advanced-workers").display = advanced
-        self.query_one("#extra-wg-container").display = advanced
-        self.query_one("#btn-add-wg").display = advanced
-
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn_id = event.button.id
-        if btn_id == "btn-mode-quick":
-            self._set_mode(advanced=False)
-        elif btn_id == "btn-mode-advanced":
-            self._set_mode(advanced=True)
-        elif btn_id == "btn-create":
+        if btn_id == "btn-create":
             self.action_submit()
         elif btn_id == "btn-cancel":
             self.action_cancel()
@@ -247,31 +205,6 @@ class CreateFlowScreen(Screen):
 
         namespace = self.query_one("#input-namespace", Input).value.strip() or "default"
 
-        if self._advanced:
-            return self._build_advanced_config(name, namespace)
-        else:
-            return self._build_quick_config(name, namespace)
-
-    def _build_quick_config(self, name: str, namespace: str) -> ClusterConfig:
-        workers = int(self.query_one("#input-quick-workers", Input).value.strip() or "1")
-        use_gpu = self.query_one("#switch-quick-gpu", Switch).value
-        gpu_type = self.query_one("#input-quick-gpu-type", Input).value.strip()
-
-        wg = WorkerGroupConfig(
-            name="worker",
-            replicas=workers,
-            gpus=1 if use_gpu else 0,
-            gpu_type=gpu_type if use_gpu else "t4",
-        )
-
-        return ClusterConfig(
-            name=name,
-            namespace=namespace,
-            worker_groups=[wg],
-            services=self._build_services(),
-        )
-
-    def _build_advanced_config(self, name: str, namespace: str) -> ClusterConfig:
         head = HeadNodeConfig(
             cpus=self.query_one("#input-head-cpus", Input).value.strip(),
             memory=self.query_one("#input-head-memory", Input).value.strip(),
@@ -279,11 +212,7 @@ class CreateFlowScreen(Screen):
         )
 
         worker_groups: list[WorkerGroupConfig] = []
-
-        # Primary worker group
         worker_groups.append(self._read_worker_group(0))
-
-        # Extra worker groups
         for i in range(1, self._extra_worker_groups + 1):
             try:
                 worker_groups.append(self._read_worker_group(i))
@@ -332,12 +261,11 @@ class CreateFlowScreen(Screen):
         lines.append(f"  [dim]Name:[/dim]       {config.name}")
         lines.append(f"  [dim]Namespace:[/dim]  {config.namespace}")
 
-        if self._advanced and config.head:
-            lines.append("")
-            lines.append("[bold]Head Node[/bold]")
-            lines.append(f"  [dim]CPUs:[/dim]   {config.head.cpus}")
-            lines.append(f"  [dim]Memory:[/dim] {config.head.memory}")
-            lines.append(f"  [dim]GPUs:[/dim]   {config.head.gpus}")
+        lines.append("")
+        lines.append("[bold]Head Node[/bold]")
+        lines.append(f"  [dim]CPUs:[/dim]   {config.head.cpus}")
+        lines.append(f"  [dim]Memory:[/dim] {config.head.memory}")
+        lines.append(f"  [dim]GPUs:[/dim]   {config.head.gpus}")
 
         lines.append("")
         lines.append("[bold]Workers[/bold]")

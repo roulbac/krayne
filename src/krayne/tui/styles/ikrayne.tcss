@@ -243,12 +243,6 @@ TabPane {
     height: 1fr;
 }
 
-#create-mode-bar {
-    height: auto;
-    layout: horizontal;
-    padding: 0 1;
-    margin-bottom: 0;
-}
 
 .form-section {
     margin-top: 1;
