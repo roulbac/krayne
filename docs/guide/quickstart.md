@@ -1,3 +1,7 @@
+---
+description: Install Krayne and go from zero to a running Ray cluster on Kubernetes in under 5 minutes. Covers pip install, local sandbox setup, and first cluster creation.
+---
+
 # Quickstart
 
 Get from zero to a running Ray cluster in under 5 minutes.

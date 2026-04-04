@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://roulbac.github.io/krayne/sitemap.xml

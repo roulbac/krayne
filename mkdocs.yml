@@ -36,6 +36,20 @@ theme:
   icon:
     repo: fontawesome/brands/github
 
+plugins:
+  - search
+  - social
+  - sitemap:
+      changefreq: weekly
+      priority: 0.8
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/roulbac/krayne
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/krayne/
+
 extra_css:
   - stylesheets/extra.css
 

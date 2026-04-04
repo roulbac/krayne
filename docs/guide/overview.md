@@ -1,3 +1,7 @@
+---
+description: Krayne overview — a CLI and Python SDK that wraps the KubeRay operator so ML practitioners can create, manage, and scale Ray clusters on Kubernetes without writing manifests.
+---
+
 # Overview
 
 **CLI and SDK for creating, managing, and scaling Ray clusters on Kubernetes.**
