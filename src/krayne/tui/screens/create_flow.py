@@ -134,6 +134,8 @@ class CreateFlowScreen(Screen):
             ("Esc", "Cancel"),
         ])
 
+    TAB_IDS = ["tab-cluster", "tab-head", "tab-workers", "tab-services", "tab-review"]
+
     # ── Tab navigation ──────────────────────────────────
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
@@ -141,10 +143,16 @@ class CreateFlowScreen(Screen):
             self._update_review()
 
     def action_next_tab(self) -> None:
-        self.query_one("#create-tabs Tabs").action_next_tab()
+        tabs = self.query_one("#create-tabs", TabbedContent)
+        current = tabs.active
+        idx = self.TAB_IDS.index(current) if current in self.TAB_IDS else 0
+        tabs.active = self.TAB_IDS[(idx + 1) % len(self.TAB_IDS)]
 
     def action_prev_tab(self) -> None:
-        self.query_one("#create-tabs Tabs").action_previous_tab()
+        tabs = self.query_one("#create-tabs", TabbedContent)
+        current = tabs.active
+        idx = self.TAB_IDS.index(current) if current in self.TAB_IDS else 0
+        tabs.active = self.TAB_IDS[(idx - 1) % len(self.TAB_IDS)]
 
     # ── Button dispatch ─────────────────────────────────
 
