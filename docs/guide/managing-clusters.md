@@ -152,7 +152,7 @@ krayne describe my-cluster -o json
 
 ## Waiting for a cluster
 
-If you created a cluster without `--wait`, you can wait for it later using the SDK:
+You can wait for a cluster to be ready using the SDK:
 
 ```python
 from krayne.api import wait_until_ready

@@ -88,7 +88,7 @@ Once the sandbox is running, all Krayne commands work as normal:
 
 ```bash
 # Create a cluster in the sandbox
-krayne create my-cluster --wait
+krayne create my-cluster
 
 # List clusters
 krayne get

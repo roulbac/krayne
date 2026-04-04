@@ -12,12 +12,6 @@ The simplest way to create a cluster:
 krayne create my-cluster
 ```
 
-This returns immediately after submitting the cluster to Kubernetes. To wait until it's fully ready:
-
-```bash
-krayne create my-cluster --wait
-```
-
 ![krayne create output](../assets/cli-create.png)
 
 The default cluster includes:
@@ -36,8 +30,7 @@ Add GPUs to workers with CLI flags:
 krayne create gpu-experiment \
     --gpus-per-worker 1 \
     --worker-gpu-type a100 \
-    --workers 2 \
-    --wait
+    --workers 2
 ```
 
 This creates 2 workers, each with 1 NVIDIA A100 GPU. Krayne sets the appropriate Kubernetes node selectors and resource limits automatically.
@@ -55,8 +48,7 @@ Override head and worker resources:
 krayne create my-cluster \
     --cpus-in-head 8 \
     --memory-in-head 32Gi \
-    --workers 4 \
-    --wait
+    --workers 4
 ```
 
 ---
@@ -87,7 +79,7 @@ services:
 ```
 
 ```bash
-krayne create my-experiment --file cluster.yaml --wait
+krayne create my-experiment --file cluster.yaml
 ```
 
 !!! tip "CLI flags override YAML"
@@ -192,7 +184,7 @@ By default, clusters are created in the `default` namespace:
 
 ```bash
 # Specify a namespace
-krayne create my-cluster -n ml-team --wait
+krayne create my-cluster -n ml-team
 ```
 
 ```python
@@ -201,23 +193,6 @@ config = ClusterConfig(name="my-cluster", namespace="ml-team")
 
 !!! warning
     The namespace must already exist in Kubernetes. Krayne raises `NamespaceNotFoundError` if it doesn't.
-
----
-
-## Timeout control
-
-The `--wait` flag blocks until the cluster is ready. Control the timeout with `--timeout`:
-
-```bash
-# Wait up to 10 minutes
-krayne create my-cluster --wait --timeout 600
-```
-
-```python
-info = create_cluster(config, wait=True, timeout=600)
-```
-
-If the cluster isn't ready within the timeout, Krayne raises `ClusterTimeoutError`.
 
 ---
 

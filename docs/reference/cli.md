@@ -76,8 +76,6 @@ krayne create <name> [OPTIONS]
 | `--cpus-in-head` | `15` | CPU count for the head node |
 | `--memory-in-head` | `48Gi` | Memory for the head node |
 | `--workers` | `1` | Number of worker replicas |
-| `--wait`, `-w` | `false` | Wait for cluster to be ready before returning |
-| `--timeout` | `300` | Timeout in seconds when using `--wait` |
 | `--file`, `-f` | — | Path to a YAML config file |
 
 **Examples:**
@@ -89,8 +87,8 @@ krayne create my-cluster
 # GPU cluster with 2 workers
 krayne create gpu-cluster --gpus-per-worker 1 --worker-gpu-type a100 --workers 2
 
-# From YAML config, wait for ready
-krayne create my-cluster --file cluster.yaml --wait --timeout 600
+# From YAML config
+krayne create my-cluster --file cluster.yaml
 
 # JSON output
 krayne create my-cluster --output json
