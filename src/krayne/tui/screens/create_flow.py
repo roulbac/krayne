@@ -108,8 +108,9 @@ class CreateFlowScreen(Screen):
 
                 # ── Tab 5: Review ───────────────────
                 with TabPane("Review", id="tab-review"):
-                    yield Static("[dim]Switch to this tab to preview your cluster config[/dim]", id="review-content")
-                    yield Button("Create", variant="primary", id="btn-review-create")
+                    review = Static("", id="review-content")
+                    review.can_focus = True
+                    yield review
 
             yield Static("", id="form-error")
 
@@ -127,6 +128,10 @@ class CreateFlowScreen(Screen):
         self._set_status_hints()
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        # Update review content immediately to avoid stale content flash
+        if event.pane.id == "tab-review":
+            self._update_review()
+
         if self._skip_validation:
             self._skip_validation = False
             self._prev_tab = event.pane.id
@@ -141,13 +146,11 @@ class CreateFlowScreen(Screen):
                 return
             self._prev_tab = event.pane.id
         # Move focus into the new tab so Textual doesn't snap back
-        focusables = list(event.pane.query("Input, Switch, Button"))
+        focusables = list(event.pane.query("Input, Switch, Button, Static#review-content"))
         if focusables:
             focusables[0].focus()
         else:
             self.set_focus(None)
-        if event.pane.id == "tab-review":
-            self._update_review()
 
     def _set_status_hints(self) -> None:
         bar = self.query_one(StatusBar)
@@ -216,7 +219,7 @@ class CreateFlowScreen(Screen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn_id = event.button.id
-        if btn_id in ("btn-create", "btn-review-create"):
+        if btn_id == "btn-create":
             self.action_submit()
         elif btn_id == "btn-cancel":
             self.action_cancel()
