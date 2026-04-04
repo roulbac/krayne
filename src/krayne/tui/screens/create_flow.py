@@ -65,6 +65,8 @@ class CreateFlowScreen(Screen):
                         yield Label("Memory:")
                         yield Input(value=DEFAULT_HEAD_MEMORY, id="input-head-memory")
                     with Horizontal(classes="form-row"):
+                        yield Label("GPU Type:")
+                        yield Input(value="t4", id="input-head-gpu-type")
                         yield Label("GPUs:")
                         yield Input(value="0", id="input-head-gpus", type="integer")
 
@@ -83,10 +85,10 @@ class CreateFlowScreen(Screen):
                             yield Label("Memory:")
                             yield Input(value=DEFAULT_MEMORY, id="input-wg0-memory")
                         with Horizontal(classes="form-row"):
-                            yield Label("GPUs:")
-                            yield Input(value="0", id="input-wg0-gpus", type="integer")
                             yield Label("GPU Type:")
                             yield Input(value="t4", id="input-wg0-gpu-type")
+                            yield Label("GPUs:")
+                            yield Input(value="0", id="input-wg0-gpus", type="integer")
 
                     yield Container(id="extra-wg-container")
                     yield Button("+ Add Worker Group", variant="default", id="btn-add-wg")
@@ -177,8 +179,8 @@ class CreateFlowScreen(Screen):
              ("Replicas:", f"input-wg{idx}-replicas", "1")],
             [("CPUs:", f"input-wg{idx}-cpus", DEFAULT_CPUS),
              ("Memory:", f"input-wg{idx}-memory", DEFAULT_MEMORY)],
-            [("GPUs:", f"input-wg{idx}-gpus", "0"),
-             ("GPU Type:", f"input-wg{idx}-gpu-type", "t4")],
+            [("GPU Type:", f"input-wg{idx}-gpu-type", "t4"),
+             ("GPUs:", f"input-wg{idx}-gpus", "0")],
         ]
         for pair in pairs:
             row = Horizontal(classes="form-row")
