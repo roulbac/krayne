@@ -139,6 +139,14 @@ class CreateFlowScreen(Screen):
             tabs.active = self._prev_tab
             return
         self._prev_tab = event.pane.id
+        # Move focus into the new tab so Textual doesn't snap back
+        # to the tab containing the previously focused widget
+        focusables = list(event.pane.query("Input, Switch, Button"))
+        if focusables:
+            focusables[0].focus()
+        else:
+            # Tab has no focusable widgets (e.g. Review) — blur current
+            self.set_focus(None)
         if event.pane.id == "tab-review":
             self._update_review()
 
