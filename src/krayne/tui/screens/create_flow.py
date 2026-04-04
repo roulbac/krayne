@@ -40,6 +40,7 @@ class CreateFlowScreen(Screen):
         self._extra_worker_groups: int = 0
         self._creating: bool = False
         self._prev_tab: str = "tab-cluster"
+        self._mounted: bool = False
 
     def compose(self):
         header = HeaderBar()
@@ -123,8 +124,11 @@ class CreateFlowScreen(Screen):
         self.query_one("#input-namespace", Input).value = self.app.namespace
         self.query_one("#input-name", Input).focus()
         self._set_status_hints()
+        self._mounted = True
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        if not self._mounted:
+            return
         # Validate the tab we're leaving; if invalid, snap back
         error = self._validate_tab(self._prev_tab)
         if error:
