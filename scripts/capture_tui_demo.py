@@ -68,6 +68,8 @@ DETAILS = ClusterDetails(
     python_version="3.11",
 )
 
+SERVICES = ["dashboard", "notebook", "client", "code-server"]
+
 OUT_DIR = Path(__file__).resolve().parent.parent / "docs" / "assets"
 
 
@@ -77,59 +79,91 @@ def svg_to_pil(svg_text: str, scale: float = 1.0) -> Image.Image:
     return Image.open(io.BytesIO(png_data))
 
 
+async def _pause(pilot, n: int = 3) -> None:
+    for _ in range(n):
+        await pilot.pause()
+
+
+async def _switch_tab(app, tabs_id: str, tab_id: str, pilot) -> None:
+    """Switch tab without focus snap-back."""
+    app.screen.set_focus(None)
+    tabs = app.screen.query_one(f"#{tabs_id}")
+    tabs.active = tab_id
+    await _pause(pilot)
+
+
 async def capture_frames() -> list[Image.Image]:
     """Drive the TUI and capture screenshots at key moments."""
     frames: list[Image.Image] = []
 
-    with patch("krayne.tui.screens.cluster_list.list_clusters", return_value=CLUSTERS):
+    explorer_patches = [
+        patch("krayne.tui.screens.explorer.list_clusters", return_value=CLUSTERS),
+        patch("krayne.tui.screens.explorer.is_tunnel_active", return_value=False),
+    ]
+
+    detail_patches = [
+        patch("krayne.tui.screens.detail.describe_cluster", return_value=DETAILS),
+        patch("krayne.tui.screens.detail.get_cluster_services", return_value=SERVICES),
+        patch("krayne.tui.screens.detail.is_tunnel_active", return_value=False),
+        patch("krayne.tui.screens.detail.load_tunnel_state", return_value=None),
+    ]
+
+    all_patches = explorer_patches + detail_patches
+    for p in all_patches:
+        p.start()
+    try:
         app = IKrayneApp()
         async with app.run_test(size=(100, 30)) as pilot:
-            # Frame 1: Cluster list
-            for _ in range(5):
-                await pilot.pause()
-            svg = app.export_screenshot()
-            frames.append(svg_to_pil(svg))
+            # ── Frame 1: Cluster explorer ──────────────
+            await _pause(pilot, 5)
+            frames.append(svg_to_pil(app.export_screenshot()))
 
-            # Frame 2: Open create form
+            # ── Frame 2: Open create form (Cluster tab) ──
             await pilot.press("c")
-            for _ in range(3):
-                await pilot.pause()
-            svg = app.export_screenshot()
-            frames.append(svg_to_pil(svg))
+            await _pause(pilot)
+            frames.append(svg_to_pil(app.export_screenshot()))
 
-            # Frame 3: Go back to list
+            # ── Frame 3: Head Node tab ─────────────────
+            await _switch_tab(app, "create-tabs", "tab-head", pilot)
+            frames.append(svg_to_pil(app.export_screenshot()))
+
+            # ── Frame 4: Workers tab ───────────────────
+            await _switch_tab(app, "create-tabs", "tab-workers", pilot)
+            frames.append(svg_to_pil(app.export_screenshot()))
+
+            # ── Frame 5: Services tab ──────────────────
+            await _switch_tab(app, "create-tabs", "tab-services", pilot)
+            frames.append(svg_to_pil(app.export_screenshot()))
+
+            # ── Frame 6: Review tab ────────────────────
+            # Fill in the name first so review shows a summary
+            app.screen.query_one("#input-name").value = "my-cluster"
+            await _switch_tab(app, "create-tabs", "tab-review", pilot)
+            frames.append(svg_to_pil(app.export_screenshot()))
+
+            # ── Frame 7: Back to explorer ──────────────
             await pilot.press("escape")
-            for _ in range(3):
-                await pilot.pause()
-            svg = app.export_screenshot()
-            frames.append(svg_to_pil(svg))
+            await _pause(pilot)
+            frames.append(svg_to_pil(app.export_screenshot()))
 
-            # Frame 4: Open detail screen
-            with patch(
-                "krayne.tui.screens.cluster_detail.describe_cluster",
-                return_value=DETAILS,
-            ), patch(
-                "krayne.tui.screens.cluster_detail.is_tunnel_active",
-                return_value=False,
-            ):
-                table = app.screen.query_one("DataTable")
-                table.focus()
-                await pilot.pause()
-                await pilot.press("enter")
-                for _ in range(5):
-                    await pilot.pause()
-                svg = app.export_screenshot()
-                frames.append(svg_to_pil(svg))
+            # ── Frame 8: Detail screen (Overview) ──────
+            table = app.screen.query_one("DataTable")
+            table.focus()
+            await pilot.pause()
+            await pilot.press("enter")
+            await _pause(pilot, 5)
+            frames.append(svg_to_pil(app.export_screenshot()))
 
-            # Frame 5: Go back, open help
-            await pilot.press("escape")
-            for _ in range(3):
-                await pilot.pause()
-            await pilot.press("question_mark")
-            for _ in range(3):
-                await pilot.pause()
-            svg = app.export_screenshot()
-            frames.append(svg_to_pil(svg))
+            # ── Frame 9: Detail Workers tab ────────────
+            await _switch_tab(app, "detail-tabs", "tab-workers", pilot)
+            frames.append(svg_to_pil(app.export_screenshot()))
+
+            # ── Frame 10: Detail Services tab ──────────
+            await _switch_tab(app, "detail-tabs", "tab-services", pilot)
+            frames.append(svg_to_pil(app.export_screenshot()))
+    finally:
+        for p in all_patches:
+            p.stop()
 
     return frames
 
@@ -151,8 +185,19 @@ def main() -> None:
         frame.save(OUT_DIR / f"ikrayne-frame-{i}.png")
         print(f"  Saved frame {i}: {frame.size}")
 
-    # Create GIF with durations: longer pause on list and detail, shorter on transitions
-    durations = [3000, 3000, 1500, 3000, 3000]  # ms per frame
+    # Durations: longer on explorer/detail/review, shorter on form tabs
+    durations = [
+        3000,  # explorer
+        2000,  # create: cluster tab
+        2000,  # create: head node tab
+        2000,  # create: workers tab
+        2000,  # create: services tab
+        3000,  # create: review tab
+        1500,  # back to explorer
+        3000,  # detail: overview
+        2000,  # detail: workers
+        2000,  # detail: services
+    ]
     durations = durations[: len(frames)]
 
     frames[0].save(
