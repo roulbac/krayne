@@ -134,25 +134,25 @@ class CreateFlowScreen(Screen):
             ("Esc", "Cancel"),
         ])
 
-    def action_next_tab(self) -> None:
+    def _switch_tab(self, offset: int) -> None:
         tabs = self.query_one("#create-tabs", TabbedContent)
         tab_list = list(tabs.query(TabPane))
         active = tabs.active
         for i, pane in enumerate(tab_list):
             if pane.id == active:
-                next_pane = tab_list[(i + 1) % len(tab_list)]
-                tabs.active = next_pane.id
+                target = tab_list[(i + offset) % len(tab_list)]
+                tabs.active = target.id
+                # Move focus into the new tab so Textual doesn't snap back
+                focusables = list(target.query("Input, Switch, Button"))
+                if focusables:
+                    focusables[0].focus()
                 break
 
+    def action_next_tab(self) -> None:
+        self._switch_tab(1)
+
     def action_prev_tab(self) -> None:
-        tabs = self.query_one("#create-tabs", TabbedContent)
-        tab_list = list(tabs.query(TabPane))
-        active = tabs.active
-        for i, pane in enumerate(tab_list):
-            if pane.id == active:
-                prev_pane = tab_list[(i - 1) % len(tab_list)]
-                tabs.active = prev_pane.id
-                break
+        self._switch_tab(-1)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn_id = event.button.id
