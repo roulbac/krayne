@@ -12,6 +12,7 @@ from pathlib import Path
 from PIL import Image
 from playwright.sync_api import sync_playwright
 from rich.console import Console
+from rich.table import Table
 from rich.text import Text
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "docs" / "assets"
@@ -79,6 +80,37 @@ def svg_to_png(svg_text: str, browser) -> Image.Image:
     return Image.open(io.BytesIO(png_data))
 
 
+def render_synthetic_svg(filename: str, title: str) -> str | None:
+    """Render synthetic SVG for commands that can't be run without infra."""
+    from krayne.output.formatters import format_init_success, format_sandbox_setup_success
+
+    if filename == "cli-sandbox-setup":
+        console = Console(record=True, width=80, file=io.StringIO())
+        progress = Table(show_header=False, box=None, padding=(0, 1))
+        progress.add_column("Icon")
+        progress.add_column("Step")
+        for step in ("Docker", "k3s cluster", "KubeRay operator", "Ray CRD"):
+            progress.add_row("[green]✓[/green]", step)
+        console.print(progress)
+        console.print()
+        format_sandbox_setup_success("~/.krayne/sandbox-kubeconfig", console)
+        return console.export_svg(title=title)
+
+    if filename == "cli-init":
+        console = Console(record=True, width=80, file=io.StringIO())
+        format_init_success("~/.krayne/sandbox-kubeconfig", "default", console)
+        return console.export_svg(title=title)
+
+    return None
+
+
+# Synthetic screenshots for commands that require Docker/k3s.
+SYNTHETIC: list[tuple[str, str]] = [
+    ("cli-sandbox-setup", "$ krayne sandbox setup"),
+    ("cli-init", "$ krayne init"),
+]
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -90,6 +122,16 @@ def main() -> None:
     pw = sync_playwright().start()
     browser = pw.chromium.launch()
 
+    # Synthetic screenshots (no live cluster needed)
+    for filename, title in SYNTHETIC:
+        print(f"  Capturing (synthetic): {title}")
+        svg = render_synthetic_svg(filename, title)
+        img = svg_to_png(svg, browser)
+        out_path = OUT_DIR / f"{filename}.png"
+        img.save(out_path, optimize=True)
+        print(f"    -> {out_path.name} ({img.size[0]}x{img.size[1]}, {out_path.stat().st_size // 1024}KB)")
+
+    # Live command screenshots
     for filename, title, args, tail_lines in COMMANDS:
         print(f"  Capturing: {title}")
         ansi = run_command(args)
