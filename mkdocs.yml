@@ -39,9 +39,6 @@ theme:
 plugins:
   - search
   - social
-  - sitemap:
-      changefreq: weekly
-      priority: 0.8
 
 extra:
   social:
