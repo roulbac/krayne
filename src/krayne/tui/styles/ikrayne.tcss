@@ -280,7 +280,6 @@ TabPane {
 
 .form-row Switch {
     width: auto;
-    height: 1;
 }
 
 .form-buttons {

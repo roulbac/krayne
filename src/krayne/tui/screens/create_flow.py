@@ -32,7 +32,7 @@ class CreateFlowScreen(Screen):
         Binding("escape", "cancel", "Cancel", show=False),
         Binding("ctrl+s", "submit", "Create", show=False),
         Binding("ctrl+n", "next_tab", "Next Tab", show=False),
-        Binding("ctrl+p", "prev_tab", "Prev Tab", show=False),
+        Binding("ctrl+b", "prev_tab", "Prev Tab", show=False),
     ]
 
     def __init__(self) -> None:
@@ -53,7 +53,6 @@ class CreateFlowScreen(Screen):
                     with Horizontal(classes="form-row"):
                         yield Label("Name:")
                         yield Input(placeholder="my-cluster", id="input-name")
-                    with Horizontal(classes="form-row"):
                         yield Label("Namespace:")
                         yield Input(value="default", id="input-namespace")
 
@@ -63,7 +62,6 @@ class CreateFlowScreen(Screen):
                     with Horizontal(classes="form-row"):
                         yield Label("CPUs:")
                         yield Input(value=DEFAULT_CPUS, id="input-head-cpus")
-                    with Horizontal(classes="form-row"):
                         yield Label("Memory:")
                         yield Input(value=DEFAULT_HEAD_MEMORY, id="input-head-memory")
                     with Horizontal(classes="form-row"):
@@ -77,19 +75,16 @@ class CreateFlowScreen(Screen):
                         with Horizontal(classes="form-row"):
                             yield Label("Group Name:")
                             yield Input(value="worker", id="input-wg0-name")
-                        with Horizontal(classes="form-row"):
                             yield Label("Replicas:")
                             yield Input(value="1", id="input-wg0-replicas", type="integer")
                         with Horizontal(classes="form-row"):
                             yield Label("CPUs:")
                             yield Input(value=DEFAULT_CPUS, id="input-wg0-cpus")
-                        with Horizontal(classes="form-row"):
                             yield Label("Memory:")
                             yield Input(value=DEFAULT_MEMORY, id="input-wg0-memory")
                         with Horizontal(classes="form-row"):
                             yield Label("GPUs:")
                             yield Input(value="0", id="input-wg0-gpus", type="integer")
-                        with Horizontal(classes="form-row"):
                             yield Label("GPU Type:")
                             yield Input(value="t4", id="input-wg0-gpu-type")
 
@@ -102,10 +97,8 @@ class CreateFlowScreen(Screen):
                     with Horizontal(classes="form-row"):
                         yield Label("Notebook:")
                         yield Switch(value=True, id="switch-notebook")
-                    with Horizontal(classes="form-row"):
                         yield Label("Code Server:")
                         yield Switch(value=True, id="switch-code-server")
-                    with Horizontal(classes="form-row"):
                         yield Label("SSH:")
                         yield Switch(value=True, id="switch-ssh")
 
@@ -136,7 +129,7 @@ class CreateFlowScreen(Screen):
         bar = self.query_one(StatusBar)
         bar.set_hints([
             ("Tab/Shift+Tab", "Next/Prev field"),
-            ("Ctrl+N/P", "Next/Prev tab"),
+            ("Ctrl+N/B", "Next/Prev tab"),
             ("Ctrl+S", "Create"),
             ("Esc", "Cancel"),
         ])
@@ -178,17 +171,20 @@ class CreateFlowScreen(Screen):
         section = Vertical(classes="form-section", id=f"section-wg{idx}")
         section.mount(Static(f"[bold]Worker Group {idx + 1}[/bold]", classes="form-section-title"))
 
-        for label_text, input_id, default in [
-            ("Group Name:", f"input-wg{idx}-name", f"worker-{idx + 1}"),
-            ("Replicas:", f"input-wg{idx}-replicas", "1"),
-            ("CPUs:", f"input-wg{idx}-cpus", DEFAULT_CPUS),
-            ("Memory:", f"input-wg{idx}-memory", DEFAULT_MEMORY),
-            ("GPUs:", f"input-wg{idx}-gpus", "0"),
-            ("GPU Type:", f"input-wg{idx}-gpu-type", "t4"),
-        ]:
+        # Two-column paired rows
+        pairs = [
+            [("Group Name:", f"input-wg{idx}-name", f"worker-{idx + 1}"),
+             ("Replicas:", f"input-wg{idx}-replicas", "1")],
+            [("CPUs:", f"input-wg{idx}-cpus", DEFAULT_CPUS),
+             ("Memory:", f"input-wg{idx}-memory", DEFAULT_MEMORY)],
+            [("GPUs:", f"input-wg{idx}-gpus", "0"),
+             ("GPU Type:", f"input-wg{idx}-gpu-type", "t4")],
+        ]
+        for pair in pairs:
             row = Horizontal(classes="form-row")
-            row.mount(Label(label_text))
-            row.mount(Input(value=default, id=input_id))
+            for label_text, input_id, default in pair:
+                row.mount(Label(label_text))
+                row.mount(Input(value=default, id=input_id))
             section.mount(row)
 
         container.mount(section)
