@@ -40,7 +40,7 @@ class CreateFlowScreen(Screen):
         self._extra_worker_groups: int = 0
         self._creating: bool = False
         self._prev_tab: str = "tab-cluster"
-        self._user_switched: bool = False
+        self._skip_validation: bool = True  # skip the initial mount activation
 
     def compose(self):
         header = HeaderBar()
@@ -126,16 +126,16 @@ class CreateFlowScreen(Screen):
         self._set_status_hints()
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
-        if not self._user_switched:
-            # First activation is automatic (mount) — skip validation
-            self._user_switched = True
+        if self._skip_validation:
+            self._skip_validation = False
+            self._prev_tab = event.pane.id
             return
         # Validate the tab we're leaving; if invalid, snap back
         error = self._validate_tab(self._prev_tab)
         if error:
             self.notify(error, severity="error", timeout=5)
             tabs = self.query_one("#create-tabs", TabbedContent)
-            self._user_switched = False  # prevent re-validation on snap-back
+            self._skip_validation = True  # suppress validation on the snap-back event
             tabs.active = self._prev_tab
             return
         self._prev_tab = event.pane.id
@@ -193,6 +193,7 @@ class CreateFlowScreen(Screen):
             if pane.id == active:
                 target = tab_list[(i + offset) % len(tab_list)]
                 self._prev_tab = target.id
+                self._skip_validation = True  # already validated above
                 tabs.active = target.id
                 # Move focus into the new tab so Textual doesn't snap back
                 focusables = list(target.query("Input, Switch, Button"))
