@@ -142,17 +142,20 @@ class CreateFlowScreen(Screen):
         if event.pane.id == "tab-review":
             self._update_review()
 
-    def action_next_tab(self) -> None:
+    def _go_tab(self, offset: int) -> None:
         tabs = self.query_one("#create-tabs", TabbedContent)
         current = tabs.active
         idx = self.TAB_IDS.index(current) if current in self.TAB_IDS else 0
-        tabs.active = self.TAB_IDS[(idx + 1) % len(self.TAB_IDS)]
+        target_id = self.TAB_IDS[(idx + offset) % len(self.TAB_IDS)]
+        # Clear focus first so Textual doesn't snap back to the old tab
+        self.set_focus(None)
+        tabs.active = target_id
+
+    def action_next_tab(self) -> None:
+        self._go_tab(1)
 
     def action_prev_tab(self) -> None:
-        tabs = self.query_one("#create-tabs", TabbedContent)
-        current = tabs.active
-        idx = self.TAB_IDS.index(current) if current in self.TAB_IDS else 0
-        tabs.active = self.TAB_IDS[(idx - 1) % len(self.TAB_IDS)]
+        self._go_tab(-1)
 
     # ── Button dispatch ─────────────────────────────────
 
