@@ -83,7 +83,7 @@ services:
 ```
 
 ```bash
-krayne create my-experiment --file cluster.yaml --wait
+krayne create my-experiment --file cluster.yaml
 ```
 
 ### Overriding YAML values with CLI flags

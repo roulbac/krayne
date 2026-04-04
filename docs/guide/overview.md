@@ -35,7 +35,7 @@ Both the CLI and SDK produce the same result — a fully configured Ray cluster 
 
     ```bash
     # Create a GPU cluster with 2 workers
-    krayne create my-experiment --gpus-per-worker 1 --workers 2 --wait
+    krayne create my-experiment --gpus-per-worker 1 --workers 2
 
     # Check status
     krayne describe my-experiment

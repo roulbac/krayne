@@ -36,27 +36,7 @@ Choose one of two paths:
     krayne sandbox setup
     ```
 
-    ```title="Terminal output"
-              Sandbox Setup
-      Component             Status
-      Docker                ✓ ready
-      K3S Container         ✓ ready
-      K3S Node              ✓ ready
-      Kubeconfig            ✓ ready
-      KubeRay Helm Chart    ✓ ready
-      RayCluster CRD        ✓ ready
-      Operator Ready        ✓ ready
-    ╭─ Sandbox Ready ─────────────────────────────────╮
-    │  Status        running                          │
-    │  Kubeconfig    ~/.krayne/sandbox-kubeconfig       │
-    ╰─────────────────────────────────────────────────╯
-    ╭─ Next Steps ────────────────────────────────────╮
-    │  1.  krayne init — select the sandbox            │
-    │      kubeconfig and context                     │
-    │  2.  krayne create my-cluster — launch your      │
-    │      first Ray cluster                          │
-    ╰─────────────────────────────────────────────────╯
-    ```
+    ![krayne sandbox setup output](../assets/cli-sandbox-setup.png)
 
     The sandbox requires Docker with at least 2 CPUs and 6 GB RAM.
 
@@ -68,14 +48,7 @@ Choose one of two paths:
 
     Select **"Sandbox kubeconfig"** when prompted. Krayne auto-selects the `default` context:
 
-    ```title="Terminal output"
-    ? Select kubeconfig source: Sandbox kubeconfig (~/.krayne/sandbox-kubeconfig)
-    Auto-selected context: default
-    ╭─ Krayne Initialized ────────────────────────────╮
-    │  Kubeconfig    ~/.krayne/sandbox-kubeconfig      │
-    │  Context       default                          │
-    ╰─────────────────────────────────────────────────╯
-    ```
+    ![krayne init output](../assets/cli-init.png)
 
 === "Existing Kubernetes Cluster"
 
@@ -95,10 +68,8 @@ Choose one of two paths:
 ## 3. Create your first cluster
 
 ```bash
-krayne create my-first-cluster --wait
+krayne create my-first-cluster
 ```
-
-The `--wait` flag blocks until all pods are running:
 
 ![krayne create output](../assets/cli-create.png)
 
