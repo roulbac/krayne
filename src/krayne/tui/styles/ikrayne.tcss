@@ -235,20 +235,19 @@ TabPane {
 
 #create-flow-screen {
     layout: vertical;
-    padding: 1 2;
-    overflow-y: auto;
+    padding: 0;
+    overflow-y: hidden;
+}
+
+#create-tabs {
+    height: 1fr;
 }
 
 #create-mode-bar {
     height: auto;
     layout: horizontal;
-    margin-bottom: 1;
-}
-
-#step-indicator {
-    height: 1;
-    color: $text-muted;
-    margin-bottom: 1;
+    padding: 0 1;
+    margin-bottom: 0;
 }
 
 .form-section {
@@ -275,6 +274,11 @@ TabPane {
 
 .form-row Input {
     width: 1fr;
+    max-width: 40;
+}
+
+.compact .form-row Input {
+    max-width: 30;
 }
 
 .form-row Switch {
@@ -282,9 +286,10 @@ TabPane {
 }
 
 .form-buttons {
+    dock: bottom;
     layout: horizontal;
     height: auto;
-    margin-top: 2;
+    padding: 1 0;
     align-horizontal: center;
 }
 
