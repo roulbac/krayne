@@ -130,23 +130,21 @@ class CreateFlowScreen(Screen):
         if self._skip_validation:
             self._skip_validation = False
             self._prev_tab = event.pane.id
-            return
-        # Validate the tab we're leaving; if invalid, snap back
-        error = self._validate_tab(self._prev_tab)
-        if error:
-            self.notify(error, severity="error", timeout=5)
-            tabs = self.query_one("#create-tabs", TabbedContent)
-            self._skip_validation = True  # suppress validation on the snap-back event
-            tabs.active = self._prev_tab
-            return
-        self._prev_tab = event.pane.id
+        else:
+            # Validate the tab we're leaving; if invalid, snap back
+            error = self._validate_tab(self._prev_tab)
+            if error:
+                self.notify(error, severity="error", timeout=5)
+                tabs = self.query_one("#create-tabs", TabbedContent)
+                self._skip_validation = True  # suppress validation on the snap-back event
+                tabs.active = self._prev_tab
+                return
+            self._prev_tab = event.pane.id
         # Move focus into the new tab so Textual doesn't snap back
-        # to the tab containing the previously focused widget
         focusables = list(event.pane.query("Input, Switch, Button"))
         if focusables:
             focusables[0].focus()
         else:
-            # Tab has no focusable widgets (e.g. Review) — blur current
             self.set_focus(None)
         if event.pane.id == "tab-review":
             self._update_review()
@@ -327,9 +325,28 @@ class CreateFlowScreen(Screen):
 
     def _update_review(self) -> None:
         """Refresh the review tab with current form state."""
+        # Validate all tabs first and collect errors
+        errors: list[str] = []
+        for tab_id, tab_label in [
+            ("tab-cluster", "Cluster"),
+            ("tab-head", "Head Node"),
+            ("tab-workers", "Workers"),
+        ]:
+            error = self._validate_tab(tab_id)
+            if error:
+                errors.append(f"[red]\u2717[/red] {tab_label}: {error}")
+
+        if errors:
+            lines = ["[bold]Review[/bold]", ""]
+            lines.append("[bold red]Fix the following before creating:[/bold red]")
+            lines.append("")
+            lines.extend(errors)
+            self.query_one("#review-content", Static).update("\n".join(lines))
+            return
+
         try:
             config = self._build_config()
-        except (ValueError, TypeError, Exception) as exc:
+        except Exception as exc:
             self.query_one("#review-content", Static).update(
                 f"[red]Cannot preview: {exc}[/red]"
             )
@@ -361,6 +378,9 @@ class CreateFlowScreen(Screen):
         for name, enabled in [("Notebook", svc.notebook), ("Code Server", svc.code_server), ("SSH", svc.ssh)]:
             icon = "[green]\u2713[/green]" if enabled else "[dim]\u2717[/dim]"
             lines.append(f"  {icon} {name}")
+
+        lines.append("")
+        lines.append("[green]Ready to create \u2714[/green]")
 
         self.query_one("#review-content", Static).update("\n".join(lines))
 
