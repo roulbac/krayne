@@ -1,4 +1,4 @@
-"""Delete confirmation modal."""
+"""Delete confirmation modal — safe and informative."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from textual.worker import Worker, WorkerState
 
 from krayne.api.clusters import delete_cluster
 from krayne.errors import KrayneError
-from krayne.tunnel import stop_tunnels
+from krayne.tunnel import is_tunnel_active, stop_tunnels
 
 
 class DeleteConfirmScreen(ModalScreen[bool]):
@@ -23,20 +23,29 @@ class DeleteConfirmScreen(ModalScreen[bool]):
         self.namespace = namespace
 
     def compose(self):
+        tunnel_active = is_tunnel_active(self.cluster_name, self.namespace)
+
         with Vertical(id="delete-dialog"):
             yield Static(
                 f"[bold red]Delete cluster '{self.cluster_name}'?[/bold red]",
                 classes="dialog-title",
             )
             yield Static(
-                f"This will permanently delete the cluster in namespace '{self.namespace}'.\n"
-                "Any active tunnels will be closed.",
+                f"Namespace: [bold]{self.namespace}[/bold]"
             )
+            yield Static("")
+            yield Static("[bold]This action will:[/bold]")
+            yield Static("  \u2022 Permanently delete the cluster and all its pods", classes="side-effect")
+            if tunnel_active:
+                yield Static("  \u2022 Close all active tunnels for this cluster", classes="side-effect")
+            yield Static("")
+
             with Horizontal(classes="dialog-buttons"):
-                yield Button("Delete", variant="error", id="btn-confirm-delete")
                 yield Button("Cancel", variant="default", id="btn-cancel-delete")
+                yield Button("Delete", variant="error", id="btn-confirm-delete")
 
     def on_mount(self) -> None:
+        # Default focus on Cancel for safety
         self.query_one("#btn-cancel-delete", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -61,7 +70,11 @@ class DeleteConfirmScreen(ModalScreen[bool]):
         if event.worker.name != "do_delete":
             return
         if event.worker.state == WorkerState.SUCCESS:
-            self.notify(f"Cluster '{self.cluster_name}' deleted", severity="information", timeout=3)
+            self.notify(
+                f"Cluster '{self.cluster_name}' deleted",
+                severity="information",
+                timeout=3,
+            )
             self.dismiss(True)
         elif event.worker.state == WorkerState.ERROR:
             error = event.worker.error

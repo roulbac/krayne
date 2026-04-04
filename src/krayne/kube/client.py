@@ -31,6 +31,7 @@ class KubeClient(Protocol):
     def get_cluster_status(self, name: str, namespace: str) -> str: ...
     def list_pods(self, cluster_name: str, namespace: str) -> list[dict]: ...
     def get_head_node_port(self, cluster_name: str, namespace: str, port_name: str) -> int | None: ...
+    def list_namespaces(self) -> list[str]: ...
 
 
 class DefaultKubeClient:
@@ -156,6 +157,13 @@ class DefaultKubeClient:
             if port.name == port_name and port.node_port:
                 return int(port.node_port)
         return None
+
+    def list_namespaces(self) -> list[str]:
+        try:
+            resp = self._core.list_namespace()
+            return sorted(ns.metadata.name for ns in (resp.items or []))
+        except ApiException as exc:
+            raise KubeConnectionError(str(exc)) from exc
 
     def _ensure_namespace(self, namespace: str) -> None:
         try:

@@ -210,6 +210,50 @@ def start_tunnels(
     return tunnels
 
 
+def stop_tunnel_service(cluster_name: str, namespace: str, service: str) -> bool:
+    """Stop the tunnel for a single service, leaving others running.
+
+    Returns ``True`` if the service tunnel was found and stopped,
+    ``False`` otherwise.
+    """
+    state = load_tunnel_state(cluster_name, namespace)
+    if state is None:
+        return False
+
+    # Find the index of the tunnel for this service
+    idx = None
+    for i, t in enumerate(state.tunnels):
+        if t.service == service:
+            idx = i
+            break
+    if idx is None:
+        return False
+
+    # Kill the specific process
+    if idx < len(state.pids):
+        try:
+            os.kill(state.pids[idx], signal.SIGTERM)
+        except OSError:
+            pass
+
+    # Update state: remove this tunnel and pid
+    remaining_tunnels = [t for i, t in enumerate(state.tunnels) if i != idx]
+    remaining_pids = [p for i, p in enumerate(state.pids) if i != idx]
+
+    if not remaining_tunnels:
+        # No tunnels left — clean up entirely
+        _remove_tunnel_state(cluster_name, namespace)
+    else:
+        new_state = TunnelState(
+            cluster_name=cluster_name,
+            namespace=namespace,
+            tunnels=remaining_tunnels,
+            pids=remaining_pids,
+        )
+        _save_tunnel_state(new_state)
+    return True
+
+
 def stop_tunnels(cluster_name: str, namespace: str) -> bool:
     """Terminate all port-forward processes for a tunnel session.
 
