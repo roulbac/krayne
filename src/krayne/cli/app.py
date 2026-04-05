@@ -119,24 +119,14 @@ def create(
             overrides = {"name": name, "namespace": namespace}
             config = load_config_from_yaml(file, overrides=overrides)
         else:
-            if no_autoscaling:
-                wg = WorkerGroupConfig(
-                    replicas=workers,
-                    min_replicas=workers,
-                    max_replicas=workers,
-                    gpus=gpus_per_worker,
-                    gpu_type=worker_gpu_type,
-                )
-                autoscaler = AutoscalerConfig(enabled=False)
-            else:
-                wg = WorkerGroupConfig(
-                    replicas=workers,
-                    min_replicas=min_workers,
-                    max_replicas=max_workers,
-                    gpus=gpus_per_worker,
-                    gpu_type=worker_gpu_type,
-                )
-                autoscaler = AutoscalerConfig()
+            wg = WorkerGroupConfig(
+                replicas=workers,
+                min_replicas=workers if no_autoscaling else min_workers,
+                max_replicas=workers if no_autoscaling else max_workers,
+                gpus=gpus_per_worker,
+                gpu_type=worker_gpu_type,
+            )
+            autoscaler = AutoscalerConfig(enabled=not no_autoscaling)
             config = ClusterConfig(
                 name=name,
                 namespace=namespace,
@@ -223,15 +213,6 @@ def scale(
 ) -> None:
     """Scale a worker group of a cluster."""
     try:
-        if replicas is None and min_replicas is None and max_replicas is None:
-            err_console.print(
-                Panel(
-                    "At least one of --replicas, --min-replicas, or --max-replicas is required.",
-                    title="Error",
-                    border_style="red",
-                )
-            )
-            raise typer.Exit(1)
         info = _scale_cluster(
             name, namespace, worker_group, replicas,
             min_replicas=min_replicas, max_replicas=max_replicas,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -77,13 +78,11 @@ _SAMPLE_OBJ = {
 
 
 def _fresh_sample_obj():
-    import copy
     return copy.deepcopy(_SAMPLE_OBJ)
 
 
 @pytest.fixture()
 def mock_client():
-    import copy
     client = MagicMock()
     client.create_ray_cluster.return_value = _fresh_sample_obj()
     client.get_ray_cluster.side_effect = lambda *a, **kw: _fresh_sample_obj()
@@ -182,7 +181,6 @@ class TestDescribeCluster:
 
 class TestScaleCluster:
     def test_scale_replicas_with_autoscaling(self, mock_client):
-        """With autoscaling, only the provided fields are patched."""
         info = scale_cluster("test", "default", "worker", 4, client=mock_client)
         assert isinstance(info, ClusterInfo)
         mock_client.patch_ray_cluster.assert_called_once()
@@ -207,8 +205,6 @@ class TestScaleCluster:
         assert wg["replicas"] == 2  # unchanged
 
     def test_scale_without_autoscaling_pins_all(self, mock_client):
-        """Without autoscaling, all three are pinned to replicas."""
-        import copy
         no_autoscale_obj = copy.deepcopy(_SAMPLE_OBJ)
         no_autoscale_obj["spec"]["enableInTreeAutoscaling"] = False
         mock_client.get_ray_cluster.side_effect = lambda *a, **kw: copy.deepcopy(no_autoscale_obj)

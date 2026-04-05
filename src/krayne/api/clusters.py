@@ -15,7 +15,7 @@ from krayne.api.types import (
 )
 from krayne.config.models import ClusterConfig
 from krayne.config.settings import load_krayne_settings
-from krayne.errors import ClusterTimeoutError
+from krayne.errors import ClusterTimeoutError, KrayneError
 from krayne.kube.client import DefaultKubeClient, KubeClient, _extract_status
 from krayne.kube.manifest import RAY_IMAGE, build_manifest
 
@@ -133,8 +133,6 @@ def scale_cluster(
     When autoscaling is disabled, all three are pinned to *replicas*.
     """
     if replicas is None and min_replicas is None and max_replicas is None:
-        from krayne.errors import KrayneError
-
         raise KrayneError("At least one of replicas, min_replicas, or max_replicas is required")
 
     kube = _resolve_client(client, kubeconfig)
@@ -152,15 +150,12 @@ def scale_cluster(
                 if max_replicas is not None:
                     spec["maxReplicas"] = max_replicas
             else:
-                # Without autoscaling, pin all three to replicas
                 target = replicas if replicas is not None else spec.get("replicas", 0)
                 spec["replicas"] = target
                 spec["minReplicas"] = target
                 spec["maxReplicas"] = target
             break
     else:
-        from krayne.errors import KrayneError
-
         raise KrayneError(
             f"Worker group '{worker_group}' not found in cluster '{name}'"
         )
