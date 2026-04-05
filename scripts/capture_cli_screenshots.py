@@ -6,11 +6,10 @@ import io
 import os
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
+import cairosvg
 from PIL import Image
-from playwright.sync_api import sync_playwright
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
@@ -61,22 +60,9 @@ def ansi_to_svg(ansi_output: str, title: str) -> str:
     return console.export_svg(title=title)
 
 
-def svg_to_png(svg_text: str, browser) -> Image.Image:
-    """Render SVG to PNG via Playwright."""
-    with tempfile.NamedTemporaryFile(suffix=".svg", mode="w", delete=False) as f:
-        f.write(svg_text)
-        svg_path = f.name
-
-    page = browser.new_page()
-    page.goto(f"file://{svg_path}")
-    page.wait_for_timeout(500)
-    svg_el = page.query_selector("svg")
-    box = svg_el.bounding_box()
-    png_data = page.screenshot(
-        clip={"x": box["x"], "y": box["y"], "width": box["width"], "height": box["height"]}
-    )
-    page.close()
-    Path(svg_path).unlink()
+def svg_to_png(svg_text: str) -> Image.Image:
+    """Render SVG to PNG via cairosvg."""
+    png_data = cairosvg.svg2png(bytestring=svg_text.encode("utf-8"), scale=2)
     return Image.open(io.BytesIO(png_data))
 
 
@@ -118,15 +104,11 @@ def main() -> None:
     print("Cleaning up...")
     run_command(CLEANUP_BEFORE)
 
-    print("Starting browser...")
-    pw = sync_playwright().start()
-    browser = pw.chromium.launch()
-
     # Synthetic screenshots (no live cluster needed)
     for filename, title in SYNTHETIC:
         print(f"  Capturing (synthetic): {title}")
         svg = render_synthetic_svg(filename, title)
-        img = svg_to_png(svg, browser)
+        img = svg_to_png(svg)
         out_path = OUT_DIR / f"{filename}.png"
         img.save(out_path, optimize=True)
         print(f"    -> {out_path.name} ({img.size[0]}x{img.size[1]}, {out_path.stat().st_size // 1024}KB)")
@@ -139,13 +121,11 @@ def main() -> None:
             lines = ansi.splitlines()
             ansi = "\n".join(lines[-tail_lines:])
         svg = ansi_to_svg(ansi, title=title)
-        img = svg_to_png(svg, browser)
+        img = svg_to_png(svg)
         out_path = OUT_DIR / f"{filename}.png"
         img.save(out_path, optimize=True)
         print(f"    -> {out_path.name} ({img.size[0]}x{img.size[1]}, {out_path.stat().st_size // 1024}KB)")
 
-    browser.close()
-    pw.stop()
     print("\nDone!")
 
 

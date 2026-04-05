@@ -8,10 +8,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import tempfile
-
+import cairosvg
 from PIL import Image
-from playwright.sync_api import sync_playwright
 
 from krayne.api.types import ClusterDetails, ClusterInfo, HeadNodeInfo, WorkerGroupInfo
 from krayne.tui.app import IKrayneApp
@@ -30,6 +28,7 @@ CLUSTERS = [
         code_server_url="http://10.42.0.15:8443",
         ssh_url=None,
         num_workers=4,
+        autoscaling_enabled=False,
         created_at="2026-04-03T08:30:00Z",
     ),
     ClusterInfo(
@@ -43,6 +42,7 @@ CLUSTERS = [
         code_server_url=None,
         ssh_url=None,
         num_workers=2,
+        autoscaling_enabled=True,
         created_at="2026-04-03T10:15:00Z",
     ),
     ClusterInfo(
@@ -56,6 +56,7 @@ CLUSTERS = [
         code_server_url=None,
         ssh_url=None,
         num_workers=1,
+        autoscaling_enabled=False,
         created_at="2026-04-03T11:45:00Z",
     ),
 ]
@@ -64,7 +65,7 @@ DETAILS = ClusterDetails(
     info=CLUSTERS[0],
     head=HeadNodeInfo(cpus="4", memory="8Gi", gpus=0, image="rayproject/ray:2.10.0-py311"),
     worker_groups=[
-        WorkerGroupInfo(name="gpu-workers", replicas=4, cpus="2", memory="16Gi", gpus=1, gpu_type="a100"),
+        WorkerGroupInfo(name="gpu-workers", replicas=4, min_replicas=1, max_replicas=8, cpus="2", memory="16Gi", gpus=1, gpu_type="a100"),
     ],
     ray_version="2.10.0",
     python_version="3.11",
@@ -75,30 +76,9 @@ SERVICES = ["dashboard", "notebook", "client", "code-server"]
 OUT_DIR = Path(__file__).resolve().parent.parent / "docs" / "assets"
 
 
-def _create_browser():
-    """Create a Playwright browser for SVG rendering."""
-    pw = sync_playwright().start()
-    browser = pw.chromium.launch()
-    return pw, browser
-
-
-def svg_to_pil(svg_text: str, browser) -> Image.Image:
-    """Convert SVG text to a PIL Image using a real browser for correct font rendering."""
-    with tempfile.NamedTemporaryFile(suffix=".svg", mode="w", delete=False) as f:
-        f.write(svg_text)
-        svg_path = f.name
-
-    page = browser.new_page()
-    page.goto(f"file://{svg_path}")
-    # Wait for fonts to load
-    page.wait_for_timeout(500)
-    # Get the SVG element dimensions
-    svg_el = page.query_selector("svg")
-    box = svg_el.bounding_box()
-    png_data = page.screenshot(clip={"x": box["x"], "y": box["y"], "width": box["width"], "height": box["height"]})
-    page.close()
-
-    Path(svg_path).unlink()
+def svg_to_pil(svg_text: str) -> Image.Image:
+    """Convert SVG text to a PIL Image using cairosvg."""
+    png_data = cairosvg.svg2png(bytestring=svg_text.encode("utf-8"), scale=2)
     return Image.open(io.BytesIO(png_data))
 
 
@@ -204,11 +184,8 @@ def main() -> None:
     svgs = asyncio.run(capture_svgs())
     print(f"Captured {len(svgs)} frames")
 
-    print("Rendering SVGs with browser...")
-    pw, browser = _create_browser()
-    frames = [svg_to_pil(svg, browser) for svg in svgs]
-    browser.close()
-    pw.stop()
+    print("Rendering SVGs to PNG...")
+    frames = [svg_to_pil(svg) for svg in svgs]
 
     if not frames:
         print("No frames captured!", file=sys.stderr)
