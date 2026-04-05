@@ -282,6 +282,21 @@ TabPane {
     width: auto;
 }
 
+.gpu-type-select {
+    width: 14;
+    height: auto;
+}
+
+.wg-columns {
+    layout: horizontal;
+    height: auto;
+}
+
+.wg-col {
+    width: 1fr;
+    height: auto;
+}
+
 .form-buttons {
     dock: bottom;
     layout: horizontal;
