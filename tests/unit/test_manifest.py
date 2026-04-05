@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from krayne.config import ClusterConfig, HeadNodeConfig, WorkerGroupConfig
+from krayne.config import AutoscalerConfig, ClusterConfig, HeadNodeConfig, WorkerGroupConfig
 from krayne.config.models import ServicesConfig
 from krayne.kube.manifest import RAY_IMAGE, build_manifest
 
@@ -43,7 +43,9 @@ class TestBuildManifest:
         workers = m["spec"]["workerGroupSpecs"]
         assert len(workers) == 1
         assert workers[0]["groupName"] == "worker"
-        assert workers[0]["replicas"] == 1
+        assert workers[0]["replicas"] == 0
+        assert workers[0]["minReplicas"] == 0
+        assert workers[0]["maxReplicas"] == 1
 
     def test_gpu_worker_has_node_selector(self):
         cfg = ClusterConfig(
@@ -191,3 +193,66 @@ class TestBuildManifest:
         m = build_manifest(cfg)
         container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]
         assert "lifecycle" not in container
+
+
+class TestAutoscalingManifest:
+    def test_default_enables_autoscaling(self):
+        cfg = ClusterConfig(name="auto")
+        m = build_manifest(cfg)
+        assert m["spec"]["enableInTreeAutoscaling"] is True
+        assert "autoscalerOptions" in m["spec"]
+
+    def test_autoscaler_options_defaults(self):
+        cfg = ClusterConfig(name="auto")
+        m = build_manifest(cfg)
+        opts = m["spec"]["autoscalerOptions"]
+        assert opts["upscalingMode"] == "Default"
+        assert opts["idleTimeoutSeconds"] == 60
+        assert opts["resources"]["requests"]["cpu"] == "500m"
+        assert opts["resources"]["requests"]["memory"] == "512Mi"
+        assert opts["resources"]["limits"]["cpu"] == "500m"
+        assert opts["resources"]["limits"]["memory"] == "512Mi"
+
+    def test_custom_autoscaler_options(self):
+        cfg = ClusterConfig(
+            name="auto",
+            autoscaler=AutoscalerConfig(
+                idle_timeout_seconds=120,
+                upscaling_mode="Aggressive",
+                cpu="1",
+                memory="1Gi",
+            ),
+        )
+        m = build_manifest(cfg)
+        opts = m["spec"]["autoscalerOptions"]
+        assert opts["upscalingMode"] == "Aggressive"
+        assert opts["idleTimeoutSeconds"] == 120
+        assert opts["resources"]["requests"]["cpu"] == "1"
+        assert opts["resources"]["requests"]["memory"] == "1Gi"
+
+    def test_autoscaling_disabled_omits_keys(self):
+        cfg = ClusterConfig(
+            name="static",
+            autoscaler=AutoscalerConfig(enabled=False),
+        )
+        m = build_manifest(cfg)
+        assert "enableInTreeAutoscaling" not in m["spec"]
+        assert "autoscalerOptions" not in m["spec"]
+
+    def test_worker_min_max_replicas(self):
+        cfg = ClusterConfig(
+            name="auto",
+            worker_groups=[
+                WorkerGroupConfig(
+                    name="scalable",
+                    replicas=2,
+                    min_replicas=0,
+                    max_replicas=10,
+                )
+            ],
+        )
+        m = build_manifest(cfg)
+        wg = m["spec"]["workerGroupSpecs"][0]
+        assert wg["replicas"] == 2
+        assert wg["minReplicas"] == 0
+        assert wg["maxReplicas"] == 10

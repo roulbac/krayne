@@ -39,7 +39,10 @@ def _build_cluster_panel(info: ClusterInfo) -> Panel:
         table.add_row("Code Server", info.code_server_url)
     if info.ssh_url:
         table.add_row("SSH", info.ssh_url)
-    table.add_row("Workers", str(info.num_workers))
+    if info.autoscaling_enabled:
+        table.add_row("Workers", f"{info.num_workers} (autoscaling)")
+    else:
+        table.add_row("Workers", str(info.num_workers))
     title = "Cluster Ready" if ready else "Cluster Creating..."
     style = "green" if ready else "yellow"
     return Panel(table, title=title, border_style=style)
@@ -68,7 +71,10 @@ def format_cluster_list(clusters: list[ClusterInfo], console: Console) -> None:
     table.add_column("Workers", justify="right")
     table.add_column("Created")
     for c in clusters:
-        table.add_row(c.name, c.namespace, _style_status(c.status), str(c.num_workers), c.created_at)
+        workers_str = str(c.num_workers)
+        if c.autoscaling_enabled:
+            workers_str = f"{c.num_workers} (auto)"
+        table.add_row(c.name, c.namespace, _style_status(c.status), workers_str, c.created_at)
     console.print(table)
 
 
@@ -95,6 +101,7 @@ def format_cluster_details(
         header.add_row("Code Server", info.code_server_url)
     if info.ssh_url:
         header.add_row("SSH", info.ssh_url)
+    header.add_row("Autoscaling", "[green]enabled[/green]" if info.autoscaling_enabled else "[dim]disabled[/dim]")
     header.add_row("Ray Image", details.head.image)
     console.print(Panel(header, title="Cluster Details", border_style="blue"))
 
@@ -117,6 +124,8 @@ def format_cluster_details(
         wg_table = Table(title="Worker Groups")
         wg_table.add_column("Group", style="bold")
         wg_table.add_column("Replicas", justify="right")
+        wg_table.add_column("Min", justify="right")
+        wg_table.add_column("Max", justify="right")
         wg_table.add_column("CPUs", justify="right")
         wg_table.add_column("Memory")
         wg_table.add_column("GPUs", justify="right")
@@ -125,6 +134,8 @@ def format_cluster_details(
             wg_table.add_row(
                 wg.name,
                 str(wg.replicas),
+                str(wg.min_replicas),
+                str(wg.max_replicas),
                 str(wg.cpus),
                 wg.memory,
                 str(wg.gpus),

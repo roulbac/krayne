@@ -24,6 +24,7 @@ _INFO = ClusterInfo(
     code_server_url=None,
     ssh_url=None,
     num_workers=2,
+    autoscaling_enabled=True,
     created_at="2025-01-01T00:00:00Z",
 )
 
@@ -38,6 +39,7 @@ _INFO2 = ClusterInfo(
     code_server_url=None,
     ssh_url=None,
     num_workers=1,
+    autoscaling_enabled=True,
     created_at="2025-01-02T00:00:00Z",
 )
 
@@ -45,7 +47,7 @@ _DETAILS = ClusterDetails(
     info=_INFO,
     head=HeadNodeInfo(cpus="1", memory="4Gi", gpus=0, image="rayproject/ray:latest"),
     worker_groups=[
-        WorkerGroupInfo(name="worker", replicas=2, cpus="1", memory="2Gi", gpus=0, gpu_type=None),
+        WorkerGroupInfo(name="worker", replicas=2, min_replicas=0, max_replicas=10, cpus="1", memory="2Gi", gpus=0, gpu_type=None),
     ],
     ray_version="2.10.0",
     python_version="3.11",
@@ -55,8 +57,8 @@ _DETAILS_MULTI_WG = ClusterDetails(
     info=_INFO,
     head=HeadNodeInfo(cpus="2", memory="8Gi", gpus=0, image="rayproject/ray:latest"),
     worker_groups=[
-        WorkerGroupInfo(name="cpu-workers", replicas=2, cpus="4", memory="8Gi", gpus=0, gpu_type=None),
-        WorkerGroupInfo(name="gpu-workers", replicas=1, cpus="2", memory="4Gi", gpus=1, gpu_type="a100"),
+        WorkerGroupInfo(name="cpu-workers", replicas=2, min_replicas=0, max_replicas=10, cpus="4", memory="8Gi", gpus=0, gpu_type=None),
+        WorkerGroupInfo(name="gpu-workers", replicas=1, min_replicas=0, max_replicas=5, cpus="2", memory="4Gi", gpus=1, gpu_type="a100"),
     ],
     ray_version="2.10.0",
     python_version="3.11",

@@ -75,17 +75,24 @@ krayne create <name> [OPTIONS]
 | `--worker-gpu-type` | `t4` | GPU accelerator type (e.g. `t4`, `a100`, `v100`) |
 | `--cpus-in-head` | `15` | CPU count for the head node |
 | `--memory-in-head` | `48Gi` | Memory for the head node |
-| `--workers` | `1` | Number of worker replicas |
+| `--workers` | `0` | Desired worker replicas (initial count) |
+| `--min-workers` | `0` | Minimum worker replicas for autoscaling |
+| `--max-workers` | `1` | Maximum worker replicas for autoscaling |
+| `--no-autoscaling` | `false` | Disable autoscaling (pin replicas) |
+| `--timeout` | `300` | Timeout in seconds |
 | `--file`, `-f` | — | Path to a YAML config file |
 
 **Examples:**
 
 ```bash
-# Minimal — all defaults
+# Minimal — all defaults (autoscaling 0-1 workers)
 krayne create my-cluster
 
-# GPU cluster with 2 workers
-krayne create gpu-cluster --gpus-per-worker 1 --worker-gpu-type a100 --workers 2
+# GPU cluster with 2 workers, autoscaling 0-4
+krayne create gpu-cluster --gpus-per-worker 1 --worker-gpu-type a100 --workers 2 --max-workers 4
+
+# Fixed replicas (no autoscaling)
+krayne create my-cluster --no-autoscaling --workers 4
 
 # From YAML config
 krayne create my-cluster --file cluster.yaml
@@ -186,13 +193,20 @@ krayne scale <name> [OPTIONS]
 |---|---|---|
 | `-n`, `--namespace` | `default` | Kubernetes namespace |
 | `-g`, `--worker-group` | `worker` | Name of the worker group to scale |
-| `-r`, `--replicas` | — | Target replica count (required) |
+| `-r`, `--replicas` | — | Target desired replica count |
+| `--min-replicas` | — | Minimum replicas for autoscaling |
+| `--max-replicas` | — | Maximum replicas for autoscaling |
+
+At least one of `--replicas`, `--min-replicas`, or `--max-replicas` is required.
 
 **Examples:**
 
 ```bash
-# Scale default worker group to 4 replicas
+# Scale default worker group to 4 desired replicas
 krayne scale my-cluster --replicas 4
+
+# Adjust autoscaling bounds
+krayne scale my-cluster --min-replicas 1 --max-replicas 10
 
 # Scale a named worker group
 krayne scale my-cluster --worker-group gpu-workers --replicas 8 -n ml-team

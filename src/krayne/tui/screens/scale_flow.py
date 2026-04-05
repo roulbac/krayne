@@ -97,7 +97,10 @@ class ScaleFlowScreen(ModalScreen[bool]):
             group_list.display = True
             for wg in self._worker_groups:
                 group_list.add_option(
-                    Option(f"{wg.name}  (replicas: {wg.replicas}, CPUs: {wg.cpus}, Mem: {wg.memory})")
+                    Option(
+                        f"{wg.name}  (replicas: {wg.min_replicas}/{wg.replicas}/{wg.max_replicas}, "
+                        f"CPUs: {wg.cpus}, Mem: {wg.memory})"
+                    )
                 )
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
@@ -120,7 +123,10 @@ class ScaleFlowScreen(ModalScreen[bool]):
         self.query_one("#scale-group-list").display = False
         current = self.query_one("#scale-current", Static)
         current.display = True
-        current.update(f"Current replicas: [bold]{wg.replicas}[/bold]")
+        current.update(
+            f"Current replicas: [bold]{wg.replicas}[/bold]  "
+            f"(min: {wg.min_replicas}, max: {wg.max_replicas})"
+        )
 
         replicas_input = self.query_one("#scale-replicas", Input)
         replicas_input.display = True

@@ -21,6 +21,7 @@ _INFO = ClusterInfo(
     code_server_url=None,
     ssh_url="ssh://10.0.0.1:22",
     num_workers=2,
+    autoscaling_enabled=True,
     created_at="2026-01-01T00:00:00Z",
 )
 
@@ -28,7 +29,7 @@ _DETAILS = ClusterDetails(
     info=_INFO,
     head=HeadNodeInfo(cpus="2", memory="2Gi", gpus=0, image="rayproject/ray:2.41.0"),
     worker_groups=[
-        WorkerGroupInfo(name="worker", replicas=2, cpus="2", memory="2Gi", gpus=0, gpu_type=None)
+        WorkerGroupInfo(name="worker", replicas=2, min_replicas=0, max_replicas=10, cpus="2", memory="2Gi", gpus=0, gpu_type=None)
     ],
     ray_version="unknown",
     python_version="unknown",
@@ -64,7 +65,7 @@ class TestCreate:
             name="test", namespace="default", status="pending",
             head_ip=None, dashboard_url=None, client_url=None,
             notebook_url=None, code_server_url=None, ssh_url=None, num_workers=0,
-            created_at="2026-01-01T00:00:00Z",
+            autoscaling_enabled=True, created_at="2026-01-01T00:00:00Z",
         )
         mock_create.return_value = pending
         mock_get.return_value = pending
@@ -93,11 +94,56 @@ class TestDescribe:
         assert "test" in result.output
 
 
+class TestCreateAutoscaling:
+    @patch("krayne.cli.app._get_cluster", return_value=_INFO)
+    @patch("krayne.cli.app._create_cluster", return_value=_INFO)
+    def test_create_with_autoscaling_flags(self, mock_create, mock_get):
+        result = runner.invoke(app, [
+            "create", "my-cluster",
+            "--min-workers", "0", "--max-workers", "5", "--workers", "2",
+        ])
+        assert result.exit_code == 0
+        mock_create.assert_called_once()
+        cfg = mock_create.call_args[0][0]
+        assert cfg.worker_groups[0].min_replicas == 0
+        assert cfg.worker_groups[0].replicas == 2
+        assert cfg.worker_groups[0].max_replicas == 5
+        assert cfg.autoscaler.enabled is True
+
+    @patch("krayne.cli.app._get_cluster", return_value=_INFO)
+    @patch("krayne.cli.app._create_cluster", return_value=_INFO)
+    def test_create_no_autoscaling(self, mock_create, mock_get):
+        result = runner.invoke(app, [
+            "create", "my-cluster", "--no-autoscaling", "--workers", "3",
+        ])
+        assert result.exit_code == 0
+        cfg = mock_create.call_args[0][0]
+        assert cfg.autoscaler.enabled is False
+        assert cfg.worker_groups[0].replicas == 3
+        assert cfg.worker_groups[0].min_replicas == 3
+        assert cfg.worker_groups[0].max_replicas == 3
+
+
 class TestScale:
     @patch("krayne.cli.app._scale_cluster", return_value=_INFO)
     def test_scale(self, mock_scale):
         result = runner.invoke(app, ["scale", "test", "--replicas", "4"])
         assert result.exit_code == 0
+
+    @patch("krayne.cli.app._scale_cluster", return_value=_INFO)
+    def test_scale_with_min_max(self, mock_scale):
+        result = runner.invoke(app, [
+            "scale", "test", "--replicas", "4",
+            "--min-replicas", "1", "--max-replicas", "10",
+        ])
+        assert result.exit_code == 0
+        _, kwargs = mock_scale.call_args
+        assert kwargs.get("min_replicas") == 1
+        assert kwargs.get("max_replicas") == 10
+
+    def test_scale_no_flags_fails(self):
+        result = runner.invoke(app, ["scale", "test"])
+        assert result.exit_code == 1
 
 
 class TestDelete:
@@ -234,7 +280,7 @@ class TestTunOpen:
             name="test", namespace="default", status="pending",
             head_ip=None, dashboard_url=None, client_url=None,
             notebook_url=None, code_server_url=None, ssh_url=None, num_workers=0,
-            created_at="2026-01-01T00:00:00Z",
+            autoscaling_enabled=True, created_at="2026-01-01T00:00:00Z",
         )
         mock_get.return_value = not_ready
         result = runner.invoke(app, ["tun-open", "test"])

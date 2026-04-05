@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import platform
 
-from krayne.config.models import ClusterConfig, HeadNodeConfig, ServicesConfig, WorkerGroupConfig
+from krayne.config.models import AutoscalerConfig, ClusterConfig, HeadNodeConfig, ServicesConfig, WorkerGroupConfig
 
 _RAY_VERSION = os.environ.get("PRISM_RAY_VERSION", "latest")
 RAY_IMAGE = (
@@ -23,6 +23,17 @@ _CS_DIR = f"/tmp/code-server-{CODE_SERVER_VERSION}-linux-{_CS_ARCH}"
 
 def build_manifest(config: ClusterConfig) -> dict:
     """Convert a *ClusterConfig* into a KubeRay ``RayCluster`` custom-resource dict."""
+    spec: dict = {
+        "headGroupSpec": _build_head_spec(config.head, config.services),
+        "workerGroupSpecs": [
+            _build_worker_spec(wg) for wg in config.worker_groups
+        ],
+    }
+
+    if config.autoscaler.enabled:
+        spec["enableInTreeAutoscaling"] = True
+        spec["autoscalerOptions"] = _build_autoscaler_options(config.autoscaler)
+
     return {
         "apiVersion": RAYCLUSTER_API_VERSION,
         "kind": RAYCLUSTER_KIND,
@@ -34,11 +45,18 @@ def build_manifest(config: ClusterConfig) -> dict:
                 "app.kubernetes.io/name": config.name,
             },
         },
-        "spec": {
-            "headGroupSpec": _build_head_spec(config.head, config.services),
-            "workerGroupSpecs": [
-                _build_worker_spec(wg) for wg in config.worker_groups
-            ],
+        "spec": spec,
+    }
+
+
+def _build_autoscaler_options(autoscaler: AutoscalerConfig) -> dict:
+    """Build the ``autoscalerOptions`` section for the RayCluster spec."""
+    return {
+        "upscalingMode": autoscaler.upscaling_mode,
+        "idleTimeoutSeconds": autoscaler.idle_timeout_seconds,
+        "resources": {
+            "limits": {"cpu": autoscaler.cpu, "memory": autoscaler.memory},
+            "requests": {"cpu": autoscaler.cpu, "memory": autoscaler.memory},
         },
     }
 
@@ -159,8 +177,8 @@ def _build_worker_spec(wg: WorkerGroupConfig) -> dict:
     return {
         "groupName": wg.name,
         "replicas": wg.replicas,
-        "minReplicas": wg.replicas,
-        "maxReplicas": wg.replicas,
+        "minReplicas": wg.min_replicas,
+        "maxReplicas": wg.max_replicas,
         "rayStartParams": {},
         "template": {"spec": spec},
     }
