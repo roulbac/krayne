@@ -17,8 +17,44 @@ krayne create my-cluster
 The default cluster includes:
 
 - **Head node**: 15 CPUs, 48 Gi memory, no GPUs
-- **1 worker**: 15 CPUs, 48 Gi memory, no GPUs
+- **1 worker group**: autoscaling 0–1 workers (0 initial), 15 CPUs, 48 Gi memory
+- **Autoscaling**: enabled (Ray v2 in-tree autoscaler)
 - **Services**: Jupyter notebook + SSH enabled
+
+---
+
+## Autoscaling clusters
+
+By default, clusters have autoscaling enabled. Control worker scaling bounds:
+
+```bash
+# Scale between 0 and 10 workers, start with 2
+krayne create my-cluster --min-workers 0 --max-workers 10 --workers 2
+
+# Disable autoscaling entirely (fixed replica count)
+krayne create my-cluster --no-autoscaling --workers 4
+```
+
+```python
+from krayne.config import ClusterConfig, WorkerGroupConfig, AutoscalerConfig
+
+# Autoscaling with custom bounds
+config = ClusterConfig(
+    name="auto-cluster",
+    worker_groups=[
+        WorkerGroupConfig(replicas=2, min_replicas=0, max_replicas=10),
+    ],
+)
+
+# Fixed replicas (no autoscaling)
+config = ClusterConfig(
+    name="static-cluster",
+    autoscaler=AutoscalerConfig(enabled=False),
+    worker_groups=[
+        WorkerGroupConfig(replicas=4, min_replicas=4, max_replicas=4),
+    ],
+)
+```
 
 ---
 

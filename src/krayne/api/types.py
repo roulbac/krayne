@@ -21,6 +21,7 @@ class ClusterInfo:
     code_server_url: str | None
     ssh_url: str | None
     num_workers: int
+    autoscaling_enabled: bool
     created_at: str
 
 
@@ -40,6 +41,8 @@ class WorkerGroupInfo:
 
     name: str
     replicas: int
+    min_replicas: int
+    max_replicas: int
     cpus: str
     memory: str
     gpus: int

@@ -61,13 +61,19 @@ Get detailed information about a specific cluster, including resource breakdowns
 
 ## Scaling workers
 
-Scale a worker group up or down:
+Scale a worker group's desired, minimum, or maximum replica count:
 
 === "CLI"
 
     ```bash
-    # Scale default worker group to 4 replicas
+    # Set desired replicas (autoscaler adjusts within min/max bounds)
     krayne scale my-cluster --replicas 4
+
+    # Adjust autoscaling bounds
+    krayne scale my-cluster --min-replicas 1 --max-replicas 10
+
+    # Set all at once
+    krayne scale my-cluster --replicas 4 --min-replicas 2 --max-replicas 8
     ```
 
     ![krayne scale output](../assets/cli-scale.png)
@@ -83,12 +89,15 @@ Scale a worker group up or down:
     ```python
     from krayne.api import scale_cluster
 
+    # Set desired replicas
     info = scale_cluster("my-cluster", "default", "worker", replicas=4)
-    print(f"Workers: {info.num_workers}")
+
+    # Adjust autoscaling range
+    info = scale_cluster("my-cluster", "default", "worker", min_replicas=1, max_replicas=10)
     ```
 
-!!! note
-    Scaling sets `replicas`, `minReplicas`, and `maxReplicas` to the same value, disabling autoscaling for the group.
+!!! note "Autoscaling-aware scaling"
+    When autoscaling is enabled, only the explicitly provided fields are patched — the autoscaler continues to manage the others. When autoscaling is disabled, all three fields (`replicas`, `minReplicas`, `maxReplicas`) are pinned to the target replica count.
 
 ---
 

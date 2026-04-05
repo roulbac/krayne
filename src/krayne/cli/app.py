@@ -67,6 +67,7 @@ from krayne.api import (  # noqa: E402
     scale_cluster as _scale_cluster,
 )
 from krayne.config import (  # noqa: E402
+    AutoscalerConfig,
     ClusterConfig,
     KrayneSettings,
     WorkerGroupConfig,
@@ -101,7 +102,10 @@ def create(
     worker_gpu_type: str = typer.Option("t4", "--worker-gpu-type"),
     cpus_in_head: str = typer.Option(DEFAULT_CPUS, "--cpus-in-head"),
     memory_in_head: str = typer.Option(DEFAULT_HEAD_MEMORY, "--memory-in-head"),
-    workers: int = typer.Option(1, "--workers"),
+    workers: int = typer.Option(0, "--workers", help="Desired worker replicas (initial count)."),
+    min_workers: int = typer.Option(0, "--min-workers", help="Minimum worker replicas for autoscaling."),
+    max_workers: int = typer.Option(1, "--max-workers", help="Maximum worker replicas for autoscaling."),
+    no_autoscaling: bool = typer.Option(False, "--no-autoscaling", help="Disable autoscaling (pin replicas)."),
     timeout: int = typer.Option(300, "--timeout"),
     file: Optional[str] = typer.Option(None, "--file", "-f", help="YAML config file."),
 ) -> None:
@@ -115,17 +119,30 @@ def create(
             overrides = {"name": name, "namespace": namespace}
             config = load_config_from_yaml(file, overrides=overrides)
         else:
+            if no_autoscaling:
+                wg = WorkerGroupConfig(
+                    replicas=workers,
+                    min_replicas=workers,
+                    max_replicas=workers,
+                    gpus=gpus_per_worker,
+                    gpu_type=worker_gpu_type,
+                )
+                autoscaler = AutoscalerConfig(enabled=False)
+            else:
+                wg = WorkerGroupConfig(
+                    replicas=workers,
+                    min_replicas=min_workers,
+                    max_replicas=max_workers,
+                    gpus=gpus_per_worker,
+                    gpu_type=worker_gpu_type,
+                )
+                autoscaler = AutoscalerConfig()
             config = ClusterConfig(
                 name=name,
                 namespace=namespace,
                 head={"cpus": cpus_in_head, "memory": memory_in_head},  # type: ignore[arg-type]
-                worker_groups=[
-                    WorkerGroupConfig(
-                        replicas=workers,
-                        gpus=gpus_per_worker,
-                        gpu_type=worker_gpu_type,
-                    )
-                ],
+                worker_groups=[wg],
+                autoscaler=autoscaler,
             )
 
         info = _create_cluster(config, kubeconfig=_kubeconfig)
@@ -200,11 +217,26 @@ def scale(
     name: str = typer.Argument(..., help="Cluster name."),
     namespace: str = typer.Option("default", "-n", "--namespace"),
     worker_group: str = typer.Option("worker", "--worker-group", "-g"),
-    replicas: int = typer.Option(..., "--replicas", "-r", help="Target replica count."),
+    replicas: Optional[int] = typer.Option(None, "--replicas", "-r", help="Target replica count."),
+    min_replicas: Optional[int] = typer.Option(None, "--min-replicas", help="Minimum replicas for autoscaling."),
+    max_replicas: Optional[int] = typer.Option(None, "--max-replicas", help="Maximum replicas for autoscaling."),
 ) -> None:
     """Scale a worker group of a cluster."""
     try:
-        info = _scale_cluster(name, namespace, worker_group, replicas, kubeconfig=_kubeconfig)
+        if replicas is None and min_replicas is None and max_replicas is None:
+            err_console.print(
+                Panel(
+                    "At least one of --replicas, --min-replicas, or --max-replicas is required.",
+                    title="Error",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(1)
+        info = _scale_cluster(
+            name, namespace, worker_group, replicas,
+            min_replicas=min_replicas, max_replicas=max_replicas,
+            kubeconfig=_kubeconfig,
+        )
         if _output_json:
             format_json(info, console)
         else:

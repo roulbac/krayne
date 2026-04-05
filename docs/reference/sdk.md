@@ -166,15 +166,19 @@ def describe_cluster(
 
 ### `scale_cluster`
 
-Scale a worker group to a target replica count.
+Scale a worker group's desired, minimum, or maximum replica count.
+
+When autoscaling is enabled on the cluster, only the explicitly provided fields are patched. When autoscaling is disabled, all three fields are pinned to the `replicas` value.
 
 ```python
 def scale_cluster(
     name: str,
     namespace: str,
     worker_group: str,
-    replicas: int,
+    replicas: int | None = None,
     *,
+    min_replicas: int | None = None,
+    max_replicas: int | None = None,
     client: KubeClient | None = None,
     kubeconfig: str | None = None,
 ) -> ClusterInfo
@@ -187,13 +191,17 @@ def scale_cluster(
 | `name` | `str` | — | Cluster name (required) |
 | `namespace` | `str` | — | Kubernetes namespace (required) |
 | `worker_group` | `str` | — | Name of the worker group to scale (required) |
-| `replicas` | `int` | — | Target replica count (required) |
+| `replicas` | `int \| None` | `None` | Target desired replica count |
+| `min_replicas` | `int \| None` | `None` | Minimum replicas for autoscaling |
+| `max_replicas` | `int \| None` | `None` | Maximum replicas for autoscaling |
 | `client` | `KubeClient \| None` | `None` | Kubernetes client |
 | `kubeconfig` | `str \| None` | `None` | Path to kubeconfig file |
 
+At least one of `replicas`, `min_replicas`, or `max_replicas` must be provided.
+
 **Returns:** [`ClusterInfo`](#clusterinfo)
 
-**Raises:** `KrayneError` (worker group not found), `ClusterNotFoundError`, `KubeConnectionError`
+**Raises:** `KrayneError` (worker group not found or no arguments), `ClusterNotFoundError`, `KubeConnectionError`
 
 ---
 
@@ -371,6 +379,7 @@ class ClusterInfo:
     code_server_url: str | None  # Code Server URL (if enabled)
     ssh_url: str | None          # SSH URL (if enabled)
     num_workers: int             # Total worker replicas
+    autoscaling_enabled: bool    # Whether autoscaling is enabled
     created_at: str              # Creation timestamp
 ```
 
@@ -409,7 +418,9 @@ Worker group resource details.
 @dataclass(frozen=True)
 class WorkerGroupInfo:
     name: str            # Worker group name
-    replicas: int        # Number of replicas
+    replicas: int        # Desired number of replicas
+    min_replicas: int    # Minimum replicas (autoscaling lower bound)
+    max_replicas: int    # Maximum replicas (autoscaling upper bound)
     cpus: str            # CPUs per worker
     memory: str          # Memory per worker
     gpus: int            # GPUs per worker

@@ -35,6 +35,7 @@ config = ClusterConfig(
 | `head` | `HeadNodeConfig` | See below | Head node configuration |
 | `worker_groups` | `list[WorkerGroupConfig]` | `[WorkerGroupConfig()]` | Worker group configurations |
 | `services` | `ServicesConfig` | See below | Enabled services |
+| `autoscaler` | `AutoscalerConfig` | See below | Autoscaler configuration |
 
 ---
 
@@ -58,12 +59,31 @@ Configuration for a worker group.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `name` | `str` | `"worker"` | Worker group name |
-| `replicas` | `int` | `1` | Number of worker replicas |
+| `replicas` | `int` | `0` | Desired number of worker replicas |
+| `min_replicas` | `int` | `0` | Minimum replicas (autoscaling lower bound) |
+| `max_replicas` | `int` | `1` | Maximum replicas (autoscaling upper bound) |
 | `cpus` | `str` | `"1"` | CPUs per worker |
 | `memory` | `str` | `"2Gi"` | Memory per worker |
 | `gpus` | `int` | `0` | GPUs per worker |
 | `gpu_type` | `str` | `"t4"` | GPU accelerator type (e.g. `t4`, `a100`, `v100`) |
 | `image` | `str \| None` | `None` | Custom container image |
+
+!!! note "Replica validation"
+    The constraint `min_replicas <= replicas <= max_replicas` is enforced. If `replicas` exceeds `max_replicas`, `max_replicas` is automatically adjusted upward for backward compatibility.
+
+---
+
+## `AutoscalerConfig`
+
+Configuration for the Ray v2 in-tree autoscaler. When enabled, the KubeRay operator injects an autoscaler sidecar into the head pod that dynamically adjusts worker group replica counts.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | `bool` | `True` | Enable Ray v2 in-tree autoscaling |
+| `idle_timeout_seconds` | `int` | `60` | Seconds before idle workers are scaled down |
+| `upscaling_mode` | `str` | `"Default"` | Upscaling strategy: `Default`, `Aggressive`, or `Conservative` |
+| `cpu` | `str` | `"500m"` | CPU request/limit for the autoscaler sidecar container |
+| `memory` | `str` | `"512Mi"` | Memory request/limit for the autoscaler sidecar container |
 
 ---
 

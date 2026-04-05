@@ -3,6 +3,7 @@ from krayne.config.models import (
     DEFAULT_CPUS,
     DEFAULT_HEAD_MEMORY,
     DEFAULT_MEMORY,
+    AutoscalerConfig,
     ClusterConfig,
     HeadNodeConfig,
     ServicesConfig,

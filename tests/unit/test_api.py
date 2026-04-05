@@ -28,6 +28,7 @@ _SAMPLE_OBJ = {
     },
     "status": {"state": "ready", "head": {"podIP": "10.0.0.1"}},
     "spec": {
+        "enableInTreeAutoscaling": True,
         "headGroupSpec": {
             "template": {
                 "spec": {
@@ -54,8 +55,8 @@ _SAMPLE_OBJ = {
             {
                 "groupName": "worker",
                 "replicas": 2,
-                "minReplicas": 2,
-                "maxReplicas": 2,
+                "minReplicas": 0,
+                "maxReplicas": 10,
                 "template": {
                     "spec": {
                         "containers": [
@@ -75,13 +76,19 @@ _SAMPLE_OBJ = {
 }
 
 
+def _fresh_sample_obj():
+    import copy
+    return copy.deepcopy(_SAMPLE_OBJ)
+
+
 @pytest.fixture()
 def mock_client():
+    import copy
     client = MagicMock()
-    client.create_ray_cluster.return_value = _SAMPLE_OBJ
-    client.get_ray_cluster.return_value = _SAMPLE_OBJ
-    client.list_ray_clusters.return_value = [_SAMPLE_OBJ]
-    client.patch_ray_cluster.return_value = _SAMPLE_OBJ
+    client.create_ray_cluster.return_value = _fresh_sample_obj()
+    client.get_ray_cluster.side_effect = lambda *a, **kw: _fresh_sample_obj()
+    client.list_ray_clusters.return_value = [_fresh_sample_obj()]
+    client.patch_ray_cluster.return_value = _fresh_sample_obj()
     client.delete_ray_cluster.return_value = None
     client.list_pods.return_value = []
     client.get_head_node_port.return_value = None
@@ -141,7 +148,7 @@ class TestGetCluster:
                 },
             },
         }
-        mock_client.get_ray_cluster.return_value = obj_no_ports
+        mock_client.get_ray_cluster.side_effect = lambda *a, **kw: obj_no_ports
         info = get_cluster("test", "default", client=mock_client)
         assert info.notebook_url is None
         assert info.code_server_url is None
@@ -165,18 +172,56 @@ class TestDescribeCluster:
         details = describe_cluster("test", "default", client=mock_client)
         assert isinstance(details, ClusterDetails)
         assert details.info.name == "test"
+        assert details.info.autoscaling_enabled is True
         assert details.head.cpus == "2"
         assert len(details.worker_groups) == 1
         assert details.worker_groups[0].replicas == 2
+        assert details.worker_groups[0].min_replicas == 0
+        assert details.worker_groups[0].max_replicas == 10
 
 
 class TestScaleCluster:
-    def test_scale(self, mock_client):
+    def test_scale_replicas_with_autoscaling(self, mock_client):
+        """With autoscaling, only the provided fields are patched."""
         info = scale_cluster("test", "default", "worker", 4, client=mock_client)
         assert isinstance(info, ClusterInfo)
         mock_client.patch_ray_cluster.assert_called_once()
         patch_arg = mock_client.patch_ray_cluster.call_args[0][2]
-        assert patch_arg["spec"]["workerGroupSpecs"][0]["replicas"] == 4
+        wg = patch_arg["spec"]["workerGroupSpecs"][0]
+        assert wg["replicas"] == 4
+        # min and max should be unchanged from the original object
+        assert wg["minReplicas"] == 0
+        assert wg["maxReplicas"] == 10
+
+    def test_scale_min_max_with_autoscaling(self, mock_client):
+        info = scale_cluster(
+            "test", "default", "worker",
+            min_replicas=1, max_replicas=20,
+            client=mock_client,
+        )
+        assert isinstance(info, ClusterInfo)
+        patch_arg = mock_client.patch_ray_cluster.call_args[0][2]
+        wg = patch_arg["spec"]["workerGroupSpecs"][0]
+        assert wg["minReplicas"] == 1
+        assert wg["maxReplicas"] == 20
+        assert wg["replicas"] == 2  # unchanged
+
+    def test_scale_without_autoscaling_pins_all(self, mock_client):
+        """Without autoscaling, all three are pinned to replicas."""
+        import copy
+        no_autoscale_obj = copy.deepcopy(_SAMPLE_OBJ)
+        no_autoscale_obj["spec"]["enableInTreeAutoscaling"] = False
+        mock_client.get_ray_cluster.side_effect = lambda *a, **kw: copy.deepcopy(no_autoscale_obj)
+        scale_cluster("test", "default", "worker", 4, client=mock_client)
+        patch_arg = mock_client.patch_ray_cluster.call_args[0][2]
+        wg = patch_arg["spec"]["workerGroupSpecs"][0]
+        assert wg["replicas"] == 4
+        assert wg["minReplicas"] == 4
+        assert wg["maxReplicas"] == 4
+
+    def test_scale_no_args_raises(self, mock_client):
+        with pytest.raises(KrayneError, match="At least one"):
+            scale_cluster("test", "default", "worker", client=mock_client)
 
     def test_scale_unknown_group(self, mock_client):
         with pytest.raises(KrayneError, match="not found"):
@@ -196,7 +241,7 @@ class TestWaitUntilReady:
 
     def test_timeout(self, mock_client):
         not_ready_obj = {**_SAMPLE_OBJ, "status": {"state": "pending"}}
-        mock_client.get_ray_cluster.return_value = not_ready_obj
+        mock_client.get_ray_cluster.side_effect = lambda *a, **kw: not_ready_obj
         with pytest.raises(ClusterTimeoutError):
             wait_until_ready(
                 "test", "default", client=mock_client, timeout=1, _poll_interval=0.1
@@ -226,7 +271,7 @@ class TestManagedCluster:
     def test_custom_namespace(self, mock_client):
         obj = {**_SAMPLE_OBJ, "metadata": {**_SAMPLE_OBJ["metadata"], "namespace": "ml"}}
         mock_client.create_ray_cluster.return_value = obj
-        mock_client.get_ray_cluster.return_value = obj
+        mock_client.get_ray_cluster.side_effect = lambda *a, **kw: obj
         cfg = ClusterConfig(name="test", namespace="ml")
         with managed_cluster(cfg, client=mock_client, tunnel=False):
             pass
@@ -294,7 +339,7 @@ class TestManagedClusterResult:
             name="c", namespace="ns", status="ready", head_ip="10.0.0.1",
             dashboard_url="http://10.0.0.1:8265", client_url="ray://10.0.0.1:10001",
             notebook_url=None, code_server_url=None, ssh_url=None,
-            num_workers=1, created_at="now",
+            num_workers=1, autoscaling_enabled=True, created_at="now",
         )
         tunnels = [
             TunnelInfo(service="dashboard", remote_port=8265, local_port=11111, local_url="http://localhost:11111"),
@@ -314,7 +359,7 @@ class TestManagedClusterResult:
             name="c", namespace="ns", status="ready", head_ip="10.0.0.1",
             dashboard_url="http://10.0.0.1:8265", client_url="ray://10.0.0.1:10001",
             notebook_url=None, code_server_url=None, ssh_url=None,
-            num_workers=1, created_at="now",
+            num_workers=1, autoscaling_enabled=True, created_at="now",
         )
         result = ManagedClusterResult(cluster=cluster, tunnel=None)
         assert result.tunnel is None
@@ -378,13 +423,13 @@ class TestPodLevelStatus:
         assert info.status == "ready"
 
     def test_no_pods_shows_creating(self, mock_client):
-        mock_client.get_ray_cluster.return_value = self._no_state_obj()
+        mock_client.get_ray_cluster.side_effect = lambda *a, **kw: self._no_state_obj()
         mock_client.list_pods.return_value = []
         info = get_cluster("test", "default", client=mock_client)
         assert info.status == "creating"
 
     def test_pending_pods(self, mock_client):
-        mock_client.get_ray_cluster.return_value = self._no_state_obj()
+        mock_client.get_ray_cluster.side_effect = lambda *a, **kw: self._no_state_obj()
         mock_client.list_pods.return_value = [
             {"status": {"phase": "Pending", "conditions": [], "container_statuses": None}},
         ]
@@ -392,7 +437,7 @@ class TestPodLevelStatus:
         assert info.status == "pods-pending"
 
     def test_container_creating(self, mock_client):
-        mock_client.get_ray_cluster.return_value = self._no_state_obj()
+        mock_client.get_ray_cluster.side_effect = lambda *a, **kw: self._no_state_obj()
         mock_client.list_pods.return_value = [
             {
                 "status": {
@@ -408,7 +453,7 @@ class TestPodLevelStatus:
         assert info.status == "containers-creating"
 
     def test_image_pull_error(self, mock_client):
-        mock_client.get_ray_cluster.return_value = self._no_state_obj()
+        mock_client.get_ray_cluster.side_effect = lambda *a, **kw: self._no_state_obj()
         mock_client.list_pods.return_value = [
             {
                 "status": {
@@ -424,7 +469,7 @@ class TestPodLevelStatus:
         assert info.status == "image-pull-error"
 
     def test_crash_loop(self, mock_client):
-        mock_client.get_ray_cluster.return_value = self._no_state_obj()
+        mock_client.get_ray_cluster.side_effect = lambda *a, **kw: self._no_state_obj()
         mock_client.list_pods.return_value = [
             {
                 "status": {
@@ -440,7 +485,7 @@ class TestPodLevelStatus:
         assert info.status == "crash-loop"
 
     def test_unschedulable(self, mock_client):
-        mock_client.get_ray_cluster.return_value = self._no_state_obj()
+        mock_client.get_ray_cluster.side_effect = lambda *a, **kw: self._no_state_obj()
         mock_client.list_pods.return_value = [
             {
                 "status": {
@@ -456,7 +501,7 @@ class TestPodLevelStatus:
         assert info.status == "unschedulable"
 
     def test_all_running(self, mock_client):
-        mock_client.get_ray_cluster.return_value = self._no_state_obj()
+        mock_client.get_ray_cluster.side_effect = lambda *a, **kw: self._no_state_obj()
         mock_client.list_pods.return_value = [
             {"status": {"phase": "Running", "conditions": [], "container_statuses": []}},
             {"status": {"phase": "Running", "conditions": [], "container_statuses": []}},

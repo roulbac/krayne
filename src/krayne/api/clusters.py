@@ -119,21 +119,44 @@ def scale_cluster(
     name: str,
     namespace: str,
     worker_group: str,
-    replicas: int,
+    replicas: int | None = None,
     *,
+    min_replicas: int | None = None,
+    max_replicas: int | None = None,
     client: KubeClient | None = None,
     kubeconfig: str | None = None,
 ) -> ClusterInfo:
-    """Scale *worker_group* of a cluster to *replicas*."""
+    """Scale *worker_group* of a cluster.
+
+    When autoscaling is enabled on the cluster, only the explicitly provided
+    fields (``replicas``, ``min_replicas``, ``max_replicas``) are patched.
+    When autoscaling is disabled, all three are pinned to *replicas*.
+    """
+    if replicas is None and min_replicas is None and max_replicas is None:
+        from krayne.errors import KrayneError
+
+        raise KrayneError("At least one of replicas, min_replicas, or max_replicas is required")
+
     kube = _resolve_client(client, kubeconfig)
     obj = kube.get_ray_cluster(name, namespace)
 
+    autoscaling = obj.get("spec", {}).get("enableInTreeAutoscaling", False)
     worker_specs = obj.get("spec", {}).get("workerGroupSpecs", [])
     for spec in worker_specs:
         if spec.get("groupName") == worker_group:
-            spec["replicas"] = replicas
-            spec["minReplicas"] = replicas
-            spec["maxReplicas"] = replicas
+            if autoscaling:
+                if replicas is not None:
+                    spec["replicas"] = replicas
+                if min_replicas is not None:
+                    spec["minReplicas"] = min_replicas
+                if max_replicas is not None:
+                    spec["maxReplicas"] = max_replicas
+            else:
+                # Without autoscaling, pin all three to replicas
+                target = replicas if replicas is not None else spec.get("replicas", 0)
+                spec["replicas"] = target
+                spec["minReplicas"] = target
+                spec["maxReplicas"] = target
             break
     else:
         from krayne.errors import KrayneError
@@ -318,6 +341,8 @@ def _obj_to_info(
         if "ssh" in port_names:
             ssh_url = f"ssh://{head_ip}:22"
 
+    autoscaling_enabled = spec.get("enableInTreeAutoscaling", False)
+
     return ClusterInfo(
         name=metadata.get("name", ""),
         namespace=metadata.get("namespace", ""),
@@ -329,6 +354,7 @@ def _obj_to_info(
         code_server_url=code_server_url,
         ssh_url=ssh_url,
         num_workers=num_workers,
+        autoscaling_enabled=autoscaling_enabled,
         created_at=metadata.get("creationTimestamp", ""),
     )
 
@@ -372,6 +398,8 @@ def _obj_to_details(
             WorkerGroupInfo(
                 name=wg_spec.get("groupName", ""),
                 replicas=wg_spec.get("replicas", 0),
+                min_replicas=wg_spec.get("minReplicas", 0),
+                max_replicas=wg_spec.get("maxReplicas", 0),
                 cpus=str(res.get("cpu", "0")),
                 memory=str(res.get("memory", "0")),
                 gpus=int(res.get("nvidia.com/gpu", 0)),
