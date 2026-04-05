@@ -30,6 +30,7 @@ CLUSTERS = [
         code_server_url="http://10.42.0.15:8443",
         ssh_url=None,
         num_workers=4,
+        autoscaling_enabled=True,
         created_at="2026-04-03T08:30:00Z",
     ),
     ClusterInfo(
@@ -43,6 +44,7 @@ CLUSTERS = [
         code_server_url=None,
         ssh_url=None,
         num_workers=2,
+        autoscaling_enabled=True,
         created_at="2026-04-03T10:15:00Z",
     ),
     ClusterInfo(
@@ -56,6 +58,7 @@ CLUSTERS = [
         code_server_url=None,
         ssh_url=None,
         num_workers=1,
+        autoscaling_enabled=False,
         created_at="2026-04-03T11:45:00Z",
     ),
 ]
@@ -64,7 +67,10 @@ DETAILS = ClusterDetails(
     info=CLUSTERS[0],
     head=HeadNodeInfo(cpus="4", memory="8Gi", gpus=0, image="rayproject/ray:2.10.0-py311"),
     worker_groups=[
-        WorkerGroupInfo(name="gpu-workers", replicas=4, cpus="2", memory="16Gi", gpus=1, gpu_type="a100"),
+        WorkerGroupInfo(
+            name="gpu-workers", replicas=4, min_replicas=0, max_replicas=10,
+            cpus="2", memory="16Gi", gpus=1, gpu_type="a100",
+        ),
     ],
     ray_version="2.10.0",
     python_version="3.11",
@@ -159,22 +165,26 @@ async def capture_svgs() -> list[str]:
             await _switch_tab(app, "create-tabs", "tab-workers", pilot)
             screenshot()
 
-            # ── Frame 5: Services tab ──────────────────
+            # ── Frame 5: Autoscaling tab ─────────────────
+            await _switch_tab(app, "create-tabs", "tab-autoscaling", pilot)
+            screenshot()
+
+            # ── Frame 6: Services tab ──────────────────
             await _switch_tab(app, "create-tabs", "tab-services", pilot)
             screenshot()
 
-            # ── Frame 6: Review tab ────────────────────
+            # ── Frame 7: Review tab ────────────────────
             # Fill in the name first so review shows a summary
             app.screen.query_one("#input-name").value = "my-cluster"
             await _switch_tab(app, "create-tabs", "tab-review", pilot)
             screenshot()
 
-            # ── Frame 7: Back to explorer ──────────────
+            # ── Frame 8: Back to explorer ──────────────
             await pilot.press("escape")
             await _pause(pilot)
             screenshot()
 
-            # ── Frame 8: Detail screen (Overview) ──────
+            # ── Frame 9: Detail screen (Overview) ──────
             table = app.screen.query_one("DataTable")
             table.focus()
             await pilot.pause()
@@ -182,11 +192,11 @@ async def capture_svgs() -> list[str]:
             await _pause(pilot, 5)
             screenshot()
 
-            # ── Frame 9: Detail Workers tab ────────────
+            # ── Frame 10: Detail Workers tab ───────────
             await _switch_tab(app, "detail-tabs", "tab-workers", pilot)
             screenshot()
 
-            # ── Frame 10: Detail Services tab ──────────
+            # ── Frame 11: Detail Services tab ──────────
             await _switch_tab(app, "detail-tabs", "tab-services", pilot)
             screenshot()
     finally:
@@ -225,6 +235,7 @@ def main() -> None:
         2000,  # create: cluster tab
         2000,  # create: head node tab
         2000,  # create: workers tab
+        2000,  # create: autoscaling tab
         2000,  # create: services tab
         3000,  # create: review tab
         1500,  # back to explorer
