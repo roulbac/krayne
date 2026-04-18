@@ -46,7 +46,6 @@ class ClusterDetailScreen(Screen):
         header = HeaderBar()
         header.view_title = "Detail"
         header.cluster_name = self.cluster_name
-        header.namespace = self.namespace
         yield header
 
         with TabbedContent(id="detail-tabs"):
