@@ -66,16 +66,21 @@ class ExplorerScreen(Screen):
         self._update_header()
         self._update_scope_bar()
         self._set_status_hints()
+        # Textual does not auto-wire `watch_app_<name>` — register the
+        # cross-object watchers explicitly so resize and namespace
+        # changes reach this screen.
+        self.watch(self.app, "terminal_class", self._on_terminal_class_change, init=False)
+        self.watch(self.app, "namespace", self._on_namespace_change, init=False)
         # Initial fetch
         self._do_refresh()
         self.set_interval(5, self._do_refresh)
 
-    def watch_app_namespace(self) -> None:
+    def _on_namespace_change(self, old: str, new: str) -> None:
         self._update_header()
         self._update_scope_bar()
         self._do_refresh()
 
-    def watch_app_terminal_class(self, old: str, new: str) -> None:
+    def _on_terminal_class_change(self, old: str, new: str) -> None:
         self.remove_class(old)
         self.add_class(new)
         table = self.query_one(ClusterTable)
