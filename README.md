@@ -69,11 +69,13 @@ with managed_cluster(config) as managed:
 
 ## Interactive TUI
 
-Krayne also ships with **ikrayne**, a k9s-style interactive terminal UI:
+Krayne includes a k9s-style interactive terminal UI:
 
 ```bash
-ikrayne
+krayne tui
 ```
+
+Or run it directly without installing: `uvx krayne tui`
 
 ## Features
 
@@ -92,7 +94,7 @@ krayne get                List clusters in a namespace
 krayne describe <name>    Show detailed cluster info
 krayne scale <name>       Scale a worker group
 krayne delete <name>      Delete a cluster
-ikrayne                   Launch interactive TUI
+krayne tui                Launch interactive TUI
 ```
 
 All commands support `-n/--namespace`, `--output json`, and `--debug` flags.

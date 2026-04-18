@@ -1,4 +1,4 @@
-"""Cluster Explorer — the default home screen of ikrayne."""
+"""Cluster Explorer — the default home screen of the Krayne TUI."""
 
 from __future__ import annotations
 

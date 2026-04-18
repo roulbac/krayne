@@ -1,4 +1,4 @@
-"""Root Textual application for ikrayne."""
+"""Root Textual application for the Krayne TUI."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ CSS_PATH = Path(__file__).parent / "styles" / "ikrayne.tcss"
 class IKrayneApp(App):
     """Interactive TUI for managing Ray clusters on Kubernetes."""
 
-    TITLE = "ikrayne"
+    TITLE = "krayne"
     SUB_TITLE = "Ray Cluster Manager"
     CSS_PATH = CSS_PATH
     COMMANDS = {IKrayneCommands}

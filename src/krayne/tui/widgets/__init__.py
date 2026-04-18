@@ -1,1 +1,1 @@
-"""Custom widgets for the ikrayne TUI."""
+"""Custom widgets for the Krayne TUI."""

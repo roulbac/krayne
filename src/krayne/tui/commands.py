@@ -1,4 +1,4 @@
-"""Command palette provider for ikrayne."""
+"""Command palette provider for the Krayne TUI."""
 
 from __future__ import annotations
 

@@ -17,7 +17,7 @@ class HeaderBar(Static):
     last_refresh: reactive[str] = reactive("")
 
     def render(self) -> str:
-        parts = ["[bold]ikrayne[/bold]"]
+        parts = ["[bold]krayne[/bold]"]
         parts.append(f"[dim]ns:[/dim]{self.namespace}")
         parts.append(f"[bold]{self.view_title}[/bold]")
         if self.cluster_name:

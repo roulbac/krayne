@@ -1,4 +1,4 @@
-"""Centralized reactive state for the ikrayne TUI."""
+"""Centralized reactive state for the Krayne TUI."""
 
 from __future__ import annotations
 

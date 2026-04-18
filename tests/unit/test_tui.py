@@ -1,4 +1,4 @@
-"""Unit tests for the ikrayne TUI rewrite."""
+"""Unit tests for the Krayne TUI."""
 
 from __future__ import annotations
 

@@ -39,7 +39,6 @@ Changelog = "https://github.com/roulbac/krayne/releases"
 
 [project.scripts]
 krayne = "krayne.cli.app:app"
-ikrayne = "krayne.tui.entry:main"
 
 [dependency-groups]
 dev = [

@@ -1,4 +1,4 @@
-/* ikrayne — global styles */
+/* krayne tui — global styles */
 
 Screen {
     background: $surface;

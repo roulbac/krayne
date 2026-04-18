@@ -1,16 +1,16 @@
-# Interactive TUI (ikrayne)
+# Interactive TUI
 
-Krayne ships with **ikrayne**, a k9s-style interactive terminal UI for managing Ray clusters without memorizing CLI commands.
+Krayne ships with a k9s-style interactive terminal UI for managing Ray clusters without memorizing CLI commands.
 
-![ikrayne demo](../assets/ikrayne-demo.gif)
+![TUI demo](../assets/ikrayne-demo.gif)
 
 ## Launch
 
 ```bash
-ikrayne
+krayne tui
 ```
 
-No subcommands — it opens directly into the cluster list view.
+It opens directly into the cluster list view.
 
 ## Keybindings
 

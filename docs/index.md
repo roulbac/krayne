@@ -27,7 +27,7 @@ That's it. One command gives you a fully configured Ray cluster with dashboard, 
 A fast and intuitive terminal UI is also available:
 
 ```bash
-ikrayne
+krayne tui
 ```
 
 ![ikrayne demo](assets/ikrayne-demo.gif)
