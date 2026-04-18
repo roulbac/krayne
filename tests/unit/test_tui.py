@@ -558,6 +558,41 @@ async def test_wide_layout():
             assert app.terminal_class == "wide"
 
 
+@pytest.mark.asyncio
+async def test_resize_updates_cluster_columns():
+    """Resizing the terminal updates the cluster table's columns."""
+    from krayne.tui.widgets.cluster_table import (
+        COLUMNS_COMPACT,
+        COLUMNS_STANDARD,
+        COLUMNS_WIDE,
+        ClusterTable,
+    )
+
+    with _patch_explorer(), _patch_tunnel_inactive():
+        app = IKrayneApp()
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            await pilot.pause()
+            table = app.screen.query_one(ClusterTable)
+            assert table._current_columns == COLUMNS_COMPACT
+
+            await pilot.resize_terminal(120, 35)
+            await pilot.pause()
+            assert app.terminal_class == "standard"
+            assert table._current_columns == COLUMNS_STANDARD
+
+            await pilot.resize_terminal(160, 45)
+            await pilot.pause()
+            assert app.terminal_class == "wide"
+            assert table._current_columns == COLUMNS_WIDE
+
+            # And collapsing back also updates columns.
+            await pilot.resize_terminal(80, 24)
+            await pilot.pause()
+            assert app.terminal_class == "compact"
+            assert table._current_columns == COLUMNS_COMPACT
+
+
 # ── State management tests ──────────────────────────
 
 
@@ -633,7 +668,7 @@ def test_terminal_class_compact():
 
     assert compute_terminal_class(80, 24) == "compact"
     assert compute_terminal_class(99, 35) == "compact"
-    assert compute_terminal_class(120, 29) == "compact"
+    assert compute_terminal_class(50, 60) == "compact"
 
 
 def test_terminal_class_standard():
@@ -642,6 +677,8 @@ def test_terminal_class_standard():
     assert compute_terminal_class(120, 35) == "standard"
     assert compute_terminal_class(100, 30) == "standard"
     assert compute_terminal_class(139, 39) == "standard"
+    # Height must not demote a wide-enough terminal to compact.
+    assert compute_terminal_class(120, 24) == "standard"
 
 
 def test_terminal_class_wide():
@@ -649,3 +686,5 @@ def test_terminal_class_wide():
 
     assert compute_terminal_class(140, 40) == "wide"
     assert compute_terminal_class(200, 50) == "wide"
+    # Wide-but-short terminals still count as wide.
+    assert compute_terminal_class(160, 24) == "wide"

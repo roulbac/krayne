@@ -169,9 +169,14 @@ class CreateFlowScreen(Screen):
 
     def on_mount(self) -> None:
         self.add_class(self.app.terminal_class)
+        self.watch(self.app, "terminal_class", self._on_terminal_class_change, init=False)
         self.query_one("#input-namespace", Input).value = self.app.namespace
         self.query_one("#input-name", Input).focus()
         self._set_status_hints()
+
+    def _on_terminal_class_change(self, old: str, new: str) -> None:
+        self.remove_class(old)
+        self.add_class(new)
 
     def _set_status_hints(self) -> None:
         bar = self.query_one(StatusBar)
