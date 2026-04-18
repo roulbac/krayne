@@ -144,7 +144,6 @@ class ExplorerScreen(Screen):
 
     def _update_header(self) -> None:
         header = self.query_one(HeaderBar)
-        header.namespace = self.app.namespace
         header.view_title = "Explorer"
         header.cluster_name = ""
         header.is_loading = self.app.is_loading
