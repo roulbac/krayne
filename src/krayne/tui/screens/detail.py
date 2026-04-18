@@ -66,8 +66,13 @@ class ClusterDetailScreen(Screen):
 
     def on_mount(self) -> None:
         self.add_class(self.app.terminal_class)
+        self.watch(self.app, "terminal_class", self._on_terminal_class_change, init=False)
         self._set_status_hints()
         self._fetch_details()
+
+    def _on_terminal_class_change(self, old: str, new: str) -> None:
+        self.remove_class(old)
+        self.add_class(new)
 
     def _set_status_hints(self) -> None:
         bar = self.query_one(StatusBar)
