@@ -1,4 +1,4 @@
-"""Entry point for the ``ikrayne`` interactive TUI."""
+"""Entry point for the ``krayne tui`` interactive TUI."""
 
 from __future__ import annotations
 

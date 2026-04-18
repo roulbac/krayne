@@ -422,6 +422,14 @@ def tun_close(
         _handle_error(exc)
 
 
+@app.command("tui")
+def tui() -> None:
+    """Launch the interactive terminal UI."""
+    from krayne.tui.entry import main as tui_main
+
+    tui_main()
+
+
 sandbox_app = typer.Typer(
     name="sandbox",
     help="Manage a local development sandbox (k3s + KubeRay).",
