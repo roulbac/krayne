@@ -148,6 +148,52 @@ class TestStartTunnels:
         assert "/my/kubeconfig" in call_args
 
     @patch("krayne.tunnel.subprocess.Popen")
+    def test_context_passed(self, mock_popen):
+        mock_popen.return_value = MagicMock(pid=99)
+
+        start_tunnels(
+            "c", "ns", ["dashboard"],
+            kubeconfig="/my/kubeconfig", context="my-ctx",
+        )
+
+        call_args = mock_popen.call_args_list[0][0][0]
+        assert "--context" in call_args
+        assert "my-ctx" in call_args
+
+    @patch("krayne.tunnel.subprocess.Popen")
+    def test_kubeconfig_and_context_from_settings(
+        self, mock_popen, tmp_path
+    ):
+        """When neither is supplied, both are loaded from ~/.krayne/config.yaml."""
+        from krayne.config.settings import (
+            KrayneSettings,
+            save_krayne_settings,
+        )
+
+        kubeconfig = tmp_path / "kubeconfig"
+        kubeconfig.write_text(
+            "apiVersion: v1\n"
+            "kind: Config\n"
+            "contexts:\n"
+            "- name: settings-ctx\n"
+            "  context: {cluster: c, user: u}\n"
+        )
+        save_krayne_settings(
+            KrayneSettings(
+                kubeconfig=str(kubeconfig), kube_context="settings-ctx"
+            )
+        )
+
+        mock_popen.return_value = MagicMock(pid=99)
+        start_tunnels("c", "ns", ["dashboard"])
+
+        call_args = mock_popen.call_args_list[0][0][0]
+        assert "--kubeconfig" in call_args
+        assert str(kubeconfig) in call_args
+        assert "--context" in call_args
+        assert "settings-ctx" in call_args
+
+    @patch("krayne.tunnel.subprocess.Popen")
     def test_tunnel_info_fields(self, mock_popen):
         mock_popen.return_value = MagicMock(pid=42)
 

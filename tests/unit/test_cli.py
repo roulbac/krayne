@@ -179,6 +179,14 @@ class TestInit:
         "current-context: my-context\n"
     )
 
+    @pytest.fixture(autouse=True)
+    def _stub_dry_run(self):
+        """Stub the dry-run client initialisation — unit tests don't
+        have a real cluster, so ``get_kube_client`` would otherwise
+        fail during init."""
+        with patch("krayne.kube.client.get_kube_client") as mock:
+            yield mock
+
     @patch("krayne.cli.app.save_krayne_settings")
     def test_init_headless(self, mock_save, tmp_path):
         kubeconfig = tmp_path / "kubeconfig"
@@ -221,6 +229,69 @@ class TestInit:
         )
         assert result.exit_code == 1
         assert "not found" in result.output.lower() or "Error" in result.output
+
+    @patch("krayne.cli.app.save_krayne_settings")
+    def test_init_refuses_when_dry_run_fails(
+        self, mock_save, _stub_dry_run, tmp_path
+    ):
+        """When the client dry-run raises (e.g. KubeRay missing), init
+        must refuse to update ~/.krayne/config.yaml."""
+        from krayne.errors import KubeRayNotInstalledError
+
+        _stub_dry_run.side_effect = KubeRayNotInstalledError(context="my-context")
+        kubeconfig = tmp_path / "kubeconfig"
+        kubeconfig.write_text(self.KUBECONFIG_YAML)
+        result = runner.invoke(
+            app,
+            ["init", "--kubeconfig", str(kubeconfig), "--context", "my-context"],
+        )
+        assert result.exit_code == 1
+        assert "KubeRay" in result.output
+        mock_save.assert_not_called()
+
+    def test_current_context_reflects_krayne_settings(self, tmp_path):
+        """The '(current)' marker comes from ~/.krayne/config.yaml, not
+        the kubeconfig's own ``current-context``."""
+        from krayne.cli.app import _current_krayne_context_for
+        from krayne.config.settings import KrayneSettings, save_krayne_settings
+
+        kubeconfig = tmp_path / "kubeconfig"
+        multi_ctx_yaml = (
+            "apiVersion: v1\n"
+            "kind: Config\n"
+            "contexts:\n"
+            "- name: ctx-a\n"
+            "  context: {cluster: c, user: u}\n"
+            "- name: ctx-b\n"
+            "  context: {cluster: c, user: u}\n"
+            "current-context: ctx-a\n"  # kubectl thinks a is current
+        )
+        kubeconfig.write_text(multi_ctx_yaml)
+
+        # Krayne is configured for ctx-b on this same kubeconfig
+        save_krayne_settings(
+            KrayneSettings(kubeconfig=str(kubeconfig), kube_context="ctx-b")
+        )
+        assert _current_krayne_context_for(kubeconfig.resolve()) == "ctx-b"
+
+    def test_current_context_none_for_different_kubeconfig(self, tmp_path):
+        """When krayne is configured against a different kubeconfig,
+        no context is marked current for the kubeconfig the user is
+        initialising against."""
+        from krayne.cli.app import _current_krayne_context_for
+        from krayne.config.settings import KrayneSettings, save_krayne_settings
+
+        other_kubeconfig = tmp_path / "other"
+        other_kubeconfig.write_text(self.KUBECONFIG_YAML)
+        save_krayne_settings(
+            KrayneSettings(
+                kubeconfig=str(other_kubeconfig), kube_context="my-context"
+            )
+        )
+
+        new_kubeconfig = tmp_path / "new"
+        new_kubeconfig.write_text(self.KUBECONFIG_YAML)
+        assert _current_krayne_context_for(new_kubeconfig.resolve()) is None
 
 
 class TestGlobalKubeconfig:

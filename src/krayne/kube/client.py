@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import time
 from typing import Any, Protocol, runtime_checkable
 
@@ -11,8 +12,11 @@ from krayne.errors import (
     ClusterAlreadyExistsError,
     ClusterNotFoundError,
     KubeConnectionError,
+    KubeRayNotInstalledError,
     NamespaceNotFoundError,
 )
+
+RAYCLUSTER_CRD_NAME = "rayclusters.ray.io"
 
 RAYCLUSTER_GROUP = "ray.io"
 RAYCLUSTER_VERSION = "v1"
@@ -43,17 +47,23 @@ class DefaultKubeClient:
         context: str | None = None,
     ) -> None:
         try:
-            k8s_config.load_incluster_config()
-        except k8s_config.ConfigException:
-            try:
+            if kubeconfig is not None or context is not None:
+                # Explicit kubeconfig/context takes precedence — do not
+                # silently fall back to in-cluster config, which would
+                # ignore the user's configured kubeconfig.
                 k8s_config.load_kube_config(
                     config_file=kubeconfig, context=context
                 )
-            except k8s_config.ConfigException as exc:
-                raise KubeConnectionError(
-                    "Cannot load Kubernetes configuration. "
-                    "Ensure a valid kubeconfig exists or run inside a cluster."
-                ) from exc
+            else:
+                try:
+                    k8s_config.load_incluster_config()
+                except k8s_config.ConfigException:
+                    k8s_config.load_kube_config()
+        except k8s_config.ConfigException as exc:
+            raise KubeConnectionError(
+                "Cannot load Kubernetes configuration. "
+                "Ensure a valid kubeconfig exists or run inside a cluster."
+            ) from exc
 
         self._custom = k8s_client.CustomObjectsApi()
         self._core = k8s_client.CoreV1Api()
@@ -172,6 +182,109 @@ class DefaultKubeClient:
             if exc.status == 404:
                 raise NamespaceNotFoundError(namespace) from exc
             raise KubeConnectionError(str(exc)) from exc
+
+
+# Client cache keyed on (kubeconfig, context, settings-file-digest).  The
+# settings-file digest ensures the cache self-invalidates whenever
+# ``~/.krayne/config.yaml`` changes on disk — critical because many call
+# sites resolve the kubeconfig/context from that file.
+_client_cache: dict[tuple[str | None, str | None, str], "DefaultKubeClient"] = {}
+
+
+def _settings_file_digest() -> str:
+    from krayne.config.settings import PRISM_CONFIG_FILE
+
+    if not PRISM_CONFIG_FILE.exists():
+        return ""
+    return hashlib.sha256(PRISM_CONFIG_FILE.read_bytes()).hexdigest()
+
+
+def get_kube_client(
+    kubeconfig: str | None = None,
+    context: str | None = None,
+) -> "DefaultKubeClient":
+    """Return a cached :class:`DefaultKubeClient`.
+
+    When both *kubeconfig* and *context* are ``None`` (the default), the
+    kubeconfig and kube_context from ``~/.krayne/config.yaml`` are used
+    — and :func:`load_krayne_settings` validates that file.  The cache
+    key includes a hash of the settings-file contents, so edits to the
+    file (including ``krayne init``) invalidate the cache automatically.
+    """
+    from krayne.config.settings import load_krayne_settings
+
+    if kubeconfig is None and context is None:
+        settings = load_krayne_settings()
+        kubeconfig = settings.kubeconfig
+        context = settings.kube_context
+
+    key = (kubeconfig, context, _settings_file_digest())
+    cached = _client_cache.get(key)
+    if cached is not None:
+        return cached
+    # Verify KubeRay is installed *before* constructing the client, so
+    # the same friendly error surfaces regardless of entry point
+    # (CLI / TUI / SDK / ``krayne init``).
+    assert_kuberay_installed(kubeconfig=kubeconfig, context=context)
+    client = DefaultKubeClient(kubeconfig=kubeconfig, context=context)
+    _client_cache[key] = client
+    return client
+
+
+def clear_kube_client_cache() -> None:
+    """Clear the :func:`get_kube_client` cache.  Useful in tests."""
+    _client_cache.clear()
+
+
+def assert_kuberay_installed(
+    kubeconfig: str | None = None, context: str | None = None
+) -> None:
+    """Raise :class:`KubeRayNotInstalledError` when the ``rayclusters.ray.io``
+    CRD is not registered on the target cluster.
+
+    Runs before :class:`DefaultKubeClient` is constructed and uses an
+    isolated ``Configuration`` so the process-wide default and the
+    :func:`get_kube_client` cache are untouched.  Every code path that
+    builds a kube client should go through :func:`get_kube_client`,
+    which calls this first — so the error surfaces uniformly whether
+    the caller is the CLI, the TUI, or the SDK.
+    """
+    configuration = k8s_client.Configuration()
+    try:
+        if kubeconfig is not None or context is not None:
+            k8s_config.load_kube_config(
+                config_file=kubeconfig,
+                context=context,
+                client_configuration=configuration,
+            )
+        else:
+            try:
+                k8s_config.load_incluster_config(
+                    client_configuration=configuration
+                )
+            except k8s_config.ConfigException:
+                k8s_config.load_kube_config(
+                    client_configuration=configuration
+                )
+    except k8s_config.ConfigException as exc:
+        raise KubeConnectionError(
+            "Cannot load Kubernetes configuration for KubeRay check. "
+            "Ensure a valid kubeconfig exists or run inside a cluster."
+        ) from exc
+
+    api_client = k8s_client.ApiClient(configuration=configuration)
+    try:
+        ext = k8s_client.ApiextensionsV1Api(api_client=api_client)
+        try:
+            ext.read_custom_resource_definition(RAYCLUSTER_CRD_NAME)
+        except ApiException as exc:
+            if exc.status == 404:
+                raise KubeRayNotInstalledError(context=context) from exc
+            raise KubeConnectionError(
+                f"Failed to query CRDs on the target cluster: {exc}"
+            ) from exc
+    finally:
+        api_client.close()
 
 
 def _extract_status(obj: dict, pods: list[dict] | None = None) -> str:

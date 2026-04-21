@@ -132,14 +132,22 @@ def is_tunnel_active(cluster_name: str, namespace: str) -> bool:
     return False
 
 
-def _resolve_kubeconfig(kubeconfig: str | None) -> str | None:
-    """Resolve kubeconfig from krayne settings when not explicitly provided."""
-    if kubeconfig is not None:
-        return kubeconfig
+def _resolve_kube_settings(
+    kubeconfig: str | None, context: str | None = None
+) -> tuple[str | None, str | None]:
+    """Resolve kubeconfig and context from krayne settings when neither is explicit.
+
+    When the caller supplies either value, the supplied values are used
+    verbatim (the settings file is not consulted — the caller is
+    asserting a specific target).  Otherwise, ``~/.krayne/config.yaml``
+    is read and validated by :func:`load_krayne_settings`.
+    """
+    if kubeconfig is not None or context is not None:
+        return kubeconfig, context
     from krayne.config.settings import load_krayne_settings
 
     settings = load_krayne_settings()
-    return settings.kubeconfig
+    return settings.kubeconfig, settings.kube_context
 
 
 def start_tunnels(
@@ -148,12 +156,18 @@ def start_tunnels(
     services: list[str],
     *,
     kubeconfig: str | None = None,
+    context: str | None = None,
 ) -> list[TunnelInfo]:
     """Start ``kubectl port-forward`` processes for each service.
 
     Port-forwards to the head Service (``svc/{cluster_name}-head-svc``).
     Processes are daemonised (detached).  State is persisted to disk so
     that :func:`stop_tunnels` can clean up later.
+
+    When *kubeconfig* and *context* are not supplied, both are loaded
+    from ``~/.krayne/config.yaml`` and passed through as
+    ``--kubeconfig`` and ``--context`` flags, so the subprocess targets
+    the same cluster as the in-process Kubernetes client.
 
     **Idempotent** — if a tunnel is already active for this cluster the
     existing tunnel info is returned without spawning new processes.
@@ -163,7 +177,7 @@ def start_tunnels(
         assert state is not None  # guarded by is_tunnel_active
         return state.tunnels
 
-    kubeconfig = _resolve_kubeconfig(kubeconfig)
+    kubeconfig, context = _resolve_kube_settings(kubeconfig, context)
     svc_target = f"svc/{cluster_name}-head-svc"
     tunnels: list[TunnelInfo] = []
     pids: list[int] = []
@@ -182,6 +196,8 @@ def start_tunnels(
         ]
         if kubeconfig:
             cmd.extend(["--kubeconfig", kubeconfig])
+        if context:
+            cmd.extend(["--context", context])
 
         proc = subprocess.Popen(
             cmd,
