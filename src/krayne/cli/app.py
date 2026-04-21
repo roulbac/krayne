@@ -57,6 +57,39 @@ def _handle_error(exc: Exception) -> None:
     raise typer.Exit(1)
 
 
+def _current_krayne_context_for(kubeconfig: Path) -> str | None:
+    """Return the kube_context saved in ~/.krayne/config.yaml when it's
+    tied to *kubeconfig*, else ``None``.
+
+    Read raw (not via ``load_krayne_settings``) so a stale or invalid
+    settings file doesn't prevent ``krayne init`` from running — the
+    whole point of re-init is to fix such a file.
+    """
+    import yaml as _yaml
+
+    from krayne.config.settings import PRISM_CONFIG_FILE
+
+    if not PRISM_CONFIG_FILE.exists():
+        return None
+    try:
+        raw = _yaml.safe_load(PRISM_CONFIG_FILE.read_text()) or {}
+    except _yaml.YAMLError:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    saved_kubeconfig = raw.get("kubeconfig")
+    if saved_kubeconfig is None:
+        return None
+    try:
+        same = Path(saved_kubeconfig).expanduser().resolve() == kubeconfig
+    except OSError:
+        same = False
+    if not same:
+        return None
+    ctx = raw.get("kube_context")
+    return ctx if isinstance(ctx, str) else None
+
+
 from krayne.api import (  # noqa: E402
     create_cluster as _create_cluster,
     delete_cluster as _delete_cluster,
@@ -319,7 +352,12 @@ def init(
             else:
                 import questionary
 
-                current = raw.get("current-context", "")
+                # "current" is the context krayne is currently configured
+                # with — not kubectl's ``current-context`` — and only
+                # counts when we're re-initialising against the same
+                # kubeconfig.  Read the settings file raw so a previously
+                # invalid/stale file doesn't stop us from re-running init.
+                current = _current_krayne_context_for(resolved)
                 ctx_choices = [
                     questionary.Choice(
                         f"{name}  (current)" if name == current else name,
