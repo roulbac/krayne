@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import time
 from typing import Any, Protocol, runtime_checkable
 
@@ -43,17 +44,23 @@ class DefaultKubeClient:
         context: str | None = None,
     ) -> None:
         try:
-            k8s_config.load_incluster_config()
-        except k8s_config.ConfigException:
-            try:
+            if kubeconfig is not None or context is not None:
+                # Explicit kubeconfig/context takes precedence — do not
+                # silently fall back to in-cluster config, which would
+                # ignore the user's configured kubeconfig.
                 k8s_config.load_kube_config(
                     config_file=kubeconfig, context=context
                 )
-            except k8s_config.ConfigException as exc:
-                raise KubeConnectionError(
-                    "Cannot load Kubernetes configuration. "
-                    "Ensure a valid kubeconfig exists or run inside a cluster."
-                ) from exc
+            else:
+                try:
+                    k8s_config.load_incluster_config()
+                except k8s_config.ConfigException:
+                    k8s_config.load_kube_config()
+        except k8s_config.ConfigException as exc:
+            raise KubeConnectionError(
+                "Cannot load Kubernetes configuration. "
+                "Ensure a valid kubeconfig exists or run inside a cluster."
+            ) from exc
 
         self._custom = k8s_client.CustomObjectsApi()
         self._core = k8s_client.CoreV1Api()
@@ -172,6 +179,54 @@ class DefaultKubeClient:
             if exc.status == 404:
                 raise NamespaceNotFoundError(namespace) from exc
             raise KubeConnectionError(str(exc)) from exc
+
+
+# Client cache keyed on (kubeconfig, context, settings-file-digest).  The
+# settings-file digest ensures the cache self-invalidates whenever
+# ``~/.krayne/config.yaml`` changes on disk — critical because many call
+# sites resolve the kubeconfig/context from that file.
+_client_cache: dict[tuple[str | None, str | None, str], "DefaultKubeClient"] = {}
+
+
+def _settings_file_digest() -> str:
+    from krayne.config.settings import PRISM_CONFIG_FILE
+
+    if not PRISM_CONFIG_FILE.exists():
+        return ""
+    return hashlib.sha256(PRISM_CONFIG_FILE.read_bytes()).hexdigest()
+
+
+def get_kube_client(
+    kubeconfig: str | None = None,
+    context: str | None = None,
+) -> "DefaultKubeClient":
+    """Return a cached :class:`DefaultKubeClient`.
+
+    When both *kubeconfig* and *context* are ``None`` (the default), the
+    kubeconfig and kube_context from ``~/.krayne/config.yaml`` are used
+    — and :func:`load_krayne_settings` validates that file.  The cache
+    key includes a hash of the settings-file contents, so edits to the
+    file (including ``krayne init``) invalidate the cache automatically.
+    """
+    from krayne.config.settings import load_krayne_settings
+
+    if kubeconfig is None and context is None:
+        settings = load_krayne_settings()
+        kubeconfig = settings.kubeconfig
+        context = settings.kube_context
+
+    key = (kubeconfig, context, _settings_file_digest())
+    cached = _client_cache.get(key)
+    if cached is not None:
+        return cached
+    client = DefaultKubeClient(kubeconfig=kubeconfig, context=context)
+    _client_cache[key] = client
+    return client
+
+
+def clear_kube_client_cache() -> None:
+    """Clear the :func:`get_kube_client` cache.  Useful in tests."""
+    _client_cache.clear()
 
 
 def _extract_status(obj: dict, pods: list[dict] | None = None) -> str:

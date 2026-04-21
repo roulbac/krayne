@@ -364,11 +364,11 @@ class TestManagedClusterResult:
 
 
 class TestKubeconfigPassthrough:
-    """Verify that kubeconfig= reaches DefaultKubeClient when no client is provided."""
+    """Verify that kubeconfig/context reach DefaultKubeClient when no client is provided."""
 
     @pytest.fixture(autouse=True)
     def _patch_client(self):
-        with patch("krayne.api.clusters.DefaultKubeClient") as mock_cls:
+        with patch("krayne.kube.client.DefaultKubeClient") as mock_cls:
             mock_instance = MagicMock()
             mock_instance.list_ray_clusters.return_value = [_SAMPLE_OBJ]
             mock_instance.get_ray_cluster.return_value = _SAMPLE_OBJ
@@ -380,10 +380,15 @@ class TestKubeconfigPassthrough:
 
     @pytest.fixture(autouse=True)
     def _patch_settings(self):
-        with patch("krayne.api.clusters.load_krayne_settings") as mock_settings:
+        # Patch at the source module so that the local import inside
+        # ``get_kube_client`` picks up the mock.
+        with patch(
+            "krayne.config.settings.load_krayne_settings"
+        ) as mock_settings:
             from krayne.config.settings import KrayneSettings
 
             mock_settings.return_value = KrayneSettings()
+            self.mock_settings = mock_settings
             yield
 
     def test_explicit_kubeconfig(self):
@@ -391,16 +396,30 @@ class TestKubeconfigPassthrough:
         self.mock_cls.assert_called_once_with(
             kubeconfig="/custom/kubeconfig", context=None
         )
+        # settings are not consulted when kubeconfig is explicit
+        self.mock_settings.assert_not_called()
 
     def test_no_kubeconfig_uses_settings(self):
         from krayne.config.settings import KrayneSettings
 
-        with patch("krayne.api.clusters.load_krayne_settings") as mock_settings:
-            mock_settings.return_value = KrayneSettings(kubeconfig="/from/settings")
-            list_clusters("default")
-            self.mock_cls.assert_called_with(
-                kubeconfig="/from/settings", context=None
-            )
+        self.mock_settings.return_value = KrayneSettings(
+            kubeconfig="/from/settings", kube_context="from-ctx"
+        )
+        list_clusters("default")
+        self.mock_cls.assert_called_with(
+            kubeconfig="/from/settings", context="from-ctx"
+        )
+
+    def test_client_cached_across_calls(self):
+        from krayne.config.settings import KrayneSettings
+
+        self.mock_settings.return_value = KrayneSettings(
+            kubeconfig="/from/settings", kube_context="ctx"
+        )
+        list_clusters("default")
+        list_clusters("default")
+        # Constructor called once; second call served from cache
+        assert self.mock_cls.call_count == 1
 
 
 class TestPodLevelStatus:

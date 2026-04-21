@@ -14,9 +14,8 @@ from krayne.api.types import (
     WorkerGroupInfo,
 )
 from krayne.config.models import ClusterConfig
-from krayne.config.settings import load_krayne_settings
 from krayne.errors import ClusterTimeoutError, KrayneError
-from krayne.kube.client import DefaultKubeClient, KubeClient, _extract_status
+from krayne.kube.client import KubeClient, _extract_status, get_kube_client
 from krayne.kube.manifest import RAY_IMAGE, build_manifest
 
 
@@ -27,12 +26,7 @@ def _resolve_client(
 ) -> KubeClient:
     if client is not None:
         return client
-    if kubeconfig is None:
-        settings = load_krayne_settings()
-        kubeconfig = settings.kubeconfig
-        if context is None:
-            context = settings.kube_context
-    return DefaultKubeClient(kubeconfig=kubeconfig, context=context)
+    return get_kube_client(kubeconfig=kubeconfig, context=context)
 
 
 def create_cluster(
