@@ -12,8 +12,11 @@ from krayne.errors import (
     ClusterAlreadyExistsError,
     ClusterNotFoundError,
     KubeConnectionError,
+    KubeRayNotInstalledError,
     NamespaceNotFoundError,
 )
+
+RAYCLUSTER_CRD_NAME = "rayclusters.ray.io"
 
 RAYCLUSTER_GROUP = "ray.io"
 RAYCLUSTER_VERSION = "v1"
@@ -219,6 +222,10 @@ def get_kube_client(
     cached = _client_cache.get(key)
     if cached is not None:
         return cached
+    # Verify KubeRay is installed *before* constructing the client, so
+    # the same friendly error surfaces regardless of entry point
+    # (CLI / TUI / SDK / ``krayne init``).
+    assert_kuberay_installed(kubeconfig=kubeconfig, context=context)
     client = DefaultKubeClient(kubeconfig=kubeconfig, context=context)
     _client_cache[key] = client
     return client
@@ -227,6 +234,57 @@ def get_kube_client(
 def clear_kube_client_cache() -> None:
     """Clear the :func:`get_kube_client` cache.  Useful in tests."""
     _client_cache.clear()
+
+
+def assert_kuberay_installed(
+    kubeconfig: str | None = None, context: str | None = None
+) -> None:
+    """Raise :class:`KubeRayNotInstalledError` when the ``rayclusters.ray.io``
+    CRD is not registered on the target cluster.
+
+    Runs before :class:`DefaultKubeClient` is constructed and uses an
+    isolated ``Configuration`` so the process-wide default and the
+    :func:`get_kube_client` cache are untouched.  Every code path that
+    builds a kube client should go through :func:`get_kube_client`,
+    which calls this first — so the error surfaces uniformly whether
+    the caller is the CLI, the TUI, or the SDK.
+    """
+    configuration = k8s_client.Configuration()
+    try:
+        if kubeconfig is not None or context is not None:
+            k8s_config.load_kube_config(
+                config_file=kubeconfig,
+                context=context,
+                client_configuration=configuration,
+            )
+        else:
+            try:
+                k8s_config.load_incluster_config(
+                    client_configuration=configuration
+                )
+            except k8s_config.ConfigException:
+                k8s_config.load_kube_config(
+                    client_configuration=configuration
+                )
+    except k8s_config.ConfigException as exc:
+        raise KubeConnectionError(
+            "Cannot load Kubernetes configuration for KubeRay check. "
+            "Ensure a valid kubeconfig exists or run inside a cluster."
+        ) from exc
+
+    api_client = k8s_client.ApiClient(configuration=configuration)
+    try:
+        ext = k8s_client.ApiextensionsV1Api(api_client=api_client)
+        try:
+            ext.read_custom_resource_definition(RAYCLUSTER_CRD_NAME)
+        except ApiException as exc:
+            if exc.status == 404:
+                raise KubeRayNotInstalledError(context=context) from exc
+            raise KubeConnectionError(
+                f"Failed to query CRDs on the target cluster: {exc}"
+            ) from exc
+    finally:
+        api_client.close()
 
 
 def _extract_status(obj: dict, pods: list[dict] | None = None) -> str:

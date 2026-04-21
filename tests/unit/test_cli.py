@@ -179,6 +179,14 @@ class TestInit:
         "current-context: my-context\n"
     )
 
+    @pytest.fixture(autouse=True)
+    def _stub_dry_run(self):
+        """Stub the dry-run client initialisation — unit tests don't
+        have a real cluster, so ``get_kube_client`` would otherwise
+        fail during init."""
+        with patch("krayne.kube.client.get_kube_client") as mock:
+            yield mock
+
     @patch("krayne.cli.app.save_krayne_settings")
     def test_init_headless(self, mock_save, tmp_path):
         kubeconfig = tmp_path / "kubeconfig"
@@ -221,6 +229,25 @@ class TestInit:
         )
         assert result.exit_code == 1
         assert "not found" in result.output.lower() or "Error" in result.output
+
+    @patch("krayne.cli.app.save_krayne_settings")
+    def test_init_refuses_when_dry_run_fails(
+        self, mock_save, _stub_dry_run, tmp_path
+    ):
+        """When the client dry-run raises (e.g. KubeRay missing), init
+        must refuse to update ~/.krayne/config.yaml."""
+        from krayne.errors import KubeRayNotInstalledError
+
+        _stub_dry_run.side_effect = KubeRayNotInstalledError(context="my-context")
+        kubeconfig = tmp_path / "kubeconfig"
+        kubeconfig.write_text(self.KUBECONFIG_YAML)
+        result = runner.invoke(
+            app,
+            ["init", "--kubeconfig", str(kubeconfig), "--context", "my-context"],
+        )
+        assert result.exit_code == 1
+        assert "KubeRay" in result.output
+        mock_save.assert_not_called()
 
     def test_current_context_reflects_krayne_settings(self, tmp_path):
         """The '(current)' marker comes from ~/.krayne/config.yaml, not

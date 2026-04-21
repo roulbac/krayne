@@ -422,6 +422,37 @@ class TestKubeconfigPassthrough:
         assert self.mock_cls.call_count == 1
 
 
+class TestKuberayCheck:
+    """Verify the KubeRay CRD check surfaces a friendly error."""
+
+    def test_missing_crd_raises_kuberay_not_installed(
+        self, real_assert_kuberay_installed
+    ):
+        from kubernetes.client.exceptions import ApiException
+
+        from krayne.errors import KubeRayNotInstalledError
+
+        with patch("krayne.kube.client.k8s_config"), \
+             patch("krayne.kube.client.k8s_client") as mock_k8s:
+            mock_api = MagicMock()
+            mock_api.read_custom_resource_definition.side_effect = ApiException(
+                status=404, reason="Not Found"
+            )
+            mock_k8s.ApiextensionsV1Api.return_value = mock_api
+
+            with pytest.raises(KubeRayNotInstalledError):
+                real_assert_kuberay_installed(kubeconfig="/any/path", context="ctx")
+
+    def test_crd_present_does_not_raise(self, real_assert_kuberay_installed):
+        with patch("krayne.kube.client.k8s_config"), \
+             patch("krayne.kube.client.k8s_client") as mock_k8s:
+            mock_api = MagicMock()
+            mock_api.read_custom_resource_definition.return_value = MagicMock()
+            mock_k8s.ApiextensionsV1Api.return_value = mock_api
+
+            real_assert_kuberay_installed(kubeconfig="/any/path", context="ctx")
+
+
 class TestPodLevelStatus:
     """Verify granular status is derived from pod phases when CRD state is empty."""
 

@@ -380,6 +380,25 @@ def init(
                     f"Available: {', '.join(contexts)}"
                 )
 
+        # Dry-run: try to initialise a kube client against the selected
+        # (kubeconfig, context).  ``get_kube_client`` checks KubeRay is
+        # installed before constructing the client, so a missing
+        # operator, bad context, or unreachable API surfaces here — and
+        # we refuse to persist a broken ~/.krayne/config.yaml.
+        from krayne.kube.client import (
+            clear_kube_client_cache,
+            get_kube_client,
+        )
+
+        try:
+            get_kube_client(kubeconfig=str(resolved), context=context)
+        finally:
+            # This dry-run cached a client keyed on the *current*
+            # settings-file digest (which doesn't reflect what we're
+            # about to save).  Drop it so real calls re-validate
+            # against the saved settings.
+            clear_kube_client_cache()
+
         save_krayne_settings(
             KrayneSettings(kubeconfig=str(resolved), kube_context=context)
         )

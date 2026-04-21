@@ -29,3 +29,31 @@ def _clear_kube_client_cache():
     clear_kube_client_cache()
     yield
     clear_kube_client_cache()
+
+
+@pytest.fixture(autouse=True)
+def _skip_kuberay_check(monkeypatch):
+    """Stub out the KubeRay CRD check — no real cluster in unit tests.
+
+    Tests that need the real function should request the
+    :func:`real_assert_kuberay_installed` fixture.
+    """
+    import krayne.kube.client as mod
+
+    monkeypatch.setattr(mod, "assert_kuberay_installed", lambda **_: None)
+
+
+@pytest.fixture()
+def real_assert_kuberay_installed():
+    """Return the un-stubbed :func:`assert_kuberay_installed` function."""
+    import krayne.kube.client as mod
+
+    # Bypass the autouse stub by going through the original unbound
+    # function captured at import time.
+    return _ORIGINAL_ASSERT_KUBERAY_INSTALLED
+
+
+import krayne.kube.client as _kube_client_mod
+
+_ORIGINAL_ASSERT_KUBERAY_INSTALLED = _kube_client_mod.assert_kuberay_installed
+del _kube_client_mod

@@ -42,6 +42,20 @@ class KubeConnectionError(KrayneError):
     """Raised when the Kubernetes API is unreachable."""
 
 
+class KubeRayNotInstalledError(KrayneError):
+    """Raised when the target cluster does not have KubeRay installed
+    (the ``rayclusters.ray.io`` CRD is missing)."""
+
+    def __init__(self, context: str | None = None) -> None:
+        self.context = context
+        where = f" (context: {context})" if context else ""
+        super().__init__(
+            f"KubeRay is not installed on the target cluster{where}: "
+            "the 'rayclusters.ray.io' CRD was not found. Have your cluster admin "
+            "install the KubeRay operator and try again."
+        )
+
+
 class NamespaceNotFoundError(KrayneError):
     """Raised when the specified namespace does not exist."""
 
