@@ -54,11 +54,9 @@ class TestSetupSandbox:
 
     @patch("krayne.sandbox.manager.subprocess.run")
     @patch("krayne.sandbox.manager._container_exists", return_value=False)
-    @patch("krayne.sandbox.manager._wait_for_k3s")
-    @patch("krayne.sandbox.manager._wait_for_crds")
-    @patch("krayne.sandbox.manager._wait_for_deployment")
+    @patch("krayne.sandbox.manager._wait_until")
     def test_setup_success(
-        self, mock_deploy, mock_crds, mock_k3s, mock_exists, mock_run, tmp_path
+        self, mock_wait, mock_exists, mock_run, tmp_path
     ):
         mock_run.side_effect = self._make_side_effect()
 
@@ -68,14 +66,19 @@ class TestSetupSandbox:
 
     @patch("krayne.sandbox.manager.subprocess.run")
     @patch("krayne.sandbox.manager._container_exists", return_value=False)
-    @patch("krayne.sandbox.manager._wait_for_k3s")
-    @patch("krayne.sandbox.manager._wait_for_crds")
-    @patch("krayne.sandbox.manager._wait_for_deployment")
+    @patch("krayne.sandbox.manager._wait_until")
     def test_setup_progress_callback(
-        self, mock_deploy, mock_crds, mock_k3s, mock_exists, mock_run, tmp_path
+        self, mock_wait, mock_exists, mock_run, tmp_path
     ):
         mock_run.side_effect = self._make_side_effect()
         callback = MagicMock()
+
+        def fake_wait(check_fn, step_name, *, on_progress=None, **_kwargs):
+            if on_progress is not None:
+                on_progress(step_name, "in_progress")
+                on_progress(step_name, "done")
+
+        mock_wait.side_effect = fake_wait
 
         setup_sandbox(on_progress=callback)
 

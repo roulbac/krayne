@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import time
 from collections.abc import Callable
@@ -89,73 +90,63 @@ def _notify(on_progress: ProgressCallback, step: str, status: str) -> None:
         on_progress(step, status)
 
 
-def _wait_for_k3s(
-    timeout: int = 120, on_progress: ProgressCallback = None
+def _wait_until(
+    check_fn: Callable[[], bool],
+    step_name: str,
+    timeout: int,
+    on_progress: ProgressCallback,
+    poll_interval: float = 3.0,
+    timeout_message: str | None = None,
 ) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        _notify(on_progress, STEP_K3S_NODE, "in_progress")
-        result = subprocess.run(
-            [
-                "docker", "exec", SANDBOX_CONTAINER_NAME,
-                "kubectl", "get", "nodes",
-                "-o", "jsonpath={.items[0].status.conditions[-1].type}",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0 and "Ready" in result.stdout:
+        _notify(on_progress, step_name, "in_progress")
+        if check_fn():
+            _notify(on_progress, step_name, "done")
             return
-        time.sleep(3)
-    raise SandboxError(f"K3S node not ready within {timeout}s")
+        time.sleep(poll_interval)
+    raise SandboxError(
+        timeout_message or f"{step_name} not ready within {timeout}s"
+    )
 
 
-def _wait_for_crds(
-    kubeconfig: str, timeout: int = 120, on_progress: ProgressCallback = None
-) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        _notify(on_progress, STEP_CRD, "in_progress")
-        result = subprocess.run(
-            ["kubectl", "--kubeconfig", kubeconfig, "get", "crd", "rayclusters.ray.io"],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            return
-        time.sleep(3)
-    raise SandboxError("RayCluster CRD not registered within timeout")
+def _k3s_node_ready() -> bool:
+    result = subprocess.run(
+        [
+            "docker", "exec", SANDBOX_CONTAINER_NAME,
+            "kubectl", "get", "nodes",
+            "-o", "jsonpath={.items[0].status.conditions[-1].type}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0 and "Ready" in result.stdout
 
 
-def _wait_for_deployment(
-    name: str,
-    kubeconfig: str,
-    namespace: str = "default",
-    timeout: int = 180,
-    on_progress: ProgressCallback = None,
-) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        _notify(on_progress, STEP_OPERATOR, "in_progress")
-        result = subprocess.run(
-            [
-                "kubectl", "--kubeconfig", kubeconfig,
-                "get", "deployment", name,
-                "-n", namespace,
-                "-o", "jsonpath={.status.availableReplicas}",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0 and result.stdout.strip() not in ("", "0", "null"):
-            return
-        time.sleep(5)
-    raise SandboxError(f"Deployment {name} not available within {timeout}s")
+def _raycluster_crd_registered(kubeconfig: str) -> bool:
+    result = subprocess.run(
+        ["kubectl", "--kubeconfig", kubeconfig, "get", "crd", "rayclusters.ray.io"],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
 
 
-def setup_sandbox(on_progress: ProgressCallback = None) -> str:
-    """Create a local k3s container with KubeRay and return the kubeconfig path."""
-    # 1. Check Docker
+def _deployment_available(name: str, kubeconfig: str, namespace: str) -> bool:
+    result = subprocess.run(
+        [
+            "kubectl", "--kubeconfig", kubeconfig,
+            "get", "deployment", name,
+            "-n", namespace,
+            "-o", "jsonpath={.status.availableReplicas}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0 and result.stdout.strip() not in ("", "0", "null")
+
+
+def _check_docker(on_progress: ProgressCallback) -> None:
     _notify(on_progress, STEP_DOCKER, "in_progress")
     try:
         result = _run(["docker", "info", "--format", "{{.NCPU}} {{.MemTotal}}"])
@@ -163,7 +154,6 @@ def setup_sandbox(on_progress: ProgressCallback = None) -> str:
         _notify(on_progress, STEP_DOCKER, "failed")
         raise DockerNotFoundError()
 
-    # Validate Docker has enough resources
     parts = result.stdout.strip().split()
     if len(parts) >= 2:
         ncpu = int(parts[0])
@@ -179,12 +169,12 @@ def setup_sandbox(on_progress: ProgressCallback = None) -> str:
             )
     _notify(on_progress, STEP_DOCKER, "done")
 
-    # 2. Check for existing sandbox
+
+def _start_k3s_container(on_progress: ProgressCallback) -> None:
     if _container_exists():
         _notify(on_progress, STEP_K3S_CONTAINER, "failed")
         raise SandboxAlreadyExistsError()
 
-    # 3. Start k3s
     _notify(on_progress, STEP_K3S_CONTAINER, "in_progress")
     _run([
         "docker", "run", "-d",
@@ -201,63 +191,82 @@ def setup_sandbox(on_progress: ProgressCallback = None) -> str:
     ])
     _notify(on_progress, STEP_K3S_CONTAINER, "done")
 
+
+def _extract_kubeconfig(on_progress: ProgressCallback) -> str:
+    _notify(on_progress, STEP_KUBECONFIG, "in_progress")
+    result = _run([
+        "docker", "exec", SANDBOX_CONTAINER_NAME,
+        "cat", "/etc/rancher/k3s/k3s.yaml",
+    ])
+    raw_kubeconfig = result.stdout
+
+    PRISM_DIR.mkdir(parents=True, exist_ok=True)
+    SANDBOX_KUBECONFIG.write_text(raw_kubeconfig)
+    _notify(on_progress, STEP_KUBECONFIG, "done")
+    return raw_kubeconfig
+
+
+def _install_kuberay(raw_kubeconfig: str, on_progress: ProgressCallback) -> None:
+    _notify(on_progress, STEP_HELM_INSTALL, "in_progress")
+    # Helm runs inside a sibling container that shares k3s's network namespace,
+    # so it needs a kubeconfig file that's bind-mountable from the host.
+    internal_kubeconfig = str(PRISM_DIR / "sandbox-kubeconfig-internal")
+    Path(internal_kubeconfig).write_text(raw_kubeconfig)
     try:
-        # 4. Wait for k3s node
-        _notify(on_progress, STEP_K3S_NODE, "in_progress")
-        _wait_for_k3s(on_progress=on_progress)
-        _notify(on_progress, STEP_K3S_NODE, "done")
-
-        # 5. Extract kubeconfig
-        _notify(on_progress, STEP_KUBECONFIG, "in_progress")
-        result = _run([
-            "docker", "exec", SANDBOX_CONTAINER_NAME,
-            "cat", "/etc/rancher/k3s/k3s.yaml",
+        _run([
+            "docker", "run", "--rm",
+            "--network", f"container:{SANDBOX_CONTAINER_NAME}",
+            "-v", f"{internal_kubeconfig}:/root/.kube/config:ro",
+            HELM_IMAGE,
+            "install", "kuberay-operator", "kuberay-operator",
+            "--repo", KUBERAY_HELM_REPO,
+            "--namespace", "default",
         ])
-        raw_kubeconfig = result.stdout
+    finally:
+        Path(internal_kubeconfig).unlink(missing_ok=True)
+    _notify(on_progress, STEP_HELM_INSTALL, "done")
 
-        # Write host kubeconfig (127.0.0.1:6443 reachable via port mapping)
-        PRISM_DIR.mkdir(parents=True, exist_ok=True)
-        SANDBOX_KUBECONFIG.write_text(raw_kubeconfig)
-        _notify(on_progress, STEP_KUBECONFIG, "done")
 
-        # 6. Install KubeRay via Helm (shares k3s container network)
-        _notify(on_progress, STEP_HELM_INSTALL, "in_progress")
-        internal_kubeconfig = str(PRISM_DIR / "sandbox-kubeconfig-internal")
-        Path(internal_kubeconfig).write_text(raw_kubeconfig)
-        try:
-            _run([
-                "docker", "run", "--rm",
-                "--network", f"container:{SANDBOX_CONTAINER_NAME}",
-                "-v", f"{internal_kubeconfig}:/root/.kube/config:ro",
-                HELM_IMAGE,
-                "install", "kuberay-operator", "kuberay-operator",
-                "--repo", KUBERAY_HELM_REPO,
-                "--namespace", "default",
-            ])
-        finally:
-            Path(internal_kubeconfig).unlink(missing_ok=True)
-        _notify(on_progress, STEP_HELM_INSTALL, "done")
+def setup_sandbox(on_progress: ProgressCallback = None) -> str:
+    """Create a local k3s container with KubeRay and return the kubeconfig path."""
+    _check_docker(on_progress)
+    _start_k3s_container(on_progress)
 
-        # 7. Wait for CRD + operator
+    try:
+        _wait_until(
+            _k3s_node_ready,
+            STEP_K3S_NODE,
+            timeout=120,
+            on_progress=on_progress,
+            timeout_message="K3S node not ready within 120s",
+        )
+
+        raw_kubeconfig = _extract_kubeconfig(on_progress)
+        _install_kuberay(raw_kubeconfig, on_progress)
+
         kubeconfig_path = str(SANDBOX_KUBECONFIG)
 
-        _notify(on_progress, STEP_CRD, "in_progress")
-        _wait_for_crds(kubeconfig_path, on_progress=on_progress)
-        _notify(on_progress, STEP_CRD, "done")
-
-        _notify(on_progress, STEP_OPERATOR, "in_progress")
-        _wait_for_deployment(
-            "kuberay-operator", kubeconfig_path, on_progress=on_progress
+        _wait_until(
+            lambda: _raycluster_crd_registered(kubeconfig_path),
+            STEP_CRD,
+            timeout=120,
+            on_progress=on_progress,
+            timeout_message="RayCluster CRD not registered within timeout",
         )
-        _notify(on_progress, STEP_OPERATOR, "done")
 
-        # 8. Save as active config
+        _wait_until(
+            lambda: _deployment_available("kuberay-operator", kubeconfig_path, "default"),
+            STEP_OPERATOR,
+            timeout=180,
+            on_progress=on_progress,
+            poll_interval=5.0,
+            timeout_message="Deployment kuberay-operator not available within 180s",
+        )
+
         save_krayne_settings(KrayneSettings(kubeconfig=kubeconfig_path))
-
         return kubeconfig_path
 
     except Exception:
-        # Clean up the container on any setup failure
         subprocess.run(
             ["docker", "rm", "-f", SANDBOX_CONTAINER_NAME],
             capture_output=True,
@@ -272,12 +281,10 @@ def teardown_sandbox() -> None:
 
     _run(["docker", "rm", "-f", SANDBOX_CONTAINER_NAME])
 
-    # Remove sandbox kubeconfig
     if SANDBOX_KUBECONFIG.exists():
         SANDBOX_KUBECONFIG.unlink()
 
-    # Clear krayne settings if they point to the sandbox.  A
-    # ConfigValidationError here means the settings file is already in
+    # A ConfigValidationError here means the settings file is already in
     # a broken state (e.g. references a missing kubeconfig) — treat
     # that as "clear the settings" since the sandbox kubeconfig is
     # about to disappear anyway.
@@ -291,8 +298,6 @@ def teardown_sandbox() -> None:
 
 
 def sandbox_status() -> SandboxStatus:
-    import json as _json
-
     result = subprocess.run(
         ["docker", "inspect", SANDBOX_CONTAINER_NAME],
         capture_output=True,
@@ -302,8 +307,8 @@ def sandbox_status() -> SandboxStatus:
         return SandboxStatus(running=False)
 
     try:
-        info = _json.loads(result.stdout)[0]
-    except (IndexError, _json.JSONDecodeError):
+        info = json.loads(result.stdout)[0]
+    except (IndexError, json.JSONDecodeError):
         return SandboxStatus(running=False)
 
     running = info.get("State", {}).get("Running", False)
