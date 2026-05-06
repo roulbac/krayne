@@ -69,7 +69,7 @@ DETAILS = ClusterDetails(
     worker_groups=[
         WorkerGroupInfo(
             name="gpu-workers", replicas=4, min_replicas=0, max_replicas=10,
-            cpus="2", memory="16Gi", gpus=1, gpu_type="a100",
+            cpus="2", memory="16Gi", gpus=1,
         ),
     ],
     ray_version="2.10.0",

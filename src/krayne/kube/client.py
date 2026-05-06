@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-import time
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from kubernetes import client as k8s_client  # type: ignore[import-untyped]
 from kubernetes import config as k8s_config  # type: ignore[import-untyped]

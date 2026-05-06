@@ -29,7 +29,7 @@ _DETAILS = ClusterDetails(
     info=_INFO,
     head=HeadNodeInfo(cpus="2", memory="2Gi", gpus=0, image="rayproject/ray:2.41.0"),
     worker_groups=[
-        WorkerGroupInfo(name="worker", replicas=2, min_replicas=0, max_replicas=10, cpus="2", memory="2Gi", gpus=0, gpu_type=None)
+        WorkerGroupInfo(name="worker", replicas=2, min_replicas=0, max_replicas=10, cpus="2", memory="2Gi", gpus=0)
     ],
     ray_version="unknown",
     python_version="unknown",

@@ -72,7 +72,6 @@ krayne create <name> [OPTIONS]
 |---|---|---|
 | `-n`, `--namespace` | `default` | Kubernetes namespace |
 | `--gpus-per-worker` | `0` | Number of GPUs per worker node |
-| `--worker-gpu-type` | `t4` | GPU accelerator type (e.g. `t4`, `a100`, `v100`) |
 | `--cpus-in-head` | `15` | CPU count for the head node |
 | `--memory-in-head` | `48Gi` | Memory for the head node |
 | `--workers` | `0` | Desired worker replicas (initial count) |
@@ -89,7 +88,7 @@ krayne create <name> [OPTIONS]
 krayne create my-cluster
 
 # GPU cluster with 2 workers, autoscaling 0-4
-krayne create gpu-cluster --gpus-per-worker 1 --worker-gpu-type a100 --workers 2 --max-workers 4
+krayne create gpu-cluster --gpus-per-worker 1 --workers 2 --max-workers 4
 
 # Fixed replicas (no autoscaling)
 krayne create my-cluster --no-autoscaling --workers 4

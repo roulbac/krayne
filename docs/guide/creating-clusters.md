@@ -65,14 +65,10 @@ Add GPUs to workers with CLI flags:
 ```bash
 krayne create gpu-experiment \
     --gpus-per-worker 1 \
-    --worker-gpu-type a100 \
     --workers 2
 ```
 
-This creates 2 workers, each with 1 NVIDIA A100 GPU. Krayne sets the appropriate Kubernetes node selectors and resource limits automatically.
-
-!!! note "GPU types"
-    Common GPU types: `t4`, `a100`, `v100`, `l4`, `h100`. The value maps to the `cloud.google.com/gke-accelerator` node selector.
+This creates 2 workers, each requesting 1 GPU via the `nvidia.com/gpu` resource. To schedule on specific GPU models, label your nodes yourself and add a `nodeSelector` via a custom manifest — krayne does not emit cloud- or accelerator-specific selectors.
 
 ---
 
@@ -107,7 +103,6 @@ worker_groups:
   - name: gpu-workers
     replicas: 2
     gpus: 1
-    gpu_type: a100
     image: rayproject/ray:2.41.0-gpu
 services:
   notebook: true
@@ -151,7 +146,6 @@ config = ClusterConfig(
             name="gpu-workers",
             replicas=2,
             gpus=1,
-            gpu_type="a100",
         ),
     ],
 )
@@ -169,7 +163,7 @@ from krayne.config import ClusterConfig, WorkerGroupConfig
 
 config = ClusterConfig(
     name="experiment",
-    worker_groups=[WorkerGroupConfig(replicas=2, gpus=1, gpu_type="a100")],
+    worker_groups=[WorkerGroupConfig(replicas=2, gpus=1)],
 )
 
 with managed_cluster(config, timeout=600) as managed:

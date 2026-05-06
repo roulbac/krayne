@@ -90,7 +90,6 @@ worker_groups:
     min_replicas: 0
     max_replicas: 10
     gpus: 1
-    gpu_type: a100
 ```
 
 ### Python SDK
@@ -140,7 +139,6 @@ worker_groups:
   - name: gpu-workers
     replicas: 2
     gpus: 1
-    gpu_type: a100
     image: rayproject/ray:2.41.0-gpu
 services:
   notebook: true
@@ -190,7 +188,6 @@ config = load_config_from_yaml(
 | Worker CPUs | `15` | Matches typical cloud node size |
 | Worker Memory | `48Gi` | Comfortable for most training workloads |
 | Worker GPUs | `0` | CPU-only by default; opt in via flag |
-| GPU Type | `t4` | Most available, cost-effective default |
 | Autoscaling | enabled | Ray v2 autoscaler manages worker lifecycle |
 | Idle Timeout | `60s` | Scale down unused workers after 60 seconds |
 | Notebook | enabled | Most users want immediate notebook access |

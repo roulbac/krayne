@@ -65,7 +65,6 @@ Configuration for a worker group.
 | `cpus` | `str` | `"1"` | CPUs per worker |
 | `memory` | `str` | `"2Gi"` | Memory per worker |
 | `gpus` | `int` | `0` | GPUs per worker |
-| `gpu_type` | `str` | `"t4"` | GPU accelerator type (e.g. `t4`, `a100`, `v100`) |
 | `image` | `str \| None` | `None` | Custom container image |
 
 !!! note "Replica validation"

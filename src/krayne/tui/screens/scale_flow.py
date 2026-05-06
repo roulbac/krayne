@@ -116,7 +116,7 @@ class ScaleFlowScreen(ModalScreen[bool]):
         info.update(
             f"Worker group: [bold]{wg.name}[/bold]  "
             f"CPUs: {wg.cpus}  Memory: {wg.memory}  "
-            f"GPUs: {wg.gpus}{f' ({wg.gpu_type})' if wg.gpu_type else ''}"
+            f"GPUs: {wg.gpus}"
         )
 
         # Hide group list, show replica input

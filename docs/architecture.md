@@ -158,7 +158,6 @@ flowchart LR
 | `head.memory` | `spec.headGroupSpec...resources.requests.memory` |
 | `worker_groups[n].replicas` | `spec.workerGroupSpecs[n].replicas` |
 | `worker_groups[n].gpus` | `spec.workerGroupSpecs[n]...resources.limits[nvidia.com/gpu]` |
-| `worker_groups[n].gpu_type` | `spec.workerGroupSpecs[n]...nodeSelector[cloud.google.com/gke-accelerator]` |
 
 ---
 
