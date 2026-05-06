@@ -238,18 +238,18 @@ class TestServicesAndTunnel:
     def test_ssh_reachable_via_tunnel(self):
         """sshd returns an SSH banner through the tunnel.
 
-        Skipped when the Ray image does not ship openssh-server (e.g. the
-        default ``rayproject/ray`` image).
+        The head-pod postStart bootstraps openssh-server on first boot, so
+        this is expected to work on the default ``rayproject/ray`` image.
+        Bootstrap can take ~30s after the cluster is reported ready, so the
+        probe gets generous retry budget.
         """
         tunnels = start_tunnels(
             self.CLUSTER_NAME, self.NAMESPACE, ["ssh"],
             kubeconfig=self._kubeconfig,
         )
         lport = tunnels[0].local_port
-        banner = _retry(lambda: _tcp_probe("localhost", lport), retries=5, delay=2.0)
-        if not banner:
-            pytest.skip("sshd not available in the Ray image")
-        assert banner.startswith(b"SSH-"), (
+        banner = _retry(lambda: _tcp_probe("localhost", lport), retries=30, delay=2.0)
+        assert banner and banner.startswith(b"SSH-"), (
             f"Expected SSH banner, got: {banner!r}"
         )
 

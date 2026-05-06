@@ -133,8 +133,35 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
             " > /tmp/code-server.log 2>&1) &"
         )
     if services.ssh:
+        # Bootstrap sshd bound to 127.0.0.1 only — the only path in is
+        # `kubectl port-forward` (which targets the pod's loopback), gated by
+        # Kubernetes RBAC. Login is allowed only as the `ray` user with empty
+        # password (`passwd -d ray` + `PermitEmptyPasswords yes`); root login
+        # is explicitly disabled (`PermitRootLogin no`) and root's shadow
+        # entry is left untouched. This means files created over the tunnel
+        # match the `ray` user that runs Ray itself.
+        # We tried `AuthenticationMethods none` first (no shadow surgery), but
+        # OpenSSH's `userauth_none` handler is hard-coded to return failure,
+        # so the config parses without granting access. Falling back to the
+        # empty-password approach.
+        # The default rayproject/ray image runs as uid=1000(ray) with
+        # passwordless sudo, so privileged steps are sudo-prefixed and the
+        # drop-in is written via `sudo tee` (`>` redirection runs in the
+        # caller's user context).
         startup_cmds.append(
-            "(which sshd && mkdir -p /run/sshd && /usr/sbin/sshd) || true"
+            "("
+            "if ! [ -x /usr/sbin/sshd ]; then"
+            " sudo apt-get update -q"
+            " && sudo apt-get install -y -q --no-install-recommends openssh-server;"
+            "fi"
+            " && sudo mkdir -p /run/sshd"
+            " && sudo ssh-keygen -A"
+            " && printf 'ListenAddress 127.0.0.1\\nPermitRootLogin no\\n"
+            "PasswordAuthentication yes\\nPermitEmptyPasswords yes\\nUsePAM no\\n'"
+            " | sudo tee /etc/ssh/sshd_config.d/krayne.conf > /dev/null"
+            " && sudo passwd -d ray"
+            " && sudo /usr/sbin/sshd"
+            ") > /tmp/sshd-bootstrap.log 2>&1 &"
         )
     if startup_cmds:
         ray_head["lifecycle"] = {

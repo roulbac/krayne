@@ -94,7 +94,19 @@ Services to enable on the cluster head node. Each enabled service adds its port 
 |---|---|---|---|---|
 | `notebook` | `bool` | `True` | 8888 | Jupyter notebook server (runs on ray-head container) |
 | `code_server` | `bool` | `True` | 8443 | Code Server, installed from a [standalone pre-built binary](https://github.com/coder/code-server/releases) at container startup |
-| `ssh` | `bool` | `True` | 22 | SSH access to the head node |
+| `ssh` | `bool` | `True` | 22 | SSH access to the head node as the `ray` user. `openssh-server` is installed and configured at container startup if missing. |
+
+!!! note "How SSH access works"
+    The bootstrap binds `sshd` to `127.0.0.1` only and empties the `ray` user's password. **Root login is explicitly disabled** (`PermitRootLogin no`); the only allowed login user is `ray` (uid 1000), the same user that runs the Ray processes — so files you create over SSH match what Ray itself sees.
+
+    The only path in is `kubectl port-forward`, which targets the pod's loopback interface — sshd is not reachable from other pods, the Service IP, or outside the cluster. Combined with Kubernetes RBAC (which is what authorizes the port-forward), this means **users do not need to manage SSH keys**. To connect:
+
+    ```bash
+    krayne tun-open my-cluster
+    ssh -p <ssh-local-port> -o StrictHostKeyChecking=no ray@localhost
+    ```
+
+    The local port is shown by `krayne describe my-cluster` and in the TUI's Services tab. Initial bootstrap can take ~30s after the cluster reaches `ready` while `apt-get install openssh-server` runs on the head pod.
 
 ---
 

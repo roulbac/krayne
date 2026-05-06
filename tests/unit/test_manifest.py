@@ -240,6 +240,41 @@ class TestBuildManifest:
         assert "sshd" in hook_cmd
         assert "jupyter" not in hook_cmd
 
+    def test_lifecycle_hook_ssh_bootstrap_pieces(self):
+        """SSH bootstrap installs openssh, generates host keys, binds to loopback,
+        empties the ray password, disables root login, and writes a krayne sshd
+        config drop-in."""
+        cfg = ClusterConfig(
+            name="sshboot",
+            services=ServicesConfig(notebook=False, code_server=False, ssh=True),
+        )
+        m = build_manifest(cfg)
+        hook_cmd = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["lifecycle"]["postStart"]["exec"]["command"][2]
+
+        # Conditional install (only when sshd is missing — typical for rayproject/ray).
+        # Uses sudo because the head container runs as uid=1000(ray) with passwordless sudo.
+        assert "[ -x /usr/sbin/sshd ]" in hook_cmd
+        assert "sudo apt-get install" in hook_cmd
+        assert "openssh-server" in hook_cmd
+
+        # Host keys generated idempotently as root.
+        assert "sudo ssh-keygen -A" in hook_cmd
+
+        # Loopback-only binding + empty password for ray + root login disabled.
+        # Only ray can SSH in; root's shadow entry is left untouched.
+        assert "ListenAddress 127.0.0.1" in hook_cmd
+        assert "PermitRootLogin no" in hook_cmd
+        assert "PermitEmptyPasswords yes" in hook_cmd
+        assert "sudo passwd -d ray" in hook_cmd
+        assert "passwd -d root" not in hook_cmd
+
+        # Drop-in config written via `sudo tee` (shell `>` redirection runs as
+        # the caller, tee runs as root).
+        assert "sudo tee /etc/ssh/sshd_config.d/krayne.conf" in hook_cmd
+
+        # Daemon launch as root (privileged port 22).
+        assert "sudo /usr/sbin/sshd" in hook_cmd
+
     def test_no_lifecycle_hook_when_no_services(self):
         cfg = ClusterConfig(
             name="bare",
