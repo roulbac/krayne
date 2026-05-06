@@ -11,6 +11,8 @@ from krayne.api import (
     scale_cluster,
     delete_cluster,
     wait_until_ready,
+    get_cluster_services,
+    open_tunnel,
 )
 ```
 
@@ -289,6 +291,57 @@ get_cluster_services(
 **Returns:** List of service name strings
 
 **Raises:** `ClusterNotFoundError`, `KubeConnectionError`
+
+---
+
+### `open_tunnel`
+
+Context manager that opens port-forward tunnels to all detected services on a cluster and closes them on exit. Use it from your laptop to make `ray.init` (and the dashboard, notebook, etc.) reachable on `localhost`.
+
+```python
+@contextmanager
+def open_tunnel(
+    name: str,
+    namespace: str = "default",
+    *,
+    client: KubeClient | None = None,
+    kubeconfig: str | None = None,
+) -> Iterator[TunnelSession]
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `name` | `str` | — | Cluster name (required) |
+| `namespace` | `str` | `"default"` | Kubernetes namespace |
+| `client` | `KubeClient \| None` | `None` | Kubernetes client |
+| `kubeconfig` | `str \| None` | `None` | Path to kubeconfig file |
+
+**Yields:** [`TunnelSession`](#tunnelsession) — exposes `client_url`, `dashboard_url`, `notebook_url`, `code_server_url`, `ssh_url` as `localhost` URLs. Properties for services that aren't tunneled return `None`.
+
+Tunnels are always closed on exit, even if an exception is raised inside the `with` block.
+
+**Raises:** `ClusterNotFoundError`, `KubeConnectionError`
+
+**Example:**
+
+```python
+import ray
+from krayne.api import open_tunnel
+
+with open_tunnel("my-cluster") as session:
+    ray.init(session.client_url)            # ray://localhost:...
+    print(session.dashboard_url)            # http://localhost:...
+
+    @ray.remote
+    def hello(i: int) -> str:
+        return f"Hello from worker {i}"
+
+    print(ray.get([hello.remote(i) for i in range(4)]))
+    ray.shutdown()
+# tunnels closed when the block exits
+```
 
 ---
 
