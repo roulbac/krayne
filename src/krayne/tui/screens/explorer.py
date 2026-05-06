@@ -7,7 +7,6 @@ from functools import partial
 
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
-from textual.screen import Screen
 from textual.widgets import Button, DataTable, Static
 from textual.worker import Worker, WorkerState
 
@@ -15,6 +14,7 @@ from krayne.api.clusters import list_clusters
 from krayne.api.types import ClusterInfo
 from krayne.errors import KrayneError
 from krayne.tunnel import is_tunnel_active
+from krayne.tui.screens._base import KrayneScreen, toggle_cluster_tunnels
 from krayne.tui.widgets.cluster_table import ClusterTable
 from krayne.tui.widgets.filter_bar import FilterBar, make_filter_fn
 from krayne.tui.widgets.header import HeaderBar
@@ -22,7 +22,7 @@ from krayne.tui.widgets.preview_panel import PreviewPanel
 from krayne.tui.widgets.status_bar import StatusBar
 
 
-class ExplorerScreen(Screen):
+class ExplorerScreen(KrayneScreen):
     """Cluster list with filtering, sorting, preview, and actions."""
 
     BINDINGS = [
@@ -57,21 +57,24 @@ class ExplorerScreen(Screen):
         yield status
 
     def on_mount(self) -> None:
-        # Add terminal class
-        self.add_class(self.app.terminal_class)
-        # Setup columns
+        super().on_mount()
         table = self.query_one(ClusterTable)
         table.setup_columns(self.app.terminal_class)
-        # Update header
         self._update_header()
         self._update_scope_bar()
-        self._set_status_hints()
-        # Textual does not auto-wire `watch_app_<name>` — register the
-        # cross-object watchers explicitly so resize and namespace
-        # changes reach this screen.
-        self.watch(self.app, "terminal_class", self._on_terminal_class_change, init=False)
+        self._set_status_hints([
+            ("c", "Create"),
+            ("Enter", "Detail"),
+            ("s", "Scale"),
+            ("d", "Delete"),
+            ("t", "Tunnel"),
+            ("/", "Filter"),
+            ("n", "NS"),
+            ("r", "Refresh"),
+            ("?", "Help"),
+            ("q", "Quit"),
+        ])
         self.watch(self.app, "namespace", self._on_namespace_change, init=False)
-        # Initial fetch
         self._do_refresh()
         self.set_interval(5, self._do_refresh)
 
@@ -80,9 +83,7 @@ class ExplorerScreen(Screen):
         self._update_scope_bar()
         self._do_refresh()
 
-    def _on_terminal_class_change(self, old: str, new: str) -> None:
-        self.remove_class(old)
-        self.add_class(new)
+    def _after_terminal_class_change(self, old: str, new: str) -> None:
         table = self.query_one(ClusterTable)
         table.setup_columns(new)
         table.rebuild(self._clusters, self._get_filter_fn())
@@ -169,21 +170,6 @@ class ExplorerScreen(Screen):
             empty.display = False
             table.display = True
 
-    def _set_status_hints(self) -> None:
-        bar = self.query_one(StatusBar)
-        bar.set_hints([
-            ("c", "Create"),
-            ("Enter", "Detail"),
-            ("s", "Scale"),
-            ("d", "Delete"),
-            ("t", "Tunnel"),
-            ("/", "Filter"),
-            ("n", "NS"),
-            ("r", "Refresh"),
-            ("?", "Help"),
-            ("q", "Quit"),
-        ])
-
     # ── Selection ───────────────────────────────────
 
     def _get_selected_cluster(self) -> ClusterInfo | None:
@@ -256,14 +242,12 @@ class ExplorerScreen(Screen):
     @staticmethod
     def _toggle_tunnel(name: str, namespace: str) -> str:
         from krayne.api.clusters import get_cluster_services
-        from krayne.tunnel import is_tunnel_active, start_tunnels, stop_tunnels
 
         if is_tunnel_active(name, namespace):
-            stop_tunnels(name, namespace)
-            return f"Tunnels closed for {name}"
-        services = get_cluster_services(name, namespace)
-        start_tunnels(name, namespace, services)
-        return f"Tunnels opened for {name}"
+            services: list[str] = []
+        else:
+            services = get_cluster_services(name, namespace)
+        return toggle_cluster_tunnels(name, namespace, services)
 
     def action_filter(self) -> None:
         filter_bar = self.query_one(FilterBar)
