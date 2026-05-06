@@ -140,6 +140,10 @@ async def capture_svgs() -> list[str]:
         patch("krayne.tui.screens.detail.get_cluster_services", return_value=SERVICES),
         patch("krayne.tui.screens.detail.is_tunnel_active", return_value=False),
         patch("krayne.tui.screens.detail.load_tunnel_state", return_value=None),
+        patch(
+            "krayne.tui.screens.detail.check_service_health",
+            return_value={svc: "available" for svc in SERVICES},
+        ),
     ]
 
     all_patches = explorer_patches + detail_patches

@@ -22,8 +22,10 @@ class OverviewTab(Static):
         details: ClusterDetails,
         services: list[str],
         tunnel_map: dict[str, str],
+        health: dict[str, str] | None = None,
     ) -> None:
         info = details.info
+        health = health or {}
 
         lines: list[str] = []
         lines.append(f"[bold]{info.name}[/bold]")
@@ -39,11 +41,15 @@ class OverviewTab(Static):
         lines.append("")
         lines.append("[bold]Services[/bold]")
         for svc in ["dashboard", "notebook", "client", "code-server", "ssh"]:
-            url = getattr(info, f"{svc.replace('-', '_')}_url", None)
-            if url:
+            if svc not in services:
+                continue
+            svc_status = health.get(svc, "available")
+            if svc_status == "available":
                 lines.append(f"  [green]●[/green] {svc}")
-            elif svc in services:
-                lines.append(f"  [yellow]○[/yellow] {svc} [dim](no endpoint yet)[/dim]")
+            elif svc_status == "pending":
+                lines.append(f"  [yellow]○[/yellow] {svc} [dim](starting)[/dim]")
+            else:  # unreachable
+                lines.append(f"  [red]●[/red] {svc} [dim](unreachable)[/dim]")
 
         lines.append("")
         lines.append("[bold]Tunnels[/bold]")
@@ -84,21 +90,29 @@ class ServicesTab(Static):
         details: ClusterDetails,
         services: list[str],
         tunnel_map: dict[str, str],
+        health: dict[str, str] | None = None,
     ) -> None:
         info = details.info
+        health = health or {}
 
         lines: list[str] = []
         for svc_name in SERVICE_PORTS:
             url_attr = svc_name.replace("-", "_") + "_url"
             endpoint = getattr(info, url_attr, None)
-            available = svc_name in services
+            declared = svc_name in services
             tunnel_url = tunnel_map.get(svc_name)
             tunnel_active = svc_name in tunnel_map
 
-            if available:
-                status = "[green]●[/green] available"
+            if not declared:
+                status = "[dim]○ not configured[/dim]"
             else:
-                status = "[dim]○ unavailable[/dim]"
+                svc_status = health.get(svc_name, "available")
+                if svc_status == "available":
+                    status = "[green]●[/green] available"
+                elif svc_status == "pending":
+                    status = "[yellow]○[/yellow] pending"
+                else:
+                    status = "[red]●[/red] unreachable"
 
             if tunnel_active and tunnel_url:
                 ep = f"[cyan]{tunnel_url}[/cyan]"
@@ -109,7 +123,7 @@ class ServicesTab(Static):
 
             if tunnel_active:
                 tun = "[green]tunnel open[/green]"
-            elif available:
+            elif declared:
                 tun = "[dim]tunnel closed[/dim]"
             else:
                 tun = ""

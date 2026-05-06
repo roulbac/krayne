@@ -10,6 +10,7 @@ from krayne.tunnel import (
     PORT_RANGE_START,
     SERVICE_PORTS,
     TunnelState,
+    check_service_health,
     detect_services,
     is_tunnel_active,
     load_tunnel_state,
@@ -107,6 +108,76 @@ class TestDetectServices:
     def test_empty_spec(self):
         services = detect_services({})
         assert services == []
+
+
+class TestCheckServiceHealth:
+    def test_pending_when_cluster_not_ready(self):
+        health = check_service_health(
+            cluster_status="creating",
+            head_ip=None,
+            declared_services=["dashboard", "client"],
+            tunnel_map={},
+        )
+        assert health == {"dashboard": "pending", "client": "pending"}
+
+    def test_no_targets_falls_back_to_available(self):
+        # Cluster is ready but we have no probe target (no tunnel, no head_ip)
+        health = check_service_health(
+            cluster_status="ready",
+            head_ip=None,
+            declared_services=["dashboard"],
+            tunnel_map={},
+        )
+        assert health == {"dashboard": "available"}
+
+    def test_tunnel_target_probed(self):
+        with patch("krayne.tunnel._tcp_probe", return_value=True) as probe:
+            health = check_service_health(
+                cluster_status="ready",
+                head_ip="10.0.0.1",
+                declared_services=["dashboard"],
+                tunnel_map={"dashboard": "http://localhost:54321"},
+            )
+        assert health == {"dashboard": "available"}
+        probe.assert_called_once_with("localhost", 54321, 0.5)
+
+    def test_unreachable_when_probe_fails(self):
+        with patch("krayne.tunnel._tcp_probe", return_value=False):
+            health = check_service_health(
+                cluster_status="ready",
+                head_ip=None,
+                declared_services=["dashboard"],
+                tunnel_map={"dashboard": "http://localhost:54321"},
+            )
+        assert health == {"dashboard": "unreachable"}
+
+    def test_head_ip_used_when_no_tunnel(self):
+        with patch("krayne.tunnel._tcp_probe", return_value=True) as probe:
+            check_service_health(
+                cluster_status="ready",
+                head_ip="10.0.0.1",
+                declared_services=["dashboard"],
+                tunnel_map={},
+            )
+        probe.assert_called_once_with("10.0.0.1", SERVICE_PORTS["dashboard"][0], 0.5)
+
+    def test_mixed_results_per_service(self):
+        results_by_target = {
+            ("localhost", 54321): True,   # dashboard via tunnel — up
+            ("10.0.0.1", 8888): False,    # notebook direct probe — fails
+        }
+
+        def fake_probe(host, port, _timeout):
+            return results_by_target.get((host, port), False)
+
+        with patch("krayne.tunnel._tcp_probe", side_effect=fake_probe):
+            health = check_service_health(
+                cluster_status="ready",
+                head_ip="10.0.0.1",
+                declared_services=["dashboard", "notebook"],
+                tunnel_map={"dashboard": "http://localhost:54321"},
+            )
+        assert health == {"dashboard": "available", "notebook": "unreachable"}
 
 
 class TestStartTunnels:
