@@ -5,9 +5,7 @@ from krayne.api.clusters import (
     get_cluster,
     get_cluster_services,
     list_clusters,
-    managed_cluster,
     open_tunnel,
     scale_cluster,
     wait_until_ready,
 )
-from krayne.api.types import ManagedClusterResult

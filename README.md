@@ -23,48 +23,18 @@ Create a Ray cluster with a single command:
 krayne create my-cluster --gpus-per-worker 1 --workers 2
 ```
 
-Or use the Python SDK to define code and infrastructure together:
+Or use the Python SDK:
 
 ```python
-import ray
-from krayne.api import managed_cluster
+from krayne.api import create_cluster
 from krayne.config import ClusterConfig, WorkerGroupConfig
 
 config = ClusterConfig(
     name="hello-world",
     worker_groups=[WorkerGroupConfig(replicas=2)],
 )
-
-with managed_cluster(config) as managed:
-    ray.init(managed.tunnel.client_url)     # ray://localhost:... (tunneled)
-
-    @ray.remote
-    def hello(x):
-        return f"Hello from worker, {x}!"
-
-    futures = [hello.remote(i) for i in range(4)]
-    print(ray.get(futures))
-
-    ray.shutdown()
-# Tunnels closed, then cluster deleted
-```
-
-Tunnels are opened by default — access the dashboard, notebook, and other services via `localhost`:
-
-```python
-from krayne.api import managed_cluster
-from krayne.config import ClusterConfig
-
-config = ClusterConfig(name="my-cluster")
-
-with managed_cluster(config) as managed:
-    # Tunnel (localhost) URLs via managed.tunnel
-    print(managed.tunnel.dashboard_url)  # http://localhost:...
-    print(managed.tunnel.client_url)     # ray://localhost:...
-
-    # In-cluster IPs via managed.cluster
-    print(managed.cluster.dashboard_url) # http://10.0.0.1:8265
-# Tunnels closed, then cluster deleted
+info = create_cluster(config, wait=True)
+print(info.client_url)   # ray://10.0.0.1:10001
 ```
 
 ## Interactive TUI
