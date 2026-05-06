@@ -71,16 +71,40 @@ Choose one of two paths:
 
 ## 3. Create your first cluster
 
-```bash
-krayne create my-first-cluster
-```
+You have three equivalent paths — pick whichever suits you. They all produce the same Ray cluster.
 
-![krayne create output](../assets/cli-create.png)
+=== "CLI"
 
-!!! tip "Local access"
-    To access cluster services from your machine, use `krayne tun-open my-first-cluster` to create localhost port-forwards. Use `krayne tun-close my-first-cluster` to stop.
+    ```bash
+    krayne create my-first-cluster
+    ```
 
-This creates a cluster with sensible defaults:
+    ![krayne create output](../assets/cli-create.png)
+
+=== "TUI"
+
+    Launch the interactive UI and press `c` to open the create form:
+
+    ```bash
+    krayne tui
+    ```
+
+    The form is pre-filled with sensible defaults — `Ctrl+S` to submit.
+
+=== "Python SDK"
+
+    ```python
+    from krayne.api import create_cluster
+    from krayne.config import ClusterConfig, WorkerGroupConfig
+
+    config = ClusterConfig(
+        name="my-first-cluster",
+        worker_groups=[WorkerGroupConfig(replicas=1)],
+    )
+    create_cluster(config, wait=True)
+    ```
+
+The default cluster has:
 
 - **Head node**: 15 CPUs, 48 Gi memory
 - **1 worker**: 15 CPUs, 48 Gi memory
@@ -104,7 +128,30 @@ $ krayne describe my-first-cluster
 
 ![krayne describe output](../assets/cli-describe.png)
 
-## 5. Clean up
+## 5. Run a Ray job against your cluster
+
+To submit work from your laptop, you need port-forward tunnels so `ray.init` can reach the head node. The `open_tunnel` context manager handles setup and cleanup for you:
+
+```python
+import ray
+from krayne.api import open_tunnel
+
+with open_tunnel("my-first-cluster") as session:
+    ray.init(session.client_url)   # ray://localhost:...
+
+    @ray.remote
+    def hello(i: int) -> str:
+        return f"Hello from worker {i}"
+
+    print(ray.get([hello.remote(i) for i in range(4)]))
+    ray.shutdown()
+# tunnels closed when the block exits
+```
+
+!!! tip "CLI alternative"
+    You can also open tunnels from the shell with `krayne tun-open my-first-cluster` (close with `krayne tun-close my-first-cluster`). The TUI exposes the same on the `t` shortcut.
+
+## 6. Clean up
 
 ```bash
 krayne delete my-first-cluster --force

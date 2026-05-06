@@ -17,25 +17,56 @@ Navigate clusters, create with prefilled forms, scale, delete, and toggle tunnel
 pip install krayne
 ```
 
-Create a Ray cluster with a single command:
+### 1. Create a cluster
+
+Pick whichever entrypoint suits you — they all produce the same Ray cluster.
+
+**CLI:**
 
 ```bash
 krayne create my-cluster --gpus-per-worker 1 --workers 2
 ```
 
-Or use the Python SDK:
+**TUI** — press `c` in the explorer to open the create form:
+
+```bash
+krayne tui
+```
+
+**Python SDK:**
 
 ```python
 from krayne.api import create_cluster
 from krayne.config import ClusterConfig, WorkerGroupConfig
 
 config = ClusterConfig(
-    name="hello-world",
-    worker_groups=[WorkerGroupConfig(replicas=2)],
+    name="my-cluster",
+    worker_groups=[WorkerGroupConfig(replicas=2, gpus=1)],
 )
-info = create_cluster(config, wait=True)
-print(info.client_url)   # ray://10.0.0.1:10001
+create_cluster(config, wait=True)
 ```
+
+### 2. Run a Ray job against it
+
+`open_tunnel` opens port-forward tunnels to the cluster's services so `ray.init` can reach the head node from your laptop, and closes them on exit:
+
+```python
+import ray
+from krayne.api import open_tunnel
+
+with open_tunnel("my-cluster") as session:
+    ray.init(session.client_url)   # ray://localhost:...
+
+    @ray.remote
+    def hello(i: int) -> str:
+        return f"Hello from worker {i}"
+
+    print(ray.get([hello.remote(i) for i in range(4)]))
+    ray.shutdown()
+# tunnels closed when the block exits
+```
+
+When you're done, `krayne delete my-cluster` (or `delete_cluster(...)` from the SDK) tears the cluster down.
 
 ## Interactive TUI
 
