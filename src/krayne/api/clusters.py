@@ -14,10 +14,9 @@ from krayne.api.types import (
     WorkerGroupInfo,
 )
 from krayne.config.models import ClusterConfig
-from krayne.config.settings import load_krayne_settings
 from krayne.errors import ClusterTimeoutError, KrayneError
-from krayne.kube.client import DefaultKubeClient, KubeClient, _extract_status
-from krayne.kube.manifest import RAY_IMAGE, build_manifest
+from krayne.kube.client import KubeClient, _extract_status, get_kube_client
+from krayne.kube.manifest import _get_ray_image, build_manifest
 
 
 def _resolve_client(
@@ -27,12 +26,7 @@ def _resolve_client(
 ) -> KubeClient:
     if client is not None:
         return client
-    if kubeconfig is None:
-        settings = load_krayne_settings()
-        kubeconfig = settings.kubeconfig
-        if context is None:
-            context = settings.kube_context
-    return DefaultKubeClient(kubeconfig=kubeconfig, context=context)
+    return get_kube_client(kubeconfig=kubeconfig, context=context)
 
 
 def create_cluster(
@@ -369,13 +363,17 @@ def _obj_to_details(
         .get("containers", [{}])[0]
     )
     head_res = head_container.get("resources", {}).get("requests", {})
-    head_image = head_container.get("image", RAY_IMAGE)
+    head_image = head_container.get("image") or _get_ray_image()
+    # Head is schedulable iff rayStartParams.num-cpus is set to a non-zero value.
+    head_num_cpus = head_spec.get("rayStartParams", {}).get("num-cpus", "0")
+    runs_tasks = head_num_cpus not in ("0", "0.0", "", None)
 
     head = HeadNodeInfo(
         cpus=str(head_res.get("cpu", "0")),
         memory=str(head_res.get("memory", "0")),
         gpus=int(head_res.get("nvidia.com/gpu", 0)),
         image=head_image,
+        runs_tasks=runs_tasks,
     )
 
     worker_groups: list[WorkerGroupInfo] = []
@@ -386,9 +384,6 @@ def _obj_to_details(
             .get("containers", [{}])[0]
         )
         res = container.get("resources", {}).get("requests", {})
-        ns = (
-            wg_spec.get("template", {}).get("spec", {}).get("nodeSelector", {})
-        )
         worker_groups.append(
             WorkerGroupInfo(
                 name=wg_spec.get("groupName", ""),
@@ -398,7 +393,6 @@ def _obj_to_details(
                 cpus=str(res.get("cpu", "0")),
                 memory=str(res.get("memory", "0")),
                 gpus=int(res.get("nvidia.com/gpu", 0)),
-                gpu_type=ns.get("cloud.google.com/gke-accelerator"),
             )
         )
 

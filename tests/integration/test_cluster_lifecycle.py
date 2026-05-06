@@ -53,7 +53,9 @@ class TestClusterLifecycle:
         config = ClusterConfig(
             name=self.CLUSTER_NAME,
             namespace=self.NAMESPACE,
-            head=HeadNodeConfig(cpus="500m", memory="4Gi"),
+            # head cpus must be >= HEAD_MIN_CPUS (1); below that is silently
+            # clamped up by the manifest builder, so set it explicitly.
+            head=HeadNodeConfig(cpus="1", memory="4Gi"),
             worker_groups=[WorkerGroupConfig(cpus="500m", memory="1Gi")],
         )
 
@@ -77,7 +79,7 @@ class TestClusterLifecycle:
                 self.CLUSTER_NAME, self.NAMESPACE, client=kube_client
             )
             assert details.info.name == self.CLUSTER_NAME
-            assert details.head.cpus == "500m"
+            assert details.head.cpus == "1"
             assert len(details.worker_groups) == 1
 
             # SCALE

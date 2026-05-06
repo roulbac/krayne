@@ -110,11 +110,13 @@ def format_cluster_details(
     head_table.add_column("CPUs", justify="right")
     head_table.add_column("Memory")
     head_table.add_column("GPUs", justify="right")
+    head_table.add_column("Runs tasks")
     head_table.add_column("Image")
     head_table.add_row(
         str(details.head.cpus),
         details.head.memory,
         str(details.head.gpus),
+        "yes" if details.head.runs_tasks else "no",
         details.head.image,
     )
     console.print(head_table)
@@ -129,7 +131,6 @@ def format_cluster_details(
         wg_table.add_column("CPUs", justify="right")
         wg_table.add_column("Memory")
         wg_table.add_column("GPUs", justify="right")
-        wg_table.add_column("GPU Type")
         for wg in details.worker_groups:
             wg_table.add_row(
                 wg.name,
@@ -139,7 +140,6 @@ def format_cluster_details(
                 str(wg.cpus),
                 wg.memory,
                 str(wg.gpus),
-                wg.gpu_type or "-",
             )
         console.print(wg_table)
 

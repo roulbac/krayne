@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 DEFAULT_CPUS = "1"
 DEFAULT_MEMORY = "2Gi"
+DEFAULT_HEAD_CPUS = "1"
 DEFAULT_HEAD_MEMORY = "4Gi"
+
+# Valid values for the KubeRay autoscaler's upscalingMode field.
+# Source: https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/configuring-autoscaling.html
+UPSCALING_MODES: tuple[str, ...] = ("Conservative", "Default", "Aggressive")
 
 
 class ServicesConfig(BaseModel):
@@ -16,12 +23,15 @@ class ServicesConfig(BaseModel):
 
 
 class HeadNodeConfig(BaseModel):
-    """Head node resource configuration."""
+    """Head node resource configuration. By default the head is a control plane
+    only (``runs_tasks=False`` → Ray sees 0 schedulable CPUs), so user tasks are
+    routed to workers. GPU support is intentionally omitted — GPUs belong on
+    workers."""
 
-    cpus: str = DEFAULT_CPUS
+    cpus: str = DEFAULT_HEAD_CPUS
     memory: str = DEFAULT_HEAD_MEMORY
-    gpus: int = 0
     image: str | None = None
+    runs_tasks: bool = False
 
     @field_validator("cpus", mode="before")
     @classmethod
@@ -34,7 +44,7 @@ class AutoscalerConfig(BaseModel):
 
     enabled: bool = True
     idle_timeout_seconds: int = 60
-    upscaling_mode: str = "Default"
+    upscaling_mode: Literal["Conservative", "Default", "Aggressive"] = "Default"
     cpu: str = "500m"
     memory: str = "512Mi"
 
@@ -49,7 +59,6 @@ class WorkerGroupConfig(BaseModel):
     cpus: str = DEFAULT_CPUS
     memory: str = DEFAULT_MEMORY
     gpus: int = 0
-    gpu_type: str = "t4"
     image: str | None = None
 
     @field_validator("cpus", mode="before")

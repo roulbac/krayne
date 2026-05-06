@@ -46,7 +46,7 @@ Press `c` to open a prefilled form with all default values from the cluster conf
 
 - **Cluster** — name (required), namespace
 - **Head Node** — CPUs (`1`), memory (`4Gi`), GPUs (`0`)
-- **Worker Group** — name (`worker`), replicas (`1`), CPUs (`1`), memory (`2Gi`), GPUs (`0`), GPU type (`t4`)
+- **Worker Group** — name (`worker`), replicas (`1`), CPUs (`1`), memory (`2Gi`), GPUs (`0`)
 - **Services** — Notebook, Code Server, SSH (all enabled by default)
 
 Modify any values and press `Ctrl+S` or click **Create** to submit. Validation errors are shown inline.

@@ -61,7 +61,7 @@ Both the CLI and SDK produce the same result — a fully configured Ray cluster 
         name="my-experiment",
         namespace="ml-team",
         worker_groups=[
-            WorkerGroupConfig(replicas=2, gpus=1, gpu_type="a100")
+            WorkerGroupConfig(replicas=2, gpus=1)
         ],
     )
 
@@ -127,7 +127,7 @@ The CLI is a thin wrapper — every operation available from the command line is
 | Feature | Description |
 |---|---|
 | **Zero-config defaults** | `krayne create my-cluster` just works — sensible CPU, memory, and service defaults |
-| **GPU support** | One flag to add GPUs: `--gpus-per-worker 1 --worker-gpu-type a100` |
+| **GPU support** | One flag to add GPUs: `--gpus-per-worker 1` |
 | **YAML configuration** | Full cluster spec in a YAML file for version control and reproducibility |
 | **Local sandbox** | `krayne sandbox setup` spins up a local k3s cluster with KubeRay for development |
 | **JSON output** | Every command supports `--output json` for scripting and pipelines |

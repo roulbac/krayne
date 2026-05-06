@@ -13,8 +13,10 @@ from textual.worker import Worker, WorkerState
 from krayne.api.clusters import create_cluster
 from krayne.config.models import (
     DEFAULT_CPUS,
+    DEFAULT_HEAD_CPUS,
     DEFAULT_HEAD_MEMORY,
     DEFAULT_MEMORY,
+    UPSCALING_MODES,
     AutoscalerConfig,
     ClusterConfig,
     HeadNodeConfig,
@@ -24,22 +26,6 @@ from krayne.config.models import (
 from krayne.errors import KrayneError
 from krayne.tui.widgets.header import HeaderBar
 from krayne.tui.widgets.status_bar import StatusBar
-
-
-GPU_TYPE_OPTIONS = [
-    ("N/A", "N/A"),
-    ("T4", "t4"),
-    ("V100", "v100"),
-    ("A10G", "a10g"),
-    ("L4", "l4"),
-    ("A100", "a100"),
-    ("H100", "h100"),
-    ("H200", "h200"),
-    ("B100", "b100"),
-    ("B200", "b200"),
-    ("GB200", "gb200"),
-    ("GB300", "gb300"),
-]
 
 
 class CreateFlowScreen(Screen):
@@ -80,14 +66,12 @@ class CreateFlowScreen(Screen):
                     yield Static("[bold]Head Node[/bold]", classes="form-section-title")
                     with Horizontal(classes="form-row"):
                         yield Label("CPUs:")
-                        yield Input(value=DEFAULT_CPUS, id="input-head-cpus")
+                        yield Input(value=DEFAULT_HEAD_CPUS, id="input-head-cpus")
                         yield Label("Memory:")
                         yield Input(value=DEFAULT_HEAD_MEMORY, id="input-head-memory")
                     with Horizontal(classes="form-row"):
-                        yield Label("GPU Type:")
-                        yield Input(value="t4", id="input-head-gpu-type")
-                        yield Label("GPUs:")
-                        yield Input(value="0", id="input-head-gpus", type="integer")
+                        yield Label("Run tasks on head:", classes="switch-label")
+                        yield Switch(value=False, id="switch-head-runs-tasks")
 
                 # ── Tab 3: Workers ──────────────────
                 with TabPane("Workers", id="tab-workers"):
@@ -108,14 +92,6 @@ class CreateFlowScreen(Screen):
                                 with Horizontal(classes="form-row"):
                                     yield Label("GPUs:")
                                     yield Input(value="0", id="input-wg0-gpus", type="integer")
-                                with Horizontal(classes="form-row"):
-                                    yield Label("GPU Type:")
-                                    yield Select(
-                                        GPU_TYPE_OPTIONS,
-                                        value="N/A",
-                                        id="input-wg0-gpu-type",
-                                        classes="gpu-type-select",
-                                    )
 
                     yield Container(id="extra-wg-container")
                     yield Button("+ Add Worker Group", variant="default", id="btn-add-wg")
@@ -123,13 +99,18 @@ class CreateFlowScreen(Screen):
                 # ── Tab 4: Autoscaling ─────────────
                 with TabPane("Autoscaling", id="tab-autoscaling"):
                     yield Static("[bold]Autoscaler[/bold]", classes="form-section-title")
-                    with Horizontal(classes="form-row"):
+                    with Horizontal(classes="form-row mixed-switch-row"):
                         yield Label("Enabled:")
                         yield Switch(value=True, id="switch-autoscaler")
                         yield Label("Idle Timeout (s):")
                         yield Input(value="60", id="input-idle-timeout", type="integer")
                         yield Label("Upscaling Mode:")
-                        yield Input(value="Default", id="input-upscaling-mode")
+                        yield Select(
+                            [(mode, mode) for mode in UPSCALING_MODES],
+                            value="Default",
+                            allow_blank=False,
+                            id="select-upscaling-mode",
+                        )
 
                     with Vertical(classes="form-section", id="scaling-wg0"):
                         yield Static("[bold]Worker Group 1[/bold]", classes="form-section-title")
@@ -147,11 +128,11 @@ class CreateFlowScreen(Screen):
                 with TabPane("Services", id="tab-services"):
                     yield Static("[bold]Services[/bold]", classes="form-section-title")
                     with Horizontal(classes="form-row"):
-                        yield Label("Notebook:")
+                        yield Label("Notebook:", classes="switch-label")
                         yield Switch(value=True, id="switch-notebook")
-                        yield Label("Code Server:")
+                        yield Label("Code Server:", classes="switch-label")
                         yield Switch(value=True, id="switch-code-server")
-                        yield Label("SSH:")
+                        yield Label("SSH:", classes="switch-label")
                         yield Switch(value=True, id="switch-ssh")
 
                 # ── Tab 6: Review ───────────────────
@@ -250,13 +231,6 @@ class CreateFlowScreen(Screen):
         gpus_row.mount(Label("GPUs:"))
         gpus_row.mount(Input(value="0", id=f"input-wg{idx}-gpus"))
         col2.mount(gpus_row)
-        type_row = Horizontal(classes="form-row")
-        type_row.mount(Label("GPU Type:"))
-        type_row.mount(Select(
-            GPU_TYPE_OPTIONS, value="N/A",
-            id=f"input-wg{idx}-gpu-type", classes="gpu-type-select",
-        ))
-        col2.mount(type_row)
 
         columns.mount(col1)
         columns.mount(col2)
@@ -337,13 +311,6 @@ class CreateFlowScreen(Screen):
                 errors.append(("Workers", f"{group_label}: CPUs is required"))
             if not self.query_one(f"{prefix}-memory", Input).value.strip():
                 errors.append(("Workers", f"{group_label}: memory is required"))
-            gpus_val = int(self.query_one(f"{prefix}-gpus", Input).value.strip() or "0")
-            gpu_type_val = self.query_one(f"{prefix}-gpu-type", Select).value
-            if gpus_val > 0 and gpu_type_val == "N/A":
-                errors.append(("Workers", f"{group_label}: GPU type is required when GPUs > 0"))
-            if gpus_val == 0 and gpu_type_val != "N/A":
-                errors.append(("Workers", f"{group_label}: GPU type must be N/A when GPUs is 0"))
-
         # Autoscaling tab — per-group replicas
         for idx in range(self._extra_worker_groups + 1):
             prefix = f"#input-wg{idx}"
@@ -362,7 +329,7 @@ class CreateFlowScreen(Screen):
         head = HeadNodeConfig(
             cpus=self.query_one("#input-head-cpus", Input).value.strip(),
             memory=self.query_one("#input-head-memory", Input).value.strip(),
-            gpus=int(self.query_one("#input-head-gpus", Input).value.strip() or "0"),
+            runs_tasks=self.query_one("#switch-head-runs-tasks", Switch).value,
         )
 
         worker_groups: list[WorkerGroupConfig] = []
@@ -385,8 +352,6 @@ class CreateFlowScreen(Screen):
     def _read_worker_group(self, idx: int) -> WorkerGroupConfig:
         prefix = f"#input-wg{idx}"
         gpus = int(self.query_one(f"{prefix}-gpus", Input).value.strip() or "0")
-        gpu_type_val = self.query_one(f"{prefix}-gpu-type", Select).value
-        gpu_type = str(gpu_type_val) if gpu_type_val != "N/A" else "t4"
         return WorkerGroupConfig(
             name=self.query_one(f"{prefix}-name", Input).value.strip() or "worker",
             replicas=int(self.query_one(f"{prefix}-replicas", Input).value.strip() or "1"),
@@ -395,7 +360,6 @@ class CreateFlowScreen(Screen):
             cpus=self.query_one(f"{prefix}-cpus", Input).value.strip(),
             memory=self.query_one(f"{prefix}-memory", Input).value.strip(),
             gpus=gpus,
-            gpu_type=gpu_type,
         )
 
     def _build_services(self) -> ServicesConfig:
@@ -411,7 +375,7 @@ class CreateFlowScreen(Screen):
             idle_timeout_seconds=int(
                 self.query_one("#input-idle-timeout", Input).value.strip() or "60"
             ),
-            upscaling_mode=self.query_one("#input-upscaling-mode", Input).value.strip() or "Default",
+            upscaling_mode=self.query_one("#select-upscaling-mode", Select).value,
         )
 
     # ── Review ──────────────────────────────────────────
@@ -445,9 +409,11 @@ class CreateFlowScreen(Screen):
 
         lines.append("")
         lines.append("[bold]Head Node[/bold]")
-        lines.append(f"  [dim]CPUs:[/dim]   {config.head.cpus}")
-        lines.append(f"  [dim]Memory:[/dim] {config.head.memory}")
-        lines.append(f"  [dim]GPUs:[/dim]   {config.head.gpus}")
+        lines.append(f"  [dim]CPUs:[/dim]       {config.head.cpus}")
+        lines.append(f"  [dim]Memory:[/dim]     {config.head.memory}")
+        lines.append(
+            f"  [dim]Runs tasks:[/dim] {'yes' if config.head.runs_tasks else 'no (control plane)'}"
+        )
 
         lines.append("")
         lines.append("[bold]Workers[/bold]")
@@ -458,7 +424,7 @@ class CreateFlowScreen(Screen):
                 f"{wg.memory} mem",
             ]
             if wg.gpus:
-                parts.append(f"{wg.gpus} GPUs ({wg.gpu_type})")
+                parts.append(f"{wg.gpus} GPUs")
             lines.append(f"  {wg.name}: {', '.join(parts)}")
 
         lines.append("")

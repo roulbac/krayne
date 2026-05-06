@@ -109,7 +109,7 @@ class TestServicesAndTunnel:
         config = ClusterConfig(
             name=self.CLUSTER_NAME,
             namespace=self.NAMESPACE,
-            head=HeadNodeConfig(cpus="500m", memory="4Gi"),
+            head=HeadNodeConfig(cpus="1", memory="4Gi"),
             worker_groups=[WorkerGroupConfig(cpus="500m", memory="1Gi")],
             services=ServicesConfig(notebook=True, code_server=True, ssh=True),
         )

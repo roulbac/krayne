@@ -70,7 +70,7 @@ config = ClusterConfig(
     name="training-run",
     namespace="ml-team",
     worker_groups=[
-        WorkerGroupConfig(replicas=4, gpus=1, gpu_type="a100")
+        WorkerGroupConfig(replicas=4, gpus=1)
     ],
 )
 info = create_cluster(config, wait=True, timeout=600)
@@ -277,7 +277,7 @@ from krayne.config import ClusterConfig, WorkerGroupConfig
 
 config = ClusterConfig(
     name="experiment",
-    worker_groups=[WorkerGroupConfig(replicas=2, gpus=1, gpu_type="a100")],
+    worker_groups=[WorkerGroupConfig(replicas=2, gpus=1)],
 )
 
 # Tunnels are opened by default
@@ -424,7 +424,6 @@ class WorkerGroupInfo:
     cpus: str            # CPUs per worker
     memory: str          # Memory per worker
     gpus: int            # GPUs per worker
-    gpu_type: str | None # GPU accelerator type
 ```
 
 ### `ManagedClusterResult`

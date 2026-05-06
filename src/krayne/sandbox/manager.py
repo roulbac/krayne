@@ -14,6 +14,7 @@ from krayne.config.settings import (
     KrayneSettings,
 )
 from krayne.errors import (
+    ConfigValidationError,
     DockerNotFoundError,
     SandboxAlreadyExistsError,
     SandboxError,
@@ -275,10 +276,18 @@ def teardown_sandbox() -> None:
     if SANDBOX_KUBECONFIG.exists():
         SANDBOX_KUBECONFIG.unlink()
 
-    # Clear krayne settings if they point to the sandbox
-    settings = load_krayne_settings()
-    if settings.kubeconfig == str(SANDBOX_KUBECONFIG):
+    # Clear krayne settings if they point to the sandbox.  A
+    # ConfigValidationError here means the settings file is already in
+    # a broken state (e.g. references a missing kubeconfig) — treat
+    # that as "clear the settings" since the sandbox kubeconfig is
+    # about to disappear anyway.
+    try:
+        settings = load_krayne_settings()
+    except ConfigValidationError:
         clear_krayne_settings()
+    else:
+        if settings.kubeconfig == str(SANDBOX_KUBECONFIG):
+            clear_krayne_settings()
 
 
 def sandbox_status() -> SandboxStatus:

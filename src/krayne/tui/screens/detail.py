@@ -171,10 +171,7 @@ class ClusterDetailScreen(Screen):
             lines.append(f"  [dim]Replicas:[/dim] {wg.replicas}")
             lines.append(f"  [dim]CPUs:[/dim]     {wg.cpus}")
             lines.append(f"  [dim]Memory:[/dim]   {wg.memory}")
-            gpu_line = f"  [dim]GPUs:[/dim]     {wg.gpus}"
-            if wg.gpu_type:
-                gpu_line += f" ({wg.gpu_type})"
-            lines.append(gpu_line)
+            lines.append(f"  [dim]GPUs:[/dim]     {wg.gpus}")
             lines.append("")
 
         if not self._details.worker_groups:
@@ -274,6 +271,7 @@ class ClusterDetailScreen(Screen):
 
         lines.append("[bold]Head Node[/bold]")
         lines.append(f"  CPUs: {d.head.cpus}    Memory: {d.head.memory}    GPUs: {d.head.gpus}")
+        lines.append(f"  Runs tasks: {'yes' if d.head.runs_tasks else 'no (control plane)'}")
         lines.append(f"  Image: {d.head.image}")
 
         lines.append("")
@@ -282,10 +280,7 @@ class ClusterDetailScreen(Screen):
             lines.append(f"  [bold]{wg.name}[/bold]")
             parts = [f"Replicas: {wg.replicas}", f"CPUs: {wg.cpus}", f"Memory: {wg.memory}"]
             if wg.gpus:
-                gpu = f"GPUs: {wg.gpus}"
-                if wg.gpu_type:
-                    gpu += f" ({wg.gpu_type})"
-                parts.append(gpu)
+                parts.append(f"GPUs: {wg.gpus}")
             lines.append(f"    {', '.join(parts)}")
 
         lines.append("")

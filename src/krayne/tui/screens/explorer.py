@@ -181,6 +181,7 @@ class ExplorerScreen(Screen):
             ("n", "NS"),
             ("r", "Refresh"),
             ("?", "Help"),
+            ("q", "Quit"),
         ])
 
     # ── Selection ───────────────────────────────────

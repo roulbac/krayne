@@ -14,9 +14,9 @@ from textual.worker import Worker, WorkerState
 def _fetch_namespaces() -> list[str]:
     """Attempt to list namespaces from the cluster."""
     try:
-        from krayne.kube.client import DefaultKubeClient
+        from krayne.kube.client import get_kube_client
 
-        client = DefaultKubeClient()
+        client = get_kube_client()
         return client.list_namespaces()
     except Exception:
         return []

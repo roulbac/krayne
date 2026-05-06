@@ -66,7 +66,7 @@ Navigate clusters, create with prefilled forms, scale, delete, and toggle tunnel
 
     config = ClusterConfig(
         name="my-experiment",
-        worker_groups=[WorkerGroupConfig(replicas=2, gpus=1, gpu_type="a100")],
+        worker_groups=[WorkerGroupConfig(replicas=2, gpus=1)],
     )
 
     info = create_cluster(config, wait=True)

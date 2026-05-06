@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from krayne.config import (
     DEFAULT_CPUS,
+    DEFAULT_HEAD_CPUS,
     DEFAULT_HEAD_MEMORY,
     DEFAULT_MEMORY,
     AutoscalerConfig,
@@ -25,9 +26,8 @@ class TestClusterConfigDefaults:
         cfg = ClusterConfig(name="test")
         assert cfg.name == "test"
         assert cfg.namespace == "default"
-        assert cfg.head.cpus == DEFAULT_CPUS
+        assert cfg.head.cpus == DEFAULT_HEAD_CPUS
         assert cfg.head.memory == DEFAULT_HEAD_MEMORY
-        assert cfg.head.gpus == 0
         assert len(cfg.worker_groups) == 1
         assert cfg.worker_groups[0].replicas == 0
         assert cfg.worker_groups[0].min_replicas == 0
@@ -51,7 +51,7 @@ class TestClusterConfigDefaults:
         cfg = ClusterConfig(
             name="gpu",
             worker_groups=[
-                WorkerGroupConfig(name="a100", replicas=4, gpus=8, gpu_type="a100"),
+                WorkerGroupConfig(name="a100", replicas=4, gpus=8),
                 WorkerGroupConfig(name="cpu", replicas=2),
             ],
         )
@@ -106,14 +106,13 @@ class TestYamlLoading:
               - name: gpu-workers
                 replicas: 2
                 gpus: 1
-                gpu_type: a100
             """)
         )
         cfg = load_config_from_yaml(yaml_file)
         assert cfg.name == "from-yaml"
         assert cfg.namespace == "ml-team"
         assert cfg.head.cpus == "8"
-        assert cfg.worker_groups[0].gpu_type == "a100"
+        assert cfg.worker_groups[0].gpus == 1
 
     def test_overrides_take_precedence(self, tmp_path: Path):
         yaml_file = tmp_path / "cluster.yaml"
@@ -157,7 +156,6 @@ class TestYamlWithAutoscaling:
                 min_replicas: 0
                 max_replicas: 10
                 gpus: 1
-                gpu_type: a100
             """)
         )
         cfg = load_config_from_yaml(yaml_file)

@@ -57,6 +57,39 @@ def _handle_error(exc: Exception) -> None:
     raise typer.Exit(1)
 
 
+def _current_krayne_context_for(kubeconfig: Path) -> str | None:
+    """Return the kube_context saved in ~/.krayne/config.yaml when it's
+    tied to *kubeconfig*, else ``None``.
+
+    Read raw (not via ``load_krayne_settings``) so a stale or invalid
+    settings file doesn't prevent ``krayne init`` from running — the
+    whole point of re-init is to fix such a file.
+    """
+    import yaml as _yaml
+
+    from krayne.config.settings import PRISM_CONFIG_FILE
+
+    if not PRISM_CONFIG_FILE.exists():
+        return None
+    try:
+        raw = _yaml.safe_load(PRISM_CONFIG_FILE.read_text()) or {}
+    except _yaml.YAMLError:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    saved_kubeconfig = raw.get("kubeconfig")
+    if saved_kubeconfig is None:
+        return None
+    try:
+        same = Path(saved_kubeconfig).expanduser().resolve() == kubeconfig
+    except OSError:
+        same = False
+    if not same:
+        return None
+    ctx = raw.get("kube_context")
+    return ctx if isinstance(ctx, str) else None
+
+
 from krayne.api import (  # noqa: E402
     create_cluster as _create_cluster,
     delete_cluster as _delete_cluster,
@@ -73,6 +106,7 @@ from krayne.config import (  # noqa: E402
     WorkerGroupConfig,
     load_config_from_yaml,
     DEFAULT_CPUS,
+    DEFAULT_HEAD_CPUS,
     DEFAULT_HEAD_MEMORY,
     save_krayne_settings,
 )
@@ -99,8 +133,7 @@ def create(
     name: str = typer.Argument(..., help="Cluster name."),
     namespace: str = typer.Option("default", "-n", "--namespace"),
     gpus_per_worker: int = typer.Option(0, "--gpus-per-worker"),
-    worker_gpu_type: str = typer.Option("t4", "--worker-gpu-type"),
-    cpus_in_head: str = typer.Option(DEFAULT_CPUS, "--cpus-in-head"),
+    cpus_in_head: str = typer.Option(DEFAULT_HEAD_CPUS, "--cpus-in-head"),
     memory_in_head: str = typer.Option(DEFAULT_HEAD_MEMORY, "--memory-in-head"),
     workers: int = typer.Option(0, "--workers", help="Desired worker replicas (initial count)."),
     min_workers: int = typer.Option(0, "--min-workers", help="Minimum worker replicas for autoscaling."),
@@ -124,7 +157,6 @@ def create(
                 min_replicas=workers if no_autoscaling else min_workers,
                 max_replicas=workers if no_autoscaling else max_workers,
                 gpus=gpus_per_worker,
-                gpu_type=worker_gpu_type,
             )
             autoscaler = AutoscalerConfig(enabled=not no_autoscaling)
             config = ClusterConfig(
@@ -319,7 +351,12 @@ def init(
             else:
                 import questionary
 
-                current = raw.get("current-context", "")
+                # "current" is the context krayne is currently configured
+                # with — not kubectl's ``current-context`` — and only
+                # counts when we're re-initialising against the same
+                # kubeconfig.  Read the settings file raw so a previously
+                # invalid/stale file doesn't stop us from re-running init.
+                current = _current_krayne_context_for(resolved)
                 ctx_choices = [
                     questionary.Choice(
                         f"{name}  (current)" if name == current else name,
@@ -341,6 +378,25 @@ def init(
                     f"Context '{context}' not found in kubeconfig. "
                     f"Available: {', '.join(contexts)}"
                 )
+
+        # Dry-run: try to initialise a kube client against the selected
+        # (kubeconfig, context).  ``get_kube_client`` checks KubeRay is
+        # installed before constructing the client, so a missing
+        # operator, bad context, or unreachable API surfaces here — and
+        # we refuse to persist a broken ~/.krayne/config.yaml.
+        from krayne.kube.client import (
+            clear_kube_client_cache,
+            get_kube_client,
+        )
+
+        try:
+            get_kube_client(kubeconfig=str(resolved), context=context)
+        finally:
+            # This dry-run cached a client keyed on the *current*
+            # settings-file digest (which doesn't reflect what we're
+            # about to save).  Drop it so real calls re-validate
+            # against the saved settings.
+            clear_kube_client_cache()
 
         save_krayne_settings(
             KrayneSettings(kubeconfig=str(resolved), kube_context=context)

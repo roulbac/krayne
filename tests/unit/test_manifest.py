@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from krayne.config import AutoscalerConfig, ClusterConfig, HeadNodeConfig, WorkerGroupConfig
 from krayne.config.models import ServicesConfig
-from krayne.kube.manifest import RAY_IMAGE, build_manifest
+from krayne.kube.manifest import _get_ray_image, build_manifest
 
 
 class TestBuildManifest:
@@ -21,21 +21,76 @@ class TestBuildManifest:
         m = build_manifest(cfg)
         head = m["spec"]["headGroupSpec"]
         container = head["template"]["spec"]["containers"][0]
-        assert container["resources"]["requests"]["cpu"] == "8"
-        assert container["resources"]["requests"]["memory"] == "32Gi"
-        assert container["image"] == RAY_IMAGE
+        # requests == limits → Guaranteed QoS
+        assert container["resources"]["requests"] == {"cpu": "8", "memory": "32Gi"}
+        assert container["resources"]["limits"] == {"cpu": "8", "memory": "32Gi"}
+        # Head is always a control plane regardless of cpu count
+        assert head["rayStartParams"] == {"dashboard-host": "0.0.0.0", "num-cpus": "0"}
+        assert container["image"] == _get_ray_image()
+
+    def test_head_clamps_to_minimum(self):
+        # Below-minimum values get clamped up to the floor (1 CPU / 4Gi).
+        cfg = ClusterConfig(
+            name="h", head=HeadNodeConfig(cpus="500m", memory="1Gi")
+        )
+        m = build_manifest(cfg)
+        container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]
+        assert container["resources"]["requests"]["cpu"] == "1"
+        assert container["resources"]["requests"]["memory"] == "4Gi"
+        assert container["resources"]["limits"]["cpu"] == "1"
+        assert container["resources"]["limits"]["memory"] == "4Gi"
+
+    def test_head_above_minimum_unchanged(self):
+        cfg = ClusterConfig(name="h", head=HeadNodeConfig(cpus=4, memory="16Gi"))
+        m = build_manifest(cfg)
+        req = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["resources"]["requests"]
+        assert req == {"cpu": "4", "memory": "16Gi"}
+
+    def test_head_runs_tasks_true_advertises_cpus(self):
+        cfg = ClusterConfig(name="h", head=HeadNodeConfig(cpus=4, runs_tasks=True))
+        m = build_manifest(cfg)
+        assert m["spec"]["headGroupSpec"]["rayStartParams"]["num-cpus"] == "4"
+
+    def test_head_runs_tasks_true_uses_clamped_value(self):
+        # Below-minimum cpus (500m) get clamped up to the floor (1), which
+        # then translates to num-cpus="1" when runs_tasks=True.
+        cfg = ClusterConfig(
+            name="h", head=HeadNodeConfig(cpus="500m", runs_tasks=True)
+        )
+        m = build_manifest(cfg)
+        assert m["spec"]["headGroupSpec"]["rayStartParams"]["num-cpus"] == "1"
+
+    def test_head_runs_tasks_true_fractional_cpus(self):
+        cfg = ClusterConfig(
+            name="h", head=HeadNodeConfig(cpus="1500m", runs_tasks=True)
+        )
+        m = build_manifest(cfg)
+        assert m["spec"]["headGroupSpec"]["rayStartParams"]["num-cpus"] == "1.5"
+
+    def test_head_runs_tasks_default_false(self):
+        # Default: head is a control plane regardless of cpus value
+        cfg = ClusterConfig(name="h", head=HeadNodeConfig(cpus=8))
+        m = build_manifest(cfg)
+        assert m["spec"]["headGroupSpec"]["rayStartParams"]["num-cpus"] == "0"
+
+    def test_worker_resources(self):
+        cfg = ClusterConfig(
+            name="w",
+            worker_groups=[WorkerGroupConfig(cpus=4, memory="16Gi")],
+        )
+        m = build_manifest(cfg)
+        wg = m["spec"]["workerGroupSpecs"][0]
+        container = wg["template"]["spec"]["containers"][0]
+        # requests == limits → Guaranteed QoS, KubeRay autodetects num-cpus + memory
+        assert container["resources"]["requests"] == {"cpu": "4", "memory": "16Gi"}
+        assert container["resources"]["limits"] == {"cpu": "4", "memory": "16Gi"}
+        assert wg["rayStartParams"] == {}
 
     def test_head_custom_image(self):
         cfg = ClusterConfig(name="h", head=HeadNodeConfig(image="my/image:v1"))
         m = build_manifest(cfg)
         container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]
         assert container["image"] == "my/image:v1"
-
-    def test_head_with_gpus(self):
-        cfg = ClusterConfig(name="h", head=HeadNodeConfig(gpus=2))
-        m = build_manifest(cfg)
-        res = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["resources"]
-        assert res["limits"]["nvidia.com/gpu"] == 2
 
     def test_worker_group_defaults(self):
         cfg = ClusterConfig(name="w")
@@ -47,17 +102,17 @@ class TestBuildManifest:
         assert workers[0]["minReplicas"] == 0
         assert workers[0]["maxReplicas"] == 1
 
-    def test_gpu_worker_has_node_selector(self):
+    def test_gpu_worker_has_gpu_resources(self):
         cfg = ClusterConfig(
             name="gpu",
-            worker_groups=[WorkerGroupConfig(gpus=1, gpu_type="a100")],
+            worker_groups=[WorkerGroupConfig(gpus=1)],
         )
         m = build_manifest(cfg)
         wg = m["spec"]["workerGroupSpecs"][0]
-        ns = wg["template"]["spec"]["nodeSelector"]
-        assert ns["cloud.google.com/gke-accelerator"] == "a100"
         res = wg["template"]["spec"]["containers"][0]["resources"]
         assert res["limits"]["nvidia.com/gpu"] == 1
+        assert res["requests"]["nvidia.com/gpu"] == 1
+        assert "nodeSelector" not in wg["template"]["spec"]
 
     def test_cpu_worker_no_node_selector(self):
         cfg = ClusterConfig(name="cpu")
@@ -70,7 +125,7 @@ class TestBuildManifest:
             name="multi",
             worker_groups=[
                 WorkerGroupConfig(name="cpu", replicas=3),
-                WorkerGroupConfig(name="gpu", replicas=2, gpus=4, gpu_type="v100"),
+                WorkerGroupConfig(name="gpu", replicas=2, gpus=4),
             ],
         )
         m = build_manifest(cfg)
