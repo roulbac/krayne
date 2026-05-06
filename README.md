@@ -17,14 +17,30 @@ Navigate clusters, create with prefilled forms, scale, delete, and toggle tunnel
 pip install krayne
 ```
 
-### 1. Create a cluster
+### 1. Connect Krayne to your Kubernetes cluster
 
-Pick whichever entrypoint suits you — they all produce the same Ray cluster.
+`krayne init` picks a kubeconfig and context and saves them to `~/.krayne/config.yaml`. Run it once after installing — every other command reads from that file.
+
+```bash
+krayne init
+```
+
+By default this prompts you to choose between `~/.kube/config`, the local [sandbox](https://roulbac.github.io/krayne/guide/sandbox/) kubeconfig, and a custom path. To skip the prompts (e.g. in CI):
+
+```bash
+krayne init --kubeconfig ~/.kube/config --context my-context
+```
+
+> Don't have a Kubernetes cluster handy? Run `krayne sandbox setup` first to spin up a local k3s cluster with KubeRay pre-installed (Docker required).
+
+### 2. Create a cluster
+
+Pick whichever entrypoint suits you — they all produce the same Ray cluster. Pass `-n/--namespace` (or the `namespace=` field in `ClusterConfig`) to target a specific Kubernetes namespace; it defaults to `default`.
 
 **CLI:**
 
 ```bash
-krayne create my-cluster --gpus-per-worker 1 --workers 2
+krayne create my-cluster -n ml-team --gpus-per-worker 1 --workers 2
 ```
 
 **TUI** — press `c` in the explorer to open the create form:
@@ -41,12 +57,13 @@ from krayne.config import ClusterConfig, WorkerGroupConfig
 
 config = ClusterConfig(
     name="my-cluster",
+    namespace="ml-team",
     worker_groups=[WorkerGroupConfig(replicas=2, gpus=1)],
 )
 create_cluster(config, wait=True)
 ```
 
-### 2. Run a Ray job against it
+### 3. Run a Ray job against it
 
 `open_tunnel` opens port-forward tunnels to the cluster's services so `ray.init` can reach the head node from your laptop, and closes them on exit:
 
@@ -54,7 +71,7 @@ create_cluster(config, wait=True)
 import ray
 from krayne.api import open_tunnel
 
-with open_tunnel("my-cluster") as session:
+with open_tunnel("my-cluster", "ml-team") as session:
     ray.init(session.client_url)   # ray://localhost:...
 
     @ray.remote
@@ -66,7 +83,7 @@ with open_tunnel("my-cluster") as session:
 # tunnels closed when the block exits
 ```
 
-When you're done, `krayne delete my-cluster` (or `delete_cluster(...)` from the SDK) tears the cluster down.
+When you're done, `krayne delete my-cluster -n ml-team` (or `delete_cluster("my-cluster", "ml-team")` from the SDK) tears the cluster down.
 
 ## Interactive TUI
 
@@ -90,6 +107,7 @@ Or run it directly without installing: `uvx krayne tui`
 ## CLI Overview
 
 ```
+krayne init               Select kubeconfig + context (run once after install)
 krayne create <name>      Create a new Ray cluster
 krayne get                List clusters in a namespace
 krayne describe <name>    Show detailed cluster info
