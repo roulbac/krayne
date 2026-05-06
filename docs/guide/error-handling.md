@@ -56,16 +56,30 @@ classDiagram
   class KubeConnectionError {
     K8s API unreachable
   }
+  class KubeRayNotInstalledError {
+    +context: str
+  }
   class NamespaceNotFoundError {
     +namespace: str
   }
+  class SandboxError {
+    Base for sandbox errors
+  }
+  class DockerNotFoundError
+  class SandboxAlreadyExistsError
+  class SandboxNotFoundError
 
   KrayneError <|-- ClusterNotFoundError
   KrayneError <|-- ClusterAlreadyExistsError
   KrayneError <|-- ConfigValidationError
   KrayneError <|-- ClusterTimeoutError
   KrayneError <|-- KubeConnectionError
+  KrayneError <|-- KubeRayNotInstalledError
   KrayneError <|-- NamespaceNotFoundError
+  KrayneError <|-- SandboxError
+  SandboxError <|-- DockerNotFoundError
+  SandboxError <|-- SandboxAlreadyExistsError
+  SandboxError <|-- SandboxNotFoundError
 ```
 
 ---
@@ -125,7 +139,11 @@ except ClusterTimeoutError as e:
 | `ConfigValidationError` | Invalid YAML or config values | Check YAML syntax, field names, and value types |
 | `ClusterTimeoutError` | Cluster didn't reach `ready` in time | Increase `--timeout`, check pod status with `krayne describe` |
 | `KubeConnectionError` | Can't reach Kubernetes API | Check kubeconfig, verify cluster is running, run `krayne init` |
+| `KubeRayNotInstalledError` | The `rayclusters.ray.io` CRD is missing on the target cluster | Ask your cluster admin to install the KubeRay operator, or use `krayne sandbox setup` |
 | `NamespaceNotFoundError` | Specified namespace doesn't exist | Create the namespace first with `kubectl create namespace <name>` |
+| `DockerNotFoundError` | Docker CLI/daemon unavailable when running sandbox commands | Install Docker and start the daemon |
+| `SandboxAlreadyExistsError` | A `krayne-sandbox` container is already running | `krayne sandbox teardown` first, then retry |
+| `SandboxNotFoundError` | No sandbox to tear down or inspect | `krayne sandbox setup` first |
 
 ---
 

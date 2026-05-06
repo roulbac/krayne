@@ -7,7 +7,7 @@ Krayne includes a built-in **sandbox** — a local [k3s](https://k3s.io/) Kubern
 ## Prerequisites
 
 - **Docker** installed and running
-- At least **2 CPUs** and **6 GB RAM** allocated to Docker
+- At least **2 CPUs** and **4 GB RAM** allocated to Docker (the k3s container itself is given 6 GB)
 
 !!! tip "Check Docker resources"
     On Docker Desktop, go to **Settings → Resources** to verify CPU and memory allocation.

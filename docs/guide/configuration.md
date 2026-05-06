@@ -51,10 +51,10 @@ The only required field is `name`. Everything else has a default:
 
 This creates a cluster with:
 
-- Head: 15 CPUs, 48 Gi memory, no GPUs
-- 1 worker group: autoscaling from 0 to 1 worker (0 initial)
-- Autoscaling enabled by default
-- Jupyter notebook + SSH enabled
+- Head: 1 CPU, 4 Gi memory (control plane only — `runs_tasks=False`, so Ray's `num-cpus=0`)
+- 1 worker group named `worker`: autoscaling from 0 to 1 worker (0 initial), 1 CPU, 2 Gi memory each
+- Autoscaling enabled by default (Ray in-tree autoscaler, `Default` upscaling mode, 60 s idle timeout)
+- Jupyter notebook, code-server, and SSH all enabled on the head node
 
 ---
 
@@ -179,19 +179,21 @@ config = load_config_from_yaml(
 
 | Default | Value | Why |
 |---|---|---|
-| Head CPUs | `15` | Enough for GCS + dashboard + scheduling |
-| Head Memory | `48Gi` | Comfortable for object store and metadata |
-| Head GPUs | `0` | Head should not run GPU workloads |
+| Head CPUs | `1` | Minimum that boots the head pod (GCS, dashboard, autoscaler, postStart services). Head is clamped up to at least `1` CPU / `4Gi` memory in the manifest builder. |
+| Head Memory | `4Gi` | Same minimum-boot rationale — clamped up if you set a smaller value. |
+| Head `runs_tasks` | `false` | Ray `num-cpus=0` on the head, so user tasks are routed to workers. (No GPU support on the head — GPUs belong on workers.) |
 | Worker Replicas | `0` | Autoscaler manages worker count |
 | Worker Min Replicas | `0` | Scale to zero when idle |
 | Worker Max Replicas | `1` | Conservative default; increase for production |
-| Worker CPUs | `15` | Matches typical cloud node size |
-| Worker Memory | `48Gi` | Comfortable for most training workloads |
-| Worker GPUs | `0` | CPU-only by default; opt in via flag |
-| Autoscaling | enabled | Ray v2 autoscaler manages worker lifecycle |
+| Worker CPUs | `1` | Small CPU request so the cluster fits on modest sandboxes |
+| Worker Memory | `2Gi` | Small memory request so the cluster fits on modest sandboxes |
+| Worker GPUs | `0` | CPU-only by default; opt in via `--gpus-per-worker` |
+| Autoscaling | enabled | KubeRay in-tree autoscaler manages worker lifecycle |
 | Idle Timeout | `60s` | Scale down unused workers after 60 seconds |
-| Notebook | enabled | Most users want immediate notebook access |
-| Code Server | disabled | Opt-in; not all users need it |
+| Upscaling Mode | `Default` | One of `Conservative`, `Default`, `Aggressive` |
+| Notebook | enabled | Jupyter notebook on port `8888` |
+| Code Server | enabled | Browser IDE on port `8443` |
+| SSH | enabled | SSH to the head pod on port `22` (loopback-only inside the pod) |
 
 ---
 

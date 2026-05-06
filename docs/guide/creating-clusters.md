@@ -16,10 +16,10 @@ krayne create my-cluster
 
 The default cluster includes:
 
-- **Head node**: 15 CPUs, 48 Gi memory, no GPUs
-- **1 worker group**: autoscaling 0–1 workers (0 initial), 15 CPUs, 48 Gi memory
-- **Autoscaling**: enabled (Ray v2 in-tree autoscaler)
-- **Services**: Jupyter notebook + SSH enabled
+- **Head node**: 1 CPU, 4 Gi memory, no GPUs (control plane only — Ray ``num-cpus=0``)
+- **1 worker group**: autoscaling 0–1 workers (0 initial), 1 CPU, 2 Gi memory per worker
+- **Autoscaling**: enabled (KubeRay in-tree autoscaler)
+- **Services**: Jupyter notebook, code-server, and SSH enabled
 
 ---
 

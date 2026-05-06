@@ -45,9 +45,10 @@ The list auto-refreshes every 5 seconds. Press `r` for an immediate refresh.
 Press `c` to open a prefilled form with all default values from the cluster configuration:
 
 - **Cluster** — name (required), namespace
-- **Head Node** — CPUs (`1`), memory (`4Gi`), GPUs (`0`)
-- **Worker Group** — name (`worker`), replicas (`1`), CPUs (`1`), memory (`2Gi`), GPUs (`0`)
-- **Services** — Notebook, Code Server, SSH (all enabled by default)
+- **Head Node** — CPUs (`1`), memory (`4Gi`), and a "Run tasks on head" toggle (off by default — head GPUs are intentionally not exposed)
+- **Worker Group** — name (`worker`), CPUs (`1`), memory (`2Gi`), GPUs (`0`)
+- **Autoscaling** — per-group replicas (`0`), min replicas (`0`), max replicas (`1`)
+- **Services** — Notebook, code-server, SSH (all enabled by default)
 
 Modify any values and press `Ctrl+S` or click **Create** to submit. Validation errors are shown inline.
 

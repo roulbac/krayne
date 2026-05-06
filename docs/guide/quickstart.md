@@ -42,7 +42,7 @@ Choose one of two paths:
 
     ![krayne sandbox setup output](../assets/cli-sandbox-setup.png)
 
-    The sandbox requires Docker with at least 2 CPUs and 6 GB RAM.
+    The sandbox requires Docker with at least 2 CPUs and 4 GB RAM.
 
     Then run `krayne init` to select the sandbox kubeconfig:
 
@@ -71,7 +71,7 @@ Choose one of two paths:
 
 ## 3. Create your first cluster
 
-You have three equivalent paths — pick whichever suits you. They all produce the same Ray cluster.
+You have three paths — pick whichever suits you.
 
 === "CLI"
 
@@ -99,16 +99,16 @@ You have three equivalent paths — pick whichever suits you. They all produce t
 
     config = ClusterConfig(
         name="my-first-cluster",
-        worker_groups=[WorkerGroupConfig(replicas=1)],
+        worker_groups=[WorkerGroupConfig(replicas=1, max_replicas=1)],
     )
     create_cluster(config, wait=True)
     ```
 
 The default cluster has:
 
-- **Head node**: 15 CPUs, 48 Gi memory
-- **1 worker**: 15 CPUs, 48 Gi memory
-- **Services**: Jupyter notebook + SSH enabled
+- **Head node**: 1 CPU, 4 Gi memory (control-plane only — no Ray tasks scheduled here)
+- **Workers**: a single ``worker`` group, autoscaling between 0 and 1 replica (1 CPU, 2 Gi memory each)
+- **Services**: Jupyter notebook, code-server, and SSH enabled
 
 ## 4. Check your cluster
 

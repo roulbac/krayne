@@ -4,7 +4,7 @@ Krayne provides a command-line interface built with [Typer](https://typer.tiango
 
 ## Global options
 
-These options are available on every command:
+These options are defined on the top-level `krayne` callback and must be passed **before** the subcommand (e.g. `krayne -o json get`, not `krayne get -o json`):
 
 | Option | Description |
 |---|---|
@@ -72,8 +72,8 @@ krayne create <name> [OPTIONS]
 |---|---|---|
 | `-n`, `--namespace` | `default` | Kubernetes namespace |
 | `--gpus-per-worker` | `0` | Number of GPUs per worker node |
-| `--cpus-in-head` | `15` | CPU count for the head node |
-| `--memory-in-head` | `48Gi` | Memory for the head node |
+| `--cpus-in-head` | `1` | CPU count for the head node (clamped up to `1` minimum in the manifest) |
+| `--memory-in-head` | `4Gi` | Memory for the head node (clamped up to `4Gi` minimum in the manifest) |
 | `--workers` | `0` | Desired worker replicas (initial count) |
 | `--min-workers` | `0` | Minimum worker replicas for autoscaling |
 | `--max-workers` | `1` | Maximum worker replicas for autoscaling |
@@ -96,8 +96,8 @@ krayne create my-cluster --no-autoscaling --workers 4
 # From YAML config
 krayne create my-cluster --file cluster.yaml
 
-# JSON output
-krayne create my-cluster --output json
+# JSON output (note: -o/--output is a global option — it must come before the subcommand)
+krayne -o json create my-cluster
 ```
 
 ![krayne create output](../assets/cli-create.png)
@@ -133,8 +133,8 @@ krayne get
 # List clusters in a specific namespace
 krayne get -n ml-team
 
-# JSON output for scripting
-krayne get --output json
+# JSON output for scripting (global option goes before the subcommand)
+krayne -o json get
 ```
 
 ![krayne get output](../assets/cli-get.png)
@@ -165,7 +165,7 @@ krayne describe <name> [OPTIONS]
 
 ```bash
 krayne describe my-cluster
-krayne describe my-cluster -n ml-team --output json
+krayne -o json describe my-cluster -n ml-team
 ```
 
 ![krayne describe output](../assets/cli-describe.png)
@@ -286,8 +286,8 @@ krayne tun-open my-cluster
 # Start tunnels in a specific namespace
 krayne tun-open my-cluster -n ml-team
 
-# Get tunnel info as JSON
-krayne tun-open my-cluster --output json
+# Get tunnel info as JSON (global option goes before the subcommand)
+krayne -o json tun-open my-cluster
 ```
 
 ![krayne tun-open output](../assets/cli-tun-open.png)
@@ -334,7 +334,7 @@ Set up a local k3s cluster with KubeRay for development.
 krayne sandbox setup
 ```
 
-Requires Docker with at least 2 CPUs and 6 GB RAM. Creates a k3s container named `krayne-sandbox` and installs the KubeRay operator.
+Requires Docker with at least 2 CPUs and 4 GB RAM. Creates a k3s container named `krayne-sandbox` (limited to 2 CPUs and 6 GB) and installs the KubeRay operator.
 
 ```title="Terminal output"
           Sandbox Setup
@@ -386,6 +386,16 @@ krayne sandbox status
 
 ---
 
+## `krayne tui`
+
+Launch the interactive terminal UI (see the [Interactive TUI guide](../guide/interactive-tui.md) for keybindings and screens).
+
+```
+krayne tui
+```
+
+---
+
 ## Output formats
 
 ### Table (default)
@@ -399,21 +409,21 @@ krayne describe my-cluster
 
 ### JSON
 
-Machine-readable JSON output, useful for scripting:
+Machine-readable JSON output, useful for scripting (`-o`/`--output` is a global option, so it must come **before** the subcommand):
 
 ```bash
-krayne get --output json
-krayne describe my-cluster -o json | jq '.info.status'
+krayne -o json get
+krayne -o json describe my-cluster | jq '.info.status'
 ```
 
 ---
 
 ## Error handling
 
-Errors are displayed as Rich panels by default. Use `--debug` to see full Python tracebacks:
+Errors are displayed as Rich panels by default. Use `--debug` (a global option, so it must come **before** the subcommand) to see full Python tracebacks:
 
 ```bash
-krayne describe nonexistent-cluster --debug
+krayne --debug describe nonexistent-cluster
 ```
 
 ![krayne error output](../assets/cli-error.png)
