@@ -23,26 +23,49 @@ def _style_status(status: str) -> str:
     return f"[dim]{status}[/dim]"
 
 
-def _build_cluster_panel(info: ClusterInfo) -> Panel:
-    ready = info.status in ("ready", "running")
+def _build_key_value_table(rows: list[tuple[str, str]]) -> Table:
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column("Field", style="bold cyan")
     table.add_column("Value")
-    table.add_row("Name", info.name)
-    table.add_row("Namespace", info.namespace)
-    table.add_row("Status", _style_status(info.status))
-    table.add_row("Cluster Address", info.client_url or "pending")
-    table.add_row("Dashboard", info.dashboard_url or "pending")
+    for field, value in rows:
+        table.add_row(field, value)
+    return table
+
+
+def _build_info_table(
+    info: ClusterInfo,
+    *,
+    client_label: str,
+    include_autoscaling: bool,
+) -> Table:
+    rows: list[tuple[str, str]] = [
+        ("Name", info.name),
+        ("Namespace", info.namespace),
+        ("Status", _style_status(info.status)),
+        (client_label, info.client_url or "pending"),
+        ("Dashboard", info.dashboard_url or "pending"),
+    ]
     if info.notebook_url:
-        table.add_row("Notebook", info.notebook_url)
+        rows.append(("Notebook", info.notebook_url))
     if info.code_server_url:
-        table.add_row("Code Server", info.code_server_url)
+        rows.append(("Code Server", info.code_server_url))
     if info.ssh_url:
-        table.add_row("SSH", info.ssh_url)
-    if info.autoscaling_enabled:
-        table.add_row("Workers", f"{info.num_workers} (autoscaling)")
+        rows.append(("SSH", info.ssh_url))
+    if include_autoscaling:
+        rows.append((
+            "Autoscaling",
+            "[green]enabled[/green]" if info.autoscaling_enabled else "[dim]disabled[/dim]",
+        ))
+    elif info.autoscaling_enabled:
+        rows.append(("Workers", f"{info.num_workers} (autoscaling)"))
     else:
-        table.add_row("Workers", str(info.num_workers))
+        rows.append(("Workers", str(info.num_workers)))
+    return _build_key_value_table(rows)
+
+
+def _build_cluster_panel(info: ClusterInfo) -> Panel:
+    ready = info.status in ("ready", "running")
+    table = _build_info_table(info, client_label="Cluster Address", include_autoscaling=False)
     title = "Cluster Ready" if ready else "Cluster Creating..."
     style = "green" if ready else "yellow"
     return Panel(table, title=title, border_style=style)
@@ -86,22 +109,7 @@ def format_cluster_details(
 ) -> None:
     info = details.info
 
-    # Header
-    header = Table(show_header=False, box=None, padding=(0, 2))
-    header.add_column("Field", style="bold cyan")
-    header.add_column("Value")
-    header.add_row("Name", info.name)
-    header.add_row("Namespace", info.namespace)
-    header.add_row("Status", _style_status(info.status))
-    header.add_row("Client", info.client_url or "pending")
-    header.add_row("Dashboard", info.dashboard_url or "pending")
-    if info.notebook_url:
-        header.add_row("Notebook", info.notebook_url)
-    if info.code_server_url:
-        header.add_row("Code Server", info.code_server_url)
-    if info.ssh_url:
-        header.add_row("SSH", info.ssh_url)
-    header.add_row("Autoscaling", "[green]enabled[/green]" if info.autoscaling_enabled else "[dim]disabled[/dim]")
+    header = _build_info_table(info, client_label="Client", include_autoscaling=True)
     header.add_row("Ray Image", details.head.image)
     console.print(Panel(header, title="Cluster Details", border_style="blue"))
 
@@ -147,11 +155,10 @@ def format_cluster_details(
     if tunnel_state is not None:
         console.print(format_tunnel_panel(info.name, tunnel_state.tunnels))
     else:
-        tun_table = Table(show_header=False, box=None, padding=(0, 2))
-        tun_table.add_column("Field", style="bold cyan")
-        tun_table.add_column("Value")
-        tun_table.add_row("Tunnels", "[dim]closed[/dim]")
-        tun_table.add_row("", "[dim]Run tun-open to connect[/dim]")
+        tun_table = _build_key_value_table([
+            ("Tunnels", "[dim]closed[/dim]"),
+            ("", "[dim]Run tun-open to connect[/dim]"),
+        ])
         console.print(Panel(tun_table, title="Tunnels", border_style="dim"))
 
 
@@ -169,20 +176,18 @@ def format_json(data: Any, console: Console) -> None:
 def format_init_success(
     kubeconfig_path: str, kube_context: str, console: Console
 ) -> None:
-    table = Table(show_header=False, box=None, padding=(0, 2))
-    table.add_column("Field", style="bold cyan")
-    table.add_column("Value")
-    table.add_row("Kubeconfig", kubeconfig_path)
-    table.add_row("Context", kube_context)
+    table = _build_key_value_table([
+        ("Kubeconfig", kubeconfig_path),
+        ("Context", kube_context),
+    ])
     console.print(Panel(table, title="Krayne Initialized", border_style="green"))
 
 
 def format_sandbox_setup_success(kubeconfig_path: str, console: Console) -> None:
-    table = Table(show_header=False, box=None, padding=(0, 2))
-    table.add_column("Field", style="bold cyan")
-    table.add_column("Value")
-    table.add_row("Status", "running")
-    table.add_row("Kubeconfig", kubeconfig_path)
+    table = _build_key_value_table([
+        ("Status", "running"),
+        ("Kubeconfig", kubeconfig_path),
+    ])
     console.print(Panel(table, title="Sandbox Ready", border_style="green"))
 
     hint = Table(show_header=False, box=None, padding=(0, 2))
