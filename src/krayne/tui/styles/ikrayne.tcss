@@ -262,29 +262,52 @@ TabPane {
 }
 
 .form-row Label {
-    width: 14;
+    width: auto;
     height: 1;
+    padding-right: 1;
 }
 
 .form-row Input {
-    width: 20;
+    width: 14;
     height: 1;
+    margin-right: 10;
     border: none;
     background: $surface-darken-1;
     padding: 0 1;
 }
 
 .compact .form-row Input {
-    width: 16;
+    width: 12;
 }
 
 .form-row Switch {
     width: auto;
+    margin-right: 10;
 }
 
-.gpu-type-select {
-    width: 14;
-    height: auto;
+/* Worker-column labels are stacked vertically (Name/CPUs/Memory and
+   Replicas/Min/Max). Pin them to a common width so the inputs align. */
+.wg-col .form-row Label {
+    width: 9;
+}
+
+/* Switches render 3 rows tall; shift their inline label down 1 row so the
+   text aligns with the toggle's middle. */
+.form-row .switch-label {
+    margin-top: 1;
+}
+
+/* Mixed rows that contain a Switch alongside Inputs: the Switch keeps its
+   intrinsic height (3) and every other child shifts down 1 row so the whole
+   row is visually centered on the toggle's middle. Margin shorthand is used
+   explicitly because Textual replaces the whole margin block when any
+   single margin-* property is set in a more-specific rule. */
+.mixed-switch-row Label {
+    margin: 1 0 0 0;
+}
+
+.mixed-switch-row Input {
+    margin: 1 10 0 0;
 }
 
 .wg-columns {

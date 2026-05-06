@@ -47,7 +47,7 @@ _DETAILS = ClusterDetails(
     info=_INFO,
     head=HeadNodeInfo(cpus="1", memory="4Gi", gpus=0, image="rayproject/ray:latest"),
     worker_groups=[
-        WorkerGroupInfo(name="worker", replicas=2, min_replicas=0, max_replicas=10, cpus="1", memory="2Gi", gpus=0, gpu_type=None),
+        WorkerGroupInfo(name="worker", replicas=2, min_replicas=0, max_replicas=10, cpus="1", memory="2Gi", gpus=0),
     ],
     ray_version="2.10.0",
     python_version="3.11",
@@ -57,8 +57,8 @@ _DETAILS_MULTI_WG = ClusterDetails(
     info=_INFO,
     head=HeadNodeInfo(cpus="2", memory="8Gi", gpus=0, image="rayproject/ray:latest"),
     worker_groups=[
-        WorkerGroupInfo(name="cpu-workers", replicas=2, min_replicas=0, max_replicas=10, cpus="4", memory="8Gi", gpus=0, gpu_type=None),
-        WorkerGroupInfo(name="gpu-workers", replicas=1, min_replicas=0, max_replicas=5, cpus="2", memory="4Gi", gpus=1, gpu_type="a100"),
+        WorkerGroupInfo(name="cpu-workers", replicas=2, min_replicas=0, max_replicas=10, cpus="4", memory="8Gi", gpus=0),
+        WorkerGroupInfo(name="gpu-workers", replicas=1, min_replicas=0, max_replicas=5, cpus="2", memory="4Gi", gpus=1),
     ],
     ray_version="2.10.0",
     python_version="3.11",
@@ -369,7 +369,6 @@ async def test_create_flow_has_all_resource_tabs():
             # Head node tab exists with resource fields
             assert screen.query_one("#input-head-cpus", Input) is not None
             assert screen.query_one("#input-head-memory", Input) is not None
-            assert screen.query_one("#input-head-gpus", Input) is not None
             # Worker group tab exists with resource fields
             assert screen.query_one("#input-wg0-cpus", Input) is not None
             assert screen.query_one("#input-wg0-memory", Input) is not None
