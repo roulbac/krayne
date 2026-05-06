@@ -391,10 +391,11 @@ Head node resource details.
 ```python
 @dataclass(frozen=True)
 class HeadNodeInfo:
-    cpus: str       # CPU count
-    memory: str     # Memory (e.g. "48Gi")
-    gpus: int       # GPU count
-    image: str      # Container image
+    cpus: str            # CPU count (e.g. "1", "500m")
+    memory: str          # Memory (e.g. "4Gi")
+    gpus: int            # GPU count parsed from the head pod's nvidia.com/gpu requests
+    image: str           # Container image
+    runs_tasks: bool     # Derived from rayStartParams["num-cpus"] != 0 — when False, head is a control plane
 ```
 
 ### `WorkerGroupInfo`
@@ -446,6 +447,7 @@ class KubeClient(Protocol):
     def get_cluster_status(self, name: str, namespace: str) -> str: ...
     def list_pods(self, cluster_name: str, namespace: str) -> list[dict]: ...
     def get_head_node_port(self, cluster_name: str, namespace: str, port_name: str) -> int | None: ...
+    def list_namespaces(self) -> list[str]: ...
 ```
 
 Any object that implements these methods satisfies the protocol — no inheritance required.

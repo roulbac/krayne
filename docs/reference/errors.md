@@ -10,7 +10,12 @@ from krayne.errors import (
     ConfigValidationError,
     ClusterTimeoutError,
     KubeConnectionError,
+    KubeRayNotInstalledError,
     NamespaceNotFoundError,
+    SandboxError,
+    DockerNotFoundError,
+    SandboxAlreadyExistsError,
+    SandboxNotFoundError,
 )
 ```
 
@@ -40,6 +45,9 @@ classDiagram
   class KubeConnectionError {
     K8s API unreachable
   }
+  class KubeRayNotInstalledError {
+    +context: str | None
+  }
   class NamespaceNotFoundError {
     +namespace: str
   }
@@ -55,6 +63,7 @@ classDiagram
   KrayneError <|-- ConfigValidationError
   KrayneError <|-- ClusterTimeoutError
   KrayneError <|-- KubeConnectionError
+  KrayneError <|-- KubeRayNotInstalledError
   KrayneError <|-- NamespaceNotFoundError
   KrayneError <|-- SandboxError
   SandboxError <|-- DockerNotFoundError
@@ -163,6 +172,20 @@ Raised when the Kubernetes API is unreachable — no valid kubeconfig, network i
 
 ---
 
+### `KubeRayNotInstalledError`
+
+Raised when the target Kubernetes cluster does not have the KubeRay operator installed (the `rayclusters.ray.io` CRD is missing). This check runs whenever a kube client is constructed (CLI, TUI, SDK, and `krayne init`).
+
+**Attributes:**
+
+| Attribute | Type | Description |
+|---|---|---|
+| `context` | `str \| None` | Kube context against which the check ran (if known) |
+
+**Raised by:** `krayne init` (dry-run check) and any SDK function that builds a kube client.
+
+---
+
 ### `NamespaceNotFoundError`
 
 Raised when the specified Kubernetes namespace does not exist.
@@ -211,12 +234,14 @@ Raised when attempting to tear down a sandbox that doesn't exist.
 
 | Function | Possible Errors |
 |---|---|
-| `create_cluster` | `ClusterAlreadyExistsError`, `NamespaceNotFoundError`, `ClusterTimeoutError`, `KubeConnectionError`, `ConfigValidationError` |
-| `get_cluster` | `ClusterNotFoundError`, `KubeConnectionError` |
-| `list_clusters` | `KubeConnectionError` |
-| `describe_cluster` | `ClusterNotFoundError`, `KubeConnectionError` |
-| `scale_cluster` | `ClusterNotFoundError`, `KrayneError` (worker group not found), `KubeConnectionError` |
-| `delete_cluster` | `ClusterNotFoundError`, `KubeConnectionError` |
-| `wait_until_ready` | `ClusterTimeoutError`, `ClusterNotFoundError`, `KubeConnectionError` |
-| `setup_sandbox` | `DockerNotFoundError`, `SandboxAlreadyExistsError` |
+| `create_cluster` | `ClusterAlreadyExistsError`, `NamespaceNotFoundError`, `ClusterTimeoutError`, `KubeConnectionError`, `KubeRayNotInstalledError`, `ConfigValidationError` |
+| `get_cluster` | `ClusterNotFoundError`, `KubeConnectionError`, `KubeRayNotInstalledError` |
+| `list_clusters` | `KubeConnectionError`, `KubeRayNotInstalledError` |
+| `describe_cluster` | `ClusterNotFoundError`, `KubeConnectionError`, `KubeRayNotInstalledError` |
+| `scale_cluster` | `ClusterNotFoundError`, `KrayneError` (worker group not found / no arg given), `KubeConnectionError`, `KubeRayNotInstalledError` |
+| `delete_cluster` | `ClusterNotFoundError`, `KubeConnectionError`, `KubeRayNotInstalledError` |
+| `wait_until_ready` | `ClusterTimeoutError`, `ClusterNotFoundError`, `KubeConnectionError`, `KubeRayNotInstalledError` |
+| `get_cluster_services` | `ClusterNotFoundError`, `KubeConnectionError`, `KubeRayNotInstalledError` |
+| `open_tunnel` | `ClusterNotFoundError`, `KubeConnectionError`, `KubeRayNotInstalledError` |
+| `setup_sandbox` | `DockerNotFoundError`, `SandboxAlreadyExistsError`, `SandboxError` |
 | `teardown_sandbox` | `SandboxNotFoundError` |

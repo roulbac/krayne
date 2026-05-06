@@ -18,7 +18,7 @@ pip install krayne
 krayne create my-cluster --gpus-per-worker 1 --workers 2
 ```
 
-That's it. One command gives you a fully configured Ray cluster with dashboard, notebook, and SSH access.
+That's it. One command gives you a fully configured Ray cluster with dashboard, notebook, code-server, and SSH access.
 
 ---
 
@@ -83,7 +83,7 @@ Navigate clusters, create with prefilled forms, scale, delete, and toggle tunnel
 - **Zero-config defaults** — every command works with no flags
 - **CLI and SDK** — anything from the terminal works from code too
 - **Interactive TUI** — k9s-style keyboard-driven cluster management
-- **GPU support** — one flag to add GPUs with type selection
+- **GPU support** — one flag to add GPUs to workers (`--gpus-per-worker`)
 - **Local sandbox** — `krayne sandbox setup` for development without a real cluster
 - **Pydantic config** — validated configuration with YAML override support
 - **Rich output** — beautiful terminal tables, with `--output json` for scripting

@@ -16,7 +16,7 @@ Running Ray on Kubernetes typically requires writing verbose YAML manifests for 
 
 Krayne eliminates that friction:
 
-- **One command to a working cluster** — `krayne create my-cluster` gives you a Ray cluster with notebooks and SSH ready to go.
+- **One command to a working cluster** — `krayne create my-cluster` gives you a Ray cluster with the dashboard, Jupyter notebook, code-server, and SSH ready to go.
 - **SDK for automation** — the same operations are available as Python functions for pipelines, scripts, and notebooks.
 - **No Kubernetes knowledge required** — sensible defaults handle resource allocation, service configuration, and manifest generation.
 - **Full escape hatch** — power users can override any setting via YAML or drop down to raw KubeRay manifests.
@@ -30,10 +30,10 @@ graph LR
   User["You"] -->|"CLI or Python"| Krayne["Krayne"]
   Krayne -->|"builds manifest"| KubeRay["KubeRay CRD"]
   KubeRay -->|"reconciles"| Ray["Ray Cluster"]
-  Ray -->|"serves"| Services["Dashboard\nNotebook\nSSH"]
+  Ray -->|"serves"| Services["Dashboard\nNotebook\nCode-server\nSSH"]
 ```
 
-Both the CLI and SDK produce the same result — a fully configured Ray cluster with dashboard, notebook, and SSH access:
+Both the CLI and SDK produce the same result — a fully configured Ray cluster with dashboard, notebook, code-server, and SSH access:
 
 === "CLI"
 

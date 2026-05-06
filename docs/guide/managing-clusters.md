@@ -132,17 +132,17 @@ Scale a worker group's desired, minimum, or maximum replica count:
 
 ## JSON output
 
-All CLI commands support `--output json` for scripting and piping:
+`--output json` (or `-o json`) is a global option, so it must come **before** the subcommand:
 
 ```bash
 # List as JSON
-krayne get --output json
+krayne --output json get
 
 # Parse with jq
-krayne get --output json | jq '.[].name'
+krayne -o json get | jq '.[].name'
 
 # Describe as JSON
-krayne describe my-cluster -o json
+krayne -o json describe my-cluster
 ```
 
 ```json title="Example JSON output"

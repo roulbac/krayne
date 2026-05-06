@@ -33,9 +33,9 @@ graph TB
 
 | Component | Role |
 |---|---|
-| **Head node** | Runs the Global Control Service (GCS), Ray dashboard, and scheduling. Does not typically run user workloads. |
+| **Head node** | Runs the Global Control Service (GCS), Ray dashboard, and scheduling. By default Krayne pins the head's Ray ``num-cpus`` to ``0`` so user tasks are routed to workers; opt-in by setting ``head.runs_tasks: true``. |
 | **Worker group** | A set of identically configured worker pods. A cluster can have multiple worker groups (e.g., CPU workers and GPU workers). |
-| **Services** | Jupyter notebook, Code Server, and SSH are optionally exposed on the head node. |
+| **Services** | Jupyter notebook, code-server, and SSH are exposed on the head node by default; each can be disabled in ``services``. |
 
 ---
 

@@ -41,14 +41,14 @@ config = ClusterConfig(
 
 ## `HeadNodeConfig`
 
-Resource configuration for the Ray head node.
+Resource configuration for the Ray head node. By default the head is a control plane only — `runs_tasks=False` causes the manifest builder to set Ray's `num-cpus=0`, so user tasks are routed to workers. GPU support is intentionally omitted; GPUs belong on workers. Note also that the manifest builder clamps `cpus` and `memory` up to `1` CPU / `4Gi` so the head pod can boot GCS, the dashboard, the autoscaler, and the postStart services.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `cpus` | `str` | `"1"` | CPU count |
-| `memory` | `str` | `"2Gi"` | Memory allocation |
-| `gpus` | `int` | `0` | GPU count (head typically does not need GPUs) |
-| `image` | `str \| None` | `None` | Custom container image. Defaults to `rayproject/ray:latest` |
+| `cpus` | `str` | `"1"` | CPU count (clamped up to `1` minimum) |
+| `memory` | `str` | `"4Gi"` | Memory allocation (clamped up to `4Gi` minimum) |
+| `image` | `str \| None` | `None` | Custom container image. When `None`, defaults to `rayproject/ray:<ray-version>-py<py>` derived from the installed Ray and Python versions |
+| `runs_tasks` | `bool` | `False` | When `True`, advertise the head's CPUs to Ray (`num-cpus=<cpus>`) so user tasks can run on it |
 
 ---
 

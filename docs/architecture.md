@@ -38,7 +38,7 @@ The core of Krayne. All cluster lifecycle operations are implemented as **free f
 
 - `create_cluster()`, `get_cluster()`, `list_clusters()`
 - `describe_cluster()`, `scale_cluster()`, `delete_cluster()`
-- `wait_until_ready()`
+- `wait_until_ready()`, `get_cluster_services()`, `open_tunnel()`
 
 Each function takes explicit parameters and returns immutable dataclasses. The Kubernetes client is injected via the `client` parameter (defaults to `None`, which creates a client from kubeconfig).
 
@@ -172,8 +172,12 @@ classDiagram
   KrayneError <|-- ConfigValidationError
   KrayneError <|-- ClusterTimeoutError
   KrayneError <|-- KubeConnectionError
+  KrayneError <|-- KubeRayNotInstalledError
   KrayneError <|-- NamespaceNotFoundError
   KrayneError <|-- SandboxError
+  SandboxError <|-- DockerNotFoundError
+  SandboxError <|-- SandboxAlreadyExistsError
+  SandboxError <|-- SandboxNotFoundError
 ```
 
 The CLI catches `KrayneError` and renders a Rich panel. SDK users catch specific subtypes for fine-grained handling.
