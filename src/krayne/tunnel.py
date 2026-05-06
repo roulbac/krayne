@@ -201,6 +201,10 @@ def start_tunnels(
 
         proc = subprocess.Popen(
             cmd,
+            # stdin must be redirected too — otherwise kubectl inherits the
+            # parent's controlling TTY and breaks Textual's alt-screen / mouse
+            # tracking, leaking escape sequences as visible characters.
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             # Detach from parent so the tunnel survives CLI exit

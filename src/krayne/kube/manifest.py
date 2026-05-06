@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import platform
 import sys
+from functools import lru_cache
 
 from kubernetes.utils.quantity import parse_quantity
 
@@ -17,7 +18,12 @@ _CS_URL = f"https://github.com/coder/code-server/releases/download/v{CODE_SERVER
 _CS_DIR = f"/tmp/code-server-{CODE_SERVER_VERSION}-linux-{_CS_ARCH}"
 
 
+@lru_cache(maxsize=1)
 def _get_ray_image() -> str:
+    # `import ray` mutates termios (Ray's import chain calls tcsetattr for
+    # color/signal setup), which corrupts Textual's raw-input + mouse-tracking
+    # mode if this runs inside a TUI worker thread. Result is cached so that
+    # pre-warming at TUI startup is enough to keep later calls pure.
     import ray
 
     ray_version = ray.__version__
