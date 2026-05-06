@@ -6,7 +6,6 @@ from functools import partial
 
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
-from textual.screen import Screen
 from textual.widgets import Button, Input, Label, Select, Static, Switch, TabbedContent, TabPane
 from textual.worker import Worker, WorkerState
 
@@ -24,11 +23,12 @@ from krayne.config.models import (
     WorkerGroupConfig,
 )
 from krayne.errors import KrayneError
+from krayne.tui.screens._base import KrayneScreen
 from krayne.tui.widgets.header import HeaderBar
 from krayne.tui.widgets.status_bar import StatusBar
 
 
-class CreateFlowScreen(Screen):
+class CreateFlowScreen(KrayneScreen):
     """Full-screen tabbed create cluster flow."""
 
     BINDINGS = [
@@ -52,90 +52,16 @@ class CreateFlowScreen(Screen):
 
         with Vertical(id="create-flow-screen"):
             with TabbedContent(id="create-tabs"):
-                # ── Tab 1: Cluster ──────────────────
                 with TabPane("Cluster", id="tab-cluster"):
-                    yield Static("[bold]Cluster[/bold]", classes="form-section-title")
-                    with Horizontal(classes="form-row"):
-                        yield Label("Name:")
-                        yield Input(placeholder="my-cluster", id="input-name")
-                        yield Label("Namespace:")
-                        yield Input(value="default", id="input-namespace")
-
-                # ── Tab 2: Head Node ────────────────
+                    yield from self._compose_cluster_tab()
                 with TabPane("Head Node", id="tab-head"):
-                    yield Static("[bold]Head Node[/bold]", classes="form-section-title")
-                    with Horizontal(classes="form-row"):
-                        yield Label("CPUs:")
-                        yield Input(value=DEFAULT_HEAD_CPUS, id="input-head-cpus")
-                        yield Label("Memory:")
-                        yield Input(value=DEFAULT_HEAD_MEMORY, id="input-head-memory")
-                    with Horizontal(classes="form-row"):
-                        yield Label("Run tasks on head:", classes="switch-label")
-                        yield Switch(value=False, id="switch-head-runs-tasks")
-
-                # ── Tab 3: Workers ──────────────────
+                    yield from self._compose_head_tab()
                 with TabPane("Workers", id="tab-workers"):
-                    with Vertical(classes="form-section", id="section-wg0"):
-                        yield Static("[bold]Worker Group 1[/bold]", classes="form-section-title")
-                        with Horizontal(classes="wg-columns"):
-                            with Vertical(classes="wg-col"):
-                                with Horizontal(classes="form-row"):
-                                    yield Label("Name:")
-                                    yield Input(value="worker", id="input-wg0-name")
-                                with Horizontal(classes="form-row"):
-                                    yield Label("CPUs:")
-                                    yield Input(value=DEFAULT_CPUS, id="input-wg0-cpus")
-                                with Horizontal(classes="form-row"):
-                                    yield Label("Memory:")
-                                    yield Input(value=DEFAULT_MEMORY, id="input-wg0-memory")
-                            with Vertical(classes="wg-col"):
-                                with Horizontal(classes="form-row"):
-                                    yield Label("GPUs:")
-                                    yield Input(value="0", id="input-wg0-gpus", type="integer")
-
-                    yield Container(id="extra-wg-container")
-                    yield Button("+ Add Worker Group", variant="default", id="btn-add-wg")
-
-                # ── Tab 4: Autoscaling ─────────────
+                    yield from self._compose_workers_tab()
                 with TabPane("Autoscaling", id="tab-autoscaling"):
-                    yield Static("[bold]Autoscaler[/bold]", classes="form-section-title")
-                    with Horizontal(classes="form-row mixed-switch-row"):
-                        yield Label("Enabled:")
-                        yield Switch(value=True, id="switch-autoscaler")
-                        yield Label("Idle Timeout (s):")
-                        yield Input(value="60", id="input-idle-timeout", type="integer")
-                        yield Label("Upscaling Mode:")
-                        yield Select(
-                            [(mode, mode) for mode in UPSCALING_MODES],
-                            value="Default",
-                            allow_blank=False,
-                            id="select-upscaling-mode",
-                        )
-
-                    with Vertical(classes="form-section", id="scaling-wg0"):
-                        yield Static("[bold]Worker Group 1[/bold]", classes="form-section-title")
-                        with Horizontal(classes="form-row"):
-                            yield Label("Replicas:")
-                            yield Input(value="0", id="input-wg0-replicas", type="integer")
-                            yield Label("Min:")
-                            yield Input(value="0", id="input-wg0-min-replicas", type="integer")
-                            yield Label("Max:")
-                            yield Input(value="1", id="input-wg0-max-replicas", type="integer")
-
-                    yield Container(id="extra-scaling-container")
-
-                # ── Tab 5: Services ─────────────────
+                    yield from self._compose_autoscaling_tab()
                 with TabPane("Services", id="tab-services"):
-                    yield Static("[bold]Services[/bold]", classes="form-section-title")
-                    with Horizontal(classes="form-row"):
-                        yield Label("Notebook:", classes="switch-label")
-                        yield Switch(value=True, id="switch-notebook")
-                        yield Label("Code Server:", classes="switch-label")
-                        yield Switch(value=True, id="switch-code-server")
-                        yield Label("SSH:", classes="switch-label")
-                        yield Switch(value=True, id="switch-ssh")
-
-                # ── Tab 6: Review ───────────────────
+                    yield from self._compose_services_tab()
                 with TabPane("Review", id="tab-review"):
                     yield Static("", id="review-content")
 
@@ -145,23 +71,91 @@ class CreateFlowScreen(Screen):
                 yield Button("Create", variant="primary", id="btn-create")
                 yield Button("Cancel", variant="default", id="btn-cancel")
 
-        status = StatusBar()
-        yield status
+        yield StatusBar()
+
+    def _compose_cluster_tab(self):
+        yield Static("[bold]Cluster[/bold]", classes="form-section-title")
+        with Horizontal(classes="form-row"):
+            yield Label("Name:")
+            yield Input(placeholder="my-cluster", id="input-name")
+            yield Label("Namespace:")
+            yield Input(value="default", id="input-namespace")
+
+    def _compose_head_tab(self):
+        yield Static("[bold]Head Node[/bold]", classes="form-section-title")
+        with Horizontal(classes="form-row"):
+            yield Label("CPUs:")
+            yield Input(value=DEFAULT_HEAD_CPUS, id="input-head-cpus")
+            yield Label("Memory:")
+            yield Input(value=DEFAULT_HEAD_MEMORY, id="input-head-memory")
+        with Horizontal(classes="form-row"):
+            yield Label("Run tasks on head:", classes="switch-label")
+            yield Switch(value=False, id="switch-head-runs-tasks")
+
+    def _compose_workers_tab(self):
+        with Vertical(classes="form-section", id="section-wg0"):
+            yield Static("[bold]Worker Group 1[/bold]", classes="form-section-title")
+            with Horizontal(classes="wg-columns"):
+                with Vertical(classes="wg-col"):
+                    with Horizontal(classes="form-row"):
+                        yield Label("Name:")
+                        yield Input(value="worker", id="input-wg0-name")
+                    with Horizontal(classes="form-row"):
+                        yield Label("CPUs:")
+                        yield Input(value=DEFAULT_CPUS, id="input-wg0-cpus")
+                    with Horizontal(classes="form-row"):
+                        yield Label("Memory:")
+                        yield Input(value=DEFAULT_MEMORY, id="input-wg0-memory")
+                with Vertical(classes="wg-col"):
+                    with Horizontal(classes="form-row"):
+                        yield Label("GPUs:")
+                        yield Input(value="0", id="input-wg0-gpus", type="integer")
+
+        yield Container(id="extra-wg-container")
+        yield Button("+ Add Worker Group", variant="default", id="btn-add-wg")
+
+    def _compose_autoscaling_tab(self):
+        yield Static("[bold]Autoscaler[/bold]", classes="form-section-title")
+        with Horizontal(classes="form-row mixed-switch-row"):
+            yield Label("Enabled:")
+            yield Switch(value=True, id="switch-autoscaler")
+            yield Label("Idle Timeout (s):")
+            yield Input(value="60", id="input-idle-timeout", type="integer")
+            yield Label("Upscaling Mode:")
+            yield Select(
+                [(mode, mode) for mode in UPSCALING_MODES],
+                value="Default",
+                allow_blank=False,
+                id="select-upscaling-mode",
+            )
+
+        with Vertical(classes="form-section", id="scaling-wg0"):
+            yield Static("[bold]Worker Group 1[/bold]", classes="form-section-title")
+            with Horizontal(classes="form-row"):
+                yield Label("Replicas:")
+                yield Input(value="0", id="input-wg0-replicas", type="integer")
+                yield Label("Min:")
+                yield Input(value="0", id="input-wg0-min-replicas", type="integer")
+                yield Label("Max:")
+                yield Input(value="1", id="input-wg0-max-replicas", type="integer")
+
+        yield Container(id="extra-scaling-container")
+
+    def _compose_services_tab(self):
+        yield Static("[bold]Services[/bold]", classes="form-section-title")
+        with Horizontal(classes="form-row"):
+            yield Label("Notebook:", classes="switch-label")
+            yield Switch(value=True, id="switch-notebook")
+            yield Label("Code Server:", classes="switch-label")
+            yield Switch(value=True, id="switch-code-server")
+            yield Label("SSH:", classes="switch-label")
+            yield Switch(value=True, id="switch-ssh")
 
     def on_mount(self) -> None:
-        self.add_class(self.app.terminal_class)
-        self.watch(self.app, "terminal_class", self._on_terminal_class_change, init=False)
+        super().on_mount()
         self.query_one("#input-namespace", Input).value = self.app.namespace
         self.query_one("#input-name", Input).focus()
-        self._set_status_hints()
-
-    def _on_terminal_class_change(self, old: str, new: str) -> None:
-        self.remove_class(old)
-        self.add_class(new)
-
-    def _set_status_hints(self) -> None:
-        bar = self.query_one(StatusBar)
-        bar.set_hints([
+        self._set_status_hints([
             ("Tab/Shift+Tab", "Next/Prev field"),
             ("Ctrl+Y/T", "Prev/Next tab"),
             ("Ctrl+S", "Create"),
@@ -333,12 +327,11 @@ class CreateFlowScreen(Screen):
         )
 
         worker_groups: list[WorkerGroupConfig] = []
-        worker_groups.append(self._read_worker_group(0))
-        for i in range(1, self._extra_worker_groups + 1):
+        for i in range(self._extra_worker_groups + 1):
             try:
                 worker_groups.append(self._read_worker_group(i))
-            except Exception:
-                pass
+            except ValueError as exc:
+                raise ValueError(f"Worker group {i + 1}: {exc}") from exc
 
         return ClusterConfig(
             name=name,
