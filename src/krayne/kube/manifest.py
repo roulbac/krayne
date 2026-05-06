@@ -7,6 +7,7 @@ from functools import lru_cache
 from kubernetes.utils.quantity import parse_quantity
 
 from krayne.config.models import AutoscalerConfig, ClusterConfig, HeadNodeConfig, ServicesConfig, WorkerGroupConfig
+from krayne.tunnel import SERVICE_PORTS
 
 RAYCLUSTER_API_VERSION = "ray.io/v1"
 RAYCLUSTER_KIND = "RayCluster"
@@ -115,7 +116,6 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
         "resources": resources,
     }
 
-    # --- postStart hook: install + start services -----------------------
     startup_cmds: list[str] = []
     if services.notebook:
         startup_cmds.append(
@@ -151,13 +151,15 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
 
     # KubeRay auto-adds ports from the ray-head container to the Service,
     # so only declare extra (non-Ray) service ports here to avoid duplicates.
-    extra_svc_ports: list[dict] = []
-    if services.notebook:
-        extra_svc_ports.append({"name": "notebook", "port": 8888, "targetPort": 8888, "protocol": "TCP"})
-    if services.ssh:
-        extra_svc_ports.append({"name": "ssh", "port": 22, "targetPort": 22, "protocol": "TCP"})
-    if services.code_server:
-        extra_svc_ports.append({"name": "code-server", "port": 8443, "targetPort": 8443, "protocol": "TCP"})
+    extra_svc_ports: list[dict] = [
+        {"name": name, "port": SERVICE_PORTS[name][0], "targetPort": SERVICE_PORTS[name][0], "protocol": "TCP"}
+        for name, enabled in (
+            ("notebook", services.notebook),
+            ("ssh", services.ssh),
+            ("code-server", services.code_server),
+        )
+        if enabled
+    ]
 
     head_service: dict = {"spec": {"type": "ClusterIP"}}
     if extra_svc_ports:

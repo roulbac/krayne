@@ -65,22 +65,27 @@ def local_port_for(cluster_name: str, namespace: str, service_name: str) -> int:
     return PORT_RANGE_START + (h % (PORT_RANGE_END - PORT_RANGE_START))
 
 
-def detect_services(obj: dict) -> list[str]:
-    """Detect which services are exposed on the head node by inspecting port names."""
+def head_port_names(obj: dict) -> set[str]:
+    """Collect all named ports from head containers and headService spec."""
     head_spec = obj.get("spec", {}).get("headGroupSpec", {})
     containers = head_spec.get("template", {}).get("spec", {}).get("containers", [])
-    port_names: set[str] = set()
+    names: set[str] = set()
     for container in containers:
         for port in container.get("ports", []):
             name = port.get("name")
             if name:
-                port_names.add(name)
-    # Also check headService.spec.ports for extra service ports
+                names.add(name)
     for port in head_spec.get("headService", {}).get("spec", {}).get("ports", []):
         name = port.get("name")
         if name:
-            port_names.add(name)
-    return [name for name in SERVICE_PORTS if name in port_names]
+            names.add(name)
+    return names
+
+
+def detect_services(obj: dict) -> list[str]:
+    """Detect which services are exposed on the head node by inspecting port names."""
+    names = head_port_names(obj)
+    return [name for name in SERVICE_PORTS if name in names]
 
 
 def load_tunnel_state(cluster_name: str, namespace: str) -> TunnelState | None:
@@ -240,7 +245,6 @@ def stop_tunnel_service(cluster_name: str, namespace: str, service: str) -> bool
     if state is None:
         return False
 
-    # Find the index of the tunnel for this service
     idx = None
     for i, t in enumerate(state.tunnels):
         if t.service == service:
@@ -249,14 +253,12 @@ def stop_tunnel_service(cluster_name: str, namespace: str, service: str) -> bool
     if idx is None:
         return False
 
-    # Kill the specific process
     if idx < len(state.pids):
         try:
             os.kill(state.pids[idx], signal.SIGTERM)
         except OSError:
             pass
 
-    # Update state: remove this tunnel and pid
     remaining_tunnels = [t for i, t in enumerate(state.tunnels) if i != idx]
     remaining_pids = [p for i, p in enumerate(state.pids) if i != idx]
 

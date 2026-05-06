@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 import time
 from collections.abc import Generator
-from typing import Any
 
 from krayne.api.types import (
     ClusterDetails,
@@ -16,6 +15,7 @@ from krayne.config.models import ClusterConfig
 from krayne.errors import ClusterTimeoutError, KrayneError
 from krayne.kube.client import KubeClient, _extract_status, get_kube_client
 from krayne.kube.manifest import _get_ray_image, build_manifest
+from krayne.tunnel import SERVICE_PORTS, detect_services, head_port_names
 
 
 def _resolve_client(
@@ -40,7 +40,7 @@ def create_cluster(
     kube = _resolve_client(client, kubeconfig)
     manifest = build_manifest(config)
     obj = kube.create_ray_cluster(manifest)
-    info = _obj_to_info(obj, client=kube)
+    info = _obj_to_info(obj)
     if wait:
         return wait_until_ready(
             config.name, config.namespace, client=kube, timeout=timeout
@@ -59,7 +59,7 @@ def get_cluster(
     kube = _resolve_client(client, kubeconfig)
     obj = kube.get_ray_cluster(name, namespace)
     pods = kube.list_pods(name, namespace)
-    return _obj_to_info(obj, pods=pods, client=kube)
+    return _obj_to_info(obj, pods=pods)
 
 
 def list_clusters(
@@ -75,7 +75,7 @@ def list_clusters(
     for obj in items:
         cluster_name = obj.get("metadata", {}).get("name", "")
         pods = kube.list_pods(cluster_name, namespace)
-        results.append(_obj_to_info(obj, pods=pods, client=kube))
+        results.append(_obj_to_info(obj, pods=pods))
     return results
 
 
@@ -90,7 +90,7 @@ def describe_cluster(
     kube = _resolve_client(client, kubeconfig)
     obj = kube.get_ray_cluster(name, namespace)
     pods = kube.list_pods(name, namespace)
-    return _obj_to_details(obj, pods=pods, client=kube)
+    return _obj_to_details(obj, pods=pods)
 
 
 def get_cluster_services(
@@ -101,8 +101,6 @@ def get_cluster_services(
     kubeconfig: str | None = None,
 ) -> list[str]:
     """Return the list of service names exposed on the cluster head node."""
-    from krayne.tunnel import detect_services
-
     kube = _resolve_client(client, kubeconfig)
     obj = kube.get_ray_cluster(name, namespace)
     return detect_services(obj)
@@ -133,29 +131,30 @@ def scale_cluster(
 
     autoscaling = obj.get("spec", {}).get("enableInTreeAutoscaling", False)
     worker_specs = obj.get("spec", {}).get("workerGroupSpecs", [])
-    for spec in worker_specs:
-        if spec.get("groupName") == worker_group:
-            if autoscaling:
-                if replicas is not None:
-                    spec["replicas"] = replicas
-                if min_replicas is not None:
-                    spec["minReplicas"] = min_replicas
-                if max_replicas is not None:
-                    spec["maxReplicas"] = max_replicas
-            else:
-                target = replicas if replicas is not None else spec.get("replicas", 0)
-                spec["replicas"] = target
-                spec["minReplicas"] = target
-                spec["maxReplicas"] = target
-            break
-    else:
+    spec = next(
+        (s for s in worker_specs if s.get("groupName") == worker_group), None
+    )
+    if spec is None:
         raise KrayneError(
             f"Worker group '{worker_group}' not found in cluster '{name}'"
         )
 
+    if autoscaling:
+        if replicas is not None:
+            spec["replicas"] = replicas
+        if min_replicas is not None:
+            spec["minReplicas"] = min_replicas
+        if max_replicas is not None:
+            spec["maxReplicas"] = max_replicas
+    else:
+        target = replicas if replicas is not None else spec.get("replicas", 0)
+        spec["replicas"] = target
+        spec["minReplicas"] = target
+        spec["maxReplicas"] = target
+
     patch = {"spec": {"workerGroupSpecs": worker_specs}}
     patched = kube.patch_ray_cluster(name, namespace, patch)
-    return _obj_to_info(patched, client=kube)
+    return _obj_to_info(patched)
 
 
 def delete_cluster(
@@ -220,36 +219,20 @@ def wait_until_ready(
         obj = kube.get_ray_cluster(name, namespace)
         status = _extract_status(obj)
         if status == "ready":
-            return _obj_to_info(obj, client=kube)
+            return _obj_to_info(obj)
         if time.monotonic() >= deadline:
             raise ClusterTimeoutError(name, namespace, timeout)
         time.sleep(_poll_interval)
 
 
-def _head_port_names(obj: dict) -> set[str]:
-    """Collect port names from head containers and headService spec."""
-    head_spec = obj.get("spec", {}).get("headGroupSpec", {})
-    containers = (
-        head_spec.get("template", {}).get("spec", {}).get("containers", [])
-    )
-    names: set[str] = set()
-    for container in containers:
-        for port in container.get("ports", []):
-            name = port.get("name")
-            if name:
-                names.add(name)
-    # Also check headService.spec.ports for extra service ports
-    for port in head_spec.get("headService", {}).get("spec", {}).get("ports", []):
-        name = port.get("name")
-        if name:
-            names.add(name)
-    return names
+def _service_url(service: str, head_ip: str) -> str:
+    remote_port, scheme = SERVICE_PORTS[service]
+    return f"{scheme}://{head_ip}:{remote_port}"
 
 
 def _obj_to_info(
     obj: dict,
     pods: list[dict] | None = None,
-    client: KubeClient | None = None,
 ) -> ClusterInfo:
     metadata = obj.get("metadata", {})
     status_block = obj.get("status", {})
@@ -263,22 +246,19 @@ def _obj_to_info(
         wg.get("replicas", 0) for wg in spec.get("workerGroupSpecs", [])
     )
 
-    port_names = _head_port_names(obj)
+    port_names = head_port_names(obj)
 
-    dashboard_url = None
-    client_url = None
-    notebook_url = None
-    code_server_url = None
-    ssh_url = None
+    dashboard_url = client_url = None
+    notebook_url = code_server_url = ssh_url = None
     if head_ip:
-        dashboard_url = f"http://{head_ip}:8265"
-        client_url = f"ray://{head_ip}:10001"
+        dashboard_url = _service_url("dashboard", head_ip)
+        client_url = _service_url("client", head_ip)
         if "notebook" in port_names:
-            notebook_url = f"http://{head_ip}:8888"
+            notebook_url = _service_url("notebook", head_ip)
         if "code-server" in port_names:
-            code_server_url = f"http://{head_ip}:8443"
+            code_server_url = _service_url("code-server", head_ip)
         if "ssh" in port_names:
-            ssh_url = f"ssh://{head_ip}:22"
+            ssh_url = _service_url("ssh", head_ip)
 
     autoscaling_enabled = spec.get("enableInTreeAutoscaling", False)
 
@@ -301,9 +281,8 @@ def _obj_to_info(
 def _obj_to_details(
     obj: dict,
     pods: list[dict] | None = None,
-    client: KubeClient | None = None,
 ) -> ClusterDetails:
-    info = _obj_to_info(obj, pods=pods, client=client)
+    info = _obj_to_info(obj, pods=pods)
     spec = obj.get("spec", {})
 
     head_spec = spec.get("headGroupSpec", {})
