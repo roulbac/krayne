@@ -1,16 +1,12 @@
 from __future__ import annotations
 
-import os
 import platform
+import sys
+
+from kubernetes.utils.quantity import parse_quantity
 
 from krayne.config.models import AutoscalerConfig, ClusterConfig, HeadNodeConfig, ServicesConfig, WorkerGroupConfig
 
-_RAY_VERSION = os.environ.get("PRISM_RAY_VERSION", "latest")
-RAY_IMAGE = (
-    f"rayproject/ray:{_RAY_VERSION}-aarch64"
-    if platform.machine() == "arm64"
-    else f"rayproject/ray:{_RAY_VERSION}"
-)
 RAYCLUSTER_API_VERSION = "ray.io/v1"
 RAYCLUSTER_KIND = "RayCluster"
 
@@ -19,6 +15,29 @@ _CS_ARCH = "arm64" if platform.machine() in ("arm64", "aarch64") else "amd64"
 _CS_TARBALL = f"code-server-{CODE_SERVER_VERSION}-linux-{_CS_ARCH}.tar.gz"
 _CS_URL = f"https://github.com/coder/code-server/releases/download/v{CODE_SERVER_VERSION}/{_CS_TARBALL}"
 _CS_DIR = f"/tmp/code-server-{CODE_SERVER_VERSION}-linux-{_CS_ARCH}"
+
+
+def _get_ray_image() -> str:
+    import ray
+
+    ray_version = ray.__version__
+    py_tag = f"py{sys.version_info.major}{sys.version_info.minor}"
+    return f"rayproject/ray:{ray_version}-{py_tag}"
+
+
+HEAD_MIN_CPUS = "1"
+HEAD_MIN_MEMORY = "4Gi"
+
+
+def _max_quantity(a: str, b: str) -> str:
+    """Return whichever K8s quantity string is larger; preserves the original format."""
+    return a if parse_quantity(a) >= parse_quantity(b) else b
+
+
+def _cpus_to_ray(cpus: str) -> str:
+    """Convert a K8s CPU quantity (e.g. '500m', '2') to a Ray num-cpus string."""
+    qty = parse_quantity(cpus)
+    return str(int(qty)) if qty == int(qty) else str(float(qty))
 
 
 def build_manifest(config: ClusterConfig) -> dict:
@@ -62,16 +81,17 @@ def _build_autoscaler_options(autoscaler: AutoscalerConfig) -> dict:
 
 
 def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
-    image = head.image or RAY_IMAGE
-    # Only set requests (no CPU/memory limits) so the head pod can burst
-    # during service installation (pip install, wget) and for the shared-memory
-    # object store tmpfs that counts against the cgroup memory limit.
+    image = head.image or _get_ray_image()
+    # Head is always a control plane (rayStartParams.num-cpus="0"), but it still
+    # needs real CPU/memory to run GCS, autoscaler, dashboard, and the postStart
+    # services (jupyter/code-server/sshd). Clamp to a minimum so the pod can boot.
+    cpus = _max_quantity(head.cpus, HEAD_MIN_CPUS)
+    memory = _max_quantity(head.memory, HEAD_MIN_MEMORY)
+    # requests == limits → Guaranteed QoS class.
     resources: dict[str, dict[str, str | int]] = {
-        "requests": {"cpu": head.cpus, "memory": head.memory},
+        "requests": {"cpu": cpus, "memory": memory},
+        "limits": {"cpu": cpus, "memory": memory},
     }
-    if head.gpus > 0:
-        resources["limits"] = {"nvidia.com/gpu": head.gpus}
-        resources["requests"]["nvidia.com/gpu"] = head.gpus
 
     # Only declare Ray-internal ports on the container. KubeRay auto-adds
     # all named container ports to the head Service, so notebook/ssh/code-server
@@ -85,8 +105,8 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
     ray_head: dict = {
         "name": "ray-head",
         "image": image,
-        "resources": resources,
         "ports": ports,
+        "resources": resources,
     }
 
     # --- postStart hook: install + start services -----------------------
@@ -141,8 +161,12 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
         "containers": containers,
     }
 
+    # num-cpus=0 makes the head a control plane (Ray won't schedule tasks there).
+    # When runs_tasks is True, advertise the same CPU count as the K8s container.
+    num_cpus = _cpus_to_ray(cpus) if head.runs_tasks else "0"
+
     return {
-        "rayStartParams": {"dashboard-host": "0.0.0.0"},
+        "rayStartParams": {"dashboard-host": "0.0.0.0", "num-cpus": num_cpus},
         "headService": head_service,
         "template": {
             "spec": pod_spec,
@@ -151,28 +175,20 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
 
 
 def _build_worker_spec(wg: WorkerGroupConfig) -> dict:
-    image = wg.image or RAY_IMAGE
-    resources: dict[str, dict[str, str | int]] = {
-        "requests": {"cpu": wg.cpus, "memory": wg.memory},
-        "limits": {"cpu": wg.cpus, "memory": wg.memory},
-    }
-    node_selector: dict[str, str] = {}
+    image = wg.image or _get_ray_image()
+    # requests == limits → Guaranteed QoS. KubeRay autodetects num-cpus, memory,
+    # and (per the resource section of the docs) num-gpus from these limits.
+    requests: dict[str, str | int] = {"cpu": wg.cpus, "memory": wg.memory}
+    limits: dict[str, str | int] = {"cpu": wg.cpus, "memory": wg.memory}
     if wg.gpus > 0:
-        resources["limits"]["nvidia.com/gpu"] = wg.gpus
-        resources["requests"]["nvidia.com/gpu"] = wg.gpus
-        node_selector["cloud.google.com/gke-accelerator"] = wg.gpu_type
+        requests["nvidia.com/gpu"] = wg.gpus
+        limits["nvidia.com/gpu"] = wg.gpus
 
-    spec: dict = {
-        "containers": [
-            {
-                "name": "ray-worker",
-                "image": image,
-                "resources": resources,
-            }
-        ],
+    container = {
+        "name": "ray-worker",
+        "image": image,
+        "resources": {"requests": requests, "limits": limits},
     }
-    if node_selector:
-        spec["nodeSelector"] = node_selector
 
     return {
         "groupName": wg.name,
@@ -180,5 +196,5 @@ def _build_worker_spec(wg: WorkerGroupConfig) -> dict:
         "minReplicas": wg.min_replicas,
         "maxReplicas": wg.max_replicas,
         "rayStartParams": {},
-        "template": {"spec": spec},
+        "template": {"spec": {"containers": [container]}},
     }

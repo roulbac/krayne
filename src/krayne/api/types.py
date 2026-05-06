@@ -33,6 +33,7 @@ class HeadNodeInfo:
     memory: str
     gpus: int
     image: str
+    runs_tasks: bool = False
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,6 @@ class WorkerGroupInfo:
     cpus: str
     memory: str
     gpus: int
-    gpu_type: str | None
 
 
 @dataclass(frozen=True)
