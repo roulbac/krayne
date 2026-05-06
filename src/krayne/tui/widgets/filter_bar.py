@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from textual.containers import Container
+from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widgets import Input
 
@@ -66,13 +67,13 @@ class FilterBar(Container):
         self._filter_text = ""
         try:
             self.query_one("#filter-input", Input).value = ""
-        except Exception:
+        except NoMatches:
             pass
 
     def focus_input(self) -> None:
         try:
             self.query_one("#filter-input", Input).focus()
-        except Exception:
+        except NoMatches:
             pass
 
 

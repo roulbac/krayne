@@ -87,7 +87,7 @@ StatusBar {
 }
 
 .preview-field {
-    margin-left: 0;
+    margin: 0;
 }
 
 .preview-label {
