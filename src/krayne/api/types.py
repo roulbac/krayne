@@ -60,9 +60,23 @@ class ClusterDetails:
     python_version: str
 
 
+_TUNNEL_URL_SERVICES: tuple[str, ...] = (
+    "dashboard",
+    "client",
+    "notebook",
+    "code-server",
+    "ssh",
+)
+
+
 @dataclass(frozen=True)
 class TunnelSession:
-    """Active tunnel session with local URLs for all forwarded services."""
+    """Active tunnel session with local URLs for all forwarded services.
+
+    Exposes ``<service>_url`` attributes (with ``-`` mapped to ``_``) for each
+    service in :data:`_TUNNEL_URL_SERVICES` — e.g. ``dashboard_url``,
+    ``code_server_url`` — returning the local URL or ``None`` if not tunneled.
+    """
 
     cluster_name: str
     namespace: str
@@ -74,22 +88,9 @@ class TunnelSession:
                 return t.local_url
         return None
 
-    @property
-    def dashboard_url(self) -> str | None:
-        return self._url_for("dashboard")
-
-    @property
-    def client_url(self) -> str | None:
-        return self._url_for("client")
-
-    @property
-    def notebook_url(self) -> str | None:
-        return self._url_for("notebook")
-
-    @property
-    def code_server_url(self) -> str | None:
-        return self._url_for("code-server")
-
-    @property
-    def ssh_url(self) -> str | None:
-        return self._url_for("ssh")
+    def __getattr__(self, name: str) -> str | None:
+        if name.endswith("_url"):
+            service = name[: -len("_url")].replace("_", "-")
+            if service in _TUNNEL_URL_SERVICES:
+                return self._url_for(service)
+        raise AttributeError(name)
