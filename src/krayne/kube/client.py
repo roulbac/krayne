@@ -45,25 +45,14 @@ class DefaultKubeClient:
         kubeconfig: str | None = None,
         context: str | None = None,
     ) -> None:
-        try:
-            if kubeconfig is not None or context is not None:
-                # Explicit kubeconfig/context takes precedence — do not
-                # silently fall back to in-cluster config, which would
-                # ignore the user's configured kubeconfig.
-                k8s_config.load_kube_config(
-                    config_file=kubeconfig, context=context
-                )
-            else:
-                try:
-                    k8s_config.load_incluster_config()
-                except k8s_config.ConfigException:
-                    k8s_config.load_kube_config()
-        except k8s_config.ConfigException as exc:
-            raise KubeConnectionError(
+        _load_kube_config(
+            kubeconfig,
+            context,
+            error_message=(
                 "Cannot load Kubernetes configuration. "
                 "Ensure a valid kubeconfig exists or run inside a cluster."
-            ) from exc
-
+            ),
+        )
         self._custom = k8s_client.CustomObjectsApi()
         self._core = k8s_client.CoreV1Api()
 
@@ -249,27 +238,15 @@ def assert_kuberay_installed(
     the caller is the CLI, the TUI, or the SDK.
     """
     configuration = k8s_client.Configuration()
-    try:
-        if kubeconfig is not None or context is not None:
-            k8s_config.load_kube_config(
-                config_file=kubeconfig,
-                context=context,
-                client_configuration=configuration,
-            )
-        else:
-            try:
-                k8s_config.load_incluster_config(
-                    client_configuration=configuration
-                )
-            except k8s_config.ConfigException:
-                k8s_config.load_kube_config(
-                    client_configuration=configuration
-                )
-    except k8s_config.ConfigException as exc:
-        raise KubeConnectionError(
+    _load_kube_config(
+        kubeconfig,
+        context,
+        client_configuration=configuration,
+        error_message=(
             "Cannot load Kubernetes configuration for KubeRay check. "
             "Ensure a valid kubeconfig exists or run inside a cluster."
-        ) from exc
+        ),
+    )
 
     api_client = k8s_client.ApiClient(configuration=configuration)
     try:
@@ -284,6 +261,48 @@ def assert_kuberay_installed(
             ) from exc
     finally:
         api_client.close()
+
+
+def _load_kube_config(
+    kubeconfig: str | None,
+    context: str | None,
+    *,
+    client_configuration: "k8s_client.Configuration | None" = None,
+    error_message: str,
+) -> None:
+    """Load kubeconfig with the same precedence used everywhere in krayne.
+
+    Explicit *kubeconfig*/*context* take precedence over in-cluster config,
+    so the user's configured kubeconfig is never silently ignored. When
+    *client_configuration* is given, the loaded config is written there
+    instead of mutating the process-wide default.
+    """
+    try:
+        if kubeconfig is not None or context is not None:
+            k8s_config.load_kube_config(
+                config_file=kubeconfig,
+                context=context,
+                client_configuration=client_configuration,
+            )
+        else:
+            try:
+                k8s_config.load_incluster_config(
+                    client_configuration=client_configuration
+                )
+            except k8s_config.ConfigException:
+                k8s_config.load_kube_config(
+                    client_configuration=client_configuration
+                )
+    except k8s_config.ConfigException as exc:
+        raise KubeConnectionError(error_message) from exc
+
+
+def _safe_get(d: dict | None, *keys: str) -> dict:
+    """Walk nested dicts, treating missing keys or ``None`` values as ``{}``."""
+    cur: dict = d or {}
+    for key in keys:
+        cur = cur.get(key) or {}
+    return cur
 
 
 def _extract_status(obj: dict, pods: list[dict] | None = None) -> str:
@@ -312,11 +331,11 @@ def _status_from_pods(pods: list[dict]) -> str:
         return "creating"
 
     for pod in pods:
-        phase = (pod.get("status") or {}).get("phase", "")
+        status = _safe_get(pod, "status")
+        phase = status.get("phase", "")
 
-        # Check for scheduling issues
         if phase == "Pending":
-            for cond in (pod.get("status") or {}).get("conditions") or []:
+            for cond in status.get("conditions") or []:
                 if (
                     cond.get("type") == "PodScheduled"
                     and cond.get("status") == "False"
@@ -324,11 +343,8 @@ def _status_from_pods(pods: list[dict]) -> str:
                 ):
                     return "unschedulable"
 
-        # Check container-level waiting reasons
-        containers = (pod.get("status") or {}).get("container_statuses") or []
-        for cs in containers:
-            waiting = (cs.get("state") or {}).get("waiting") or {}
-            reason = waiting.get("reason", "")
+        for cs in status.get("container_statuses") or []:
+            reason = _safe_get(cs, "state", "waiting").get("reason", "")
             if reason == "ContainerCreating":
                 return "containers-creating"
             if reason in ("ImagePullBackOff", "ErrImagePull"):
@@ -336,8 +352,7 @@ def _status_from_pods(pods: list[dict]) -> str:
             if reason == "CrashLoopBackOff":
                 return "crash-loop"
 
-    # Check pod phases after container-level checks
-    phases = {(p.get("status") or {}).get("phase", "") for p in pods}
+    phases = {_safe_get(p, "status").get("phase", "") for p in pods}
     if phases == {"Running"}:
         return "running"
     if "Pending" in phases:
