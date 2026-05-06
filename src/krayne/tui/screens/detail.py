@@ -11,7 +11,11 @@ from textual.worker import Worker, WorkerState
 from krayne.api.clusters import describe_cluster, get_cluster_services
 from krayne.api.types import ClusterDetails
 from krayne.errors import KrayneError
-from krayne.tunnel import is_tunnel_active, load_tunnel_state  # noqa: F401  (is_tunnel_active re-exported for legacy patch points)
+from krayne.tunnel import (  # noqa: F401  (is_tunnel_active re-exported for legacy patch points)
+    check_service_health,
+    is_tunnel_active,
+    load_tunnel_state,
+)
 from krayne.tui.screens._base import KrayneScreen, toggle_cluster_tunnels
 from krayne.tui.screens._detail_tabs import (
     ConfigTab,
@@ -41,6 +45,7 @@ class ClusterDetailScreen(KrayneScreen):
         self.namespace = namespace
         self._details: ClusterDetails | None = None
         self._services: list[str] = []
+        self._service_health: dict[str, str] = {}
 
     def compose(self):
         header = HeaderBar()
@@ -81,15 +86,25 @@ class ClusterDetailScreen(KrayneScreen):
         )
 
     @staticmethod
-    def _load_data(name: str, namespace: str) -> tuple[ClusterDetails, list[str]]:
+    def _load_data(
+        name: str, namespace: str
+    ) -> tuple[ClusterDetails, list[str], dict[str, str]]:
         details = describe_cluster(name, namespace)
         services = get_cluster_services(name, namespace)
-        return details, services
+        state = load_tunnel_state(name, namespace)
+        tunnel_map = {t.service: t.local_url for t in state.tunnels} if state else {}
+        health = check_service_health(
+            cluster_status=details.info.status,
+            head_ip=details.info.head_ip,
+            declared_services=services,
+            tunnel_map=tunnel_map,
+        )
+        return details, services, health
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.worker.name == "fetch_details":
             if event.worker.state == WorkerState.SUCCESS:
-                self._details, self._services = event.worker.result
+                self._details, self._services, self._service_health = event.worker.result
                 self._render_all_tabs()
             elif event.worker.state == WorkerState.ERROR:
                 error = event.worker.error
@@ -107,11 +122,12 @@ class ClusterDetailScreen(KrayneScreen):
             return
         details = self._details
         services = self._services
+        health = self._service_health
         tunnel_map = self._load_tunnel_map()
 
-        self.query_one(OverviewTab).update_data(details, services, tunnel_map)
+        self.query_one(OverviewTab).update_data(details, services, tunnel_map, health)
         self.query_one(WorkersTab).update_data(details)
-        self.query_one(ServicesTab).update_data(details, services, tunnel_map)
+        self.query_one(ServicesTab).update_data(details, services, tunnel_map, health)
         self.query_one(TunnelsTab).update_data(services, tunnel_map)
         self.query_one(ConfigTab).update_data(details, services)
 

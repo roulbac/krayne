@@ -4,9 +4,12 @@ import hashlib
 import json
 import os
 import signal
+import socket
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 from krayne.config.settings import PRISM_DIR
 
@@ -86,6 +89,76 @@ def detect_services(obj: dict) -> list[str]:
     """Detect which services are exposed on the head node by inspecting port names."""
     names = head_port_names(obj)
     return [name for name in SERVICE_PORTS if name in names]
+
+
+def check_service_health(
+    *,
+    cluster_status: str,
+    head_ip: str | None,
+    declared_services: list[str],
+    tunnel_map: dict[str, str],
+    timeout: float = 0.5,
+) -> dict[str, str]:
+    """Probe each declared service and return its observed status.
+
+    Returned status is one of:
+    - ``"available"`` — TCP probe succeeded, or no probe target was reachable
+      and the cluster reports ready (best-effort fallback)
+    - ``"pending"`` — cluster is not yet ready; head pod still starting
+    - ``"unreachable"`` — cluster reports ready but the service port did not
+      respond within *timeout*
+
+    A tunnel-backed ``localhost:<port>`` is preferred when a service has an
+    open tunnel, since that path is always reachable from the caller. When no
+    tunnel is open the head pod IP is probed; that succeeds when the caller is
+    in-cluster and harmlessly times out otherwise (we then trust the cluster
+    status and report ``"available"``).
+    """
+    if cluster_status != "ready":
+        return {svc: "pending" for svc in declared_services}
+
+    targets: dict[str, tuple[str, int]] = {}
+    for svc in declared_services:
+        target = _probe_target(svc, head_ip, tunnel_map.get(svc))
+        if target is not None:
+            targets[svc] = target
+
+    results: dict[str, str] = {}
+    if targets:
+        with ThreadPoolExecutor(max_workers=len(targets)) as pool:
+            futures = {
+                svc: pool.submit(_tcp_probe, host, port, timeout)
+                for svc, (host, port) in targets.items()
+            }
+            for svc, fut in futures.items():
+                results[svc] = "available" if fut.result() else "unreachable"
+
+    for svc in declared_services:
+        results.setdefault(svc, "available")
+
+    return results
+
+
+def _probe_target(
+    service: str,
+    head_ip: str | None,
+    tunnel_url: str | None,
+) -> tuple[str, int] | None:
+    if tunnel_url:
+        parsed = urlparse(tunnel_url)
+        if parsed.hostname and parsed.port:
+            return (parsed.hostname, parsed.port)
+    if head_ip and service in SERVICE_PORTS:
+        return (head_ip, SERVICE_PORTS[service][0])
+    return None
+
+
+def _tcp_probe(host: str, port: int, timeout: float) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 def load_tunnel_state(cluster_name: str, namespace: str) -> TunnelState | None:

@@ -196,6 +196,10 @@ def _detail_patches():
         patch("krayne.tui.screens.detail.describe_cluster", return_value=_DETAILS),
         patch("krayne.tui.screens.detail.get_cluster_services", return_value=["dashboard"]),
         patch("krayne.tui.screens.detail.load_tunnel_state", return_value=None),
+        patch(
+            "krayne.tui.screens.detail.check_service_health",
+            return_value={"dashboard": "available"},
+        ),
         patch("krayne.tui.screens._base.is_tunnel_active", return_value=False),
         patch("krayne.tui.screens._base.start_tunnels", return_value=[]),
         patch("krayne.tui.screens._base.stop_tunnels", return_value=True),
