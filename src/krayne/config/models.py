@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 DEFAULT_CPUS = "1"
 DEFAULT_MEMORY = "2Gi"
@@ -28,15 +28,12 @@ class HeadNodeConfig(BaseModel):
     routed to workers. GPU support is intentionally omitted — GPUs belong on
     workers."""
 
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     cpus: str = DEFAULT_HEAD_CPUS
     memory: str = DEFAULT_HEAD_MEMORY
     image: str | None = None
     runs_tasks: bool = False
-
-    @field_validator("cpus", mode="before")
-    @classmethod
-    def _coerce_cpus(cls, v: object) -> str:
-        return str(v)
 
 
 class AutoscalerConfig(BaseModel):
@@ -52,6 +49,8 @@ class AutoscalerConfig(BaseModel):
 class WorkerGroupConfig(BaseModel):
     """Worker group configuration."""
 
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     name: str = "worker"
     replicas: int = 0
     min_replicas: int = 0
@@ -60,11 +59,6 @@ class WorkerGroupConfig(BaseModel):
     memory: str = DEFAULT_MEMORY
     gpus: int = 0
     image: str | None = None
-
-    @field_validator("cpus", mode="before")
-    @classmethod
-    def _coerce_cpus(cls, v: object) -> str:
-        return str(v)
 
     @model_validator(mode="after")
     def _validate_replicas(self) -> WorkerGroupConfig:
