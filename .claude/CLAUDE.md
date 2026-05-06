@@ -51,3 +51,19 @@ Documentation uses MkDocs with `mkdocs-material` theme. Design blueprint is at `
 uv sync
 uv run mkdocs serve   # Local preview
 ```
+
+## Regenerating documentation assets
+
+Two scripts produce the assets referenced in README.md and docs/. Both depend on `playwright` + `pillow` (dev deps) and Chromium (`uv run playwright install chromium`, idempotent).
+
+- `scripts/capture_tui_demo.py` — animated GIF of the TUI. Uses mocked cluster data, no live cluster needed. Outputs `docs/assets/ikrayne-demo.gif` plus `ikrayne-frame-{0..10}.png` debug frames. Run after any TUI change.
+- `scripts/capture_cli_screenshots.py` — PNGs of CLI commands. Runs real `krayne create/get/delete` etc., so requires a working sandbox (`krayne sandbox setup`). Outputs ~9 PNGs to `docs/assets/`. Run after CLI output changes.
+
+```bash
+uv sync
+uv run playwright install chromium
+uv run python scripts/capture_tui_demo.py
+uv run python scripts/capture_cli_screenshots.py   # only if CLI output changed
+```
+
+The TUI script imports `IKrayneApp` from `src/krayne/tui/app.py` and drives it via `app.run_test()` + `pilot.press()`. Frames are captured via `app.export_screenshot()` (SVG → PNG via Playwright → GIF via Pillow). Visually inspect the GIF before committing — TUI crashes surface as garbled frames.

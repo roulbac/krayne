@@ -10,7 +10,6 @@ from krayne.api import (
     describe_cluster,
     scale_cluster,
     delete_cluster,
-    managed_cluster,
     wait_until_ready,
 )
 ```
@@ -232,71 +231,6 @@ def delete_cluster(
 
 ---
 
-### `managed_cluster`
-
-Context manager that creates a cluster, waits for readiness, optionally opens tunnels, and cleans up everything on exit.
-
-```python
-def managed_cluster(
-    config: ClusterConfig,
-    *,
-    client: KubeClient | None = None,
-    kubeconfig: str | None = None,
-    timeout: int = 300,
-    tunnel: bool = True,
-) -> ContextManager[ManagedClusterResult]
-```
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `config` | `ClusterConfig` | — | Cluster configuration (required) |
-| `client` | `KubeClient \| None` | `None` | Kubernetes client |
-| `kubeconfig` | `str \| None` | `None` | Path to kubeconfig file |
-| `timeout` | `int` | `300` | Timeout in seconds for cluster readiness |
-| `tunnel` | `bool` | `True` | Open port-forward tunnels to cluster services |
-
-**Yields:** [`ManagedClusterResult`](#managedclusterresult) once the cluster is ready
-
-**Raises:**
-
-- `ClusterAlreadyExistsError` — cluster name already in use
-- `NamespaceNotFoundError` — namespace does not exist
-- `ClusterTimeoutError` — cluster not ready within timeout
-- `KubeConnectionError` — cannot reach the Kubernetes API
-
-The cluster is always deleted on exit, even if an exception occurs inside the `with` block. When `tunnel=True`, tunnels are closed before the cluster is deleted.
-
-**Example:**
-
-```python
-import ray
-from krayne.api import managed_cluster
-from krayne.config import ClusterConfig, WorkerGroupConfig
-
-config = ClusterConfig(
-    name="experiment",
-    worker_groups=[WorkerGroupConfig(replicas=2, gpus=1)],
-)
-
-# Tunnels are opened by default
-with managed_cluster(config, timeout=600) as managed:
-    ray.init(managed.tunnel.client_url)     # ray://localhost:...
-    print(managed.tunnel.dashboard_url)     # http://localhost:...
-    print(managed.cluster.client_url)       # ray://10.0.0.1:10001
-    # ... run distributed work ...
-    ray.shutdown()
-# Tunnels closed, then cluster deleted
-
-# Use tunnel=False for in-cluster access (e.g. running inside the same K8s cluster)
-with managed_cluster(config, tunnel=False) as managed:
-    ray.init(managed.cluster.client_url)    # ray://10.0.0.1:10001
-    assert managed.tunnel is None
-```
-
----
-
 ### `wait_until_ready`
 
 Poll a cluster until it reaches the `ready` state or the timeout expires.
@@ -424,30 +358,6 @@ class WorkerGroupInfo:
     cpus: str            # CPUs per worker
     memory: str          # Memory per worker
     gpus: int            # GPUs per worker
-```
-
-### `ManagedClusterResult`
-
-Aggregated result from `managed_cluster`, combining cluster info with an optional tunnel session.
-
-```python
-@dataclass(frozen=True)
-class ManagedClusterResult:
-    cluster: ClusterInfo              # Cluster information
-    tunnel: TunnelSession | None      # Tunnel session (None if tunnel=False)
-```
-
-Access cluster URLs via `result.cluster` and tunnel URLs via `result.tunnel`:
-
-```python
-with managed_cluster(config) as managed:
-    # Tunnel (localhost) URLs
-    managed.tunnel.client_url       # ray://localhost:12346
-    managed.tunnel.dashboard_url    # http://localhost:12345
-
-    # In-cluster IPs
-    managed.cluster.client_url      # ray://10.0.0.1:10001
-    managed.cluster.dashboard_url   # http://10.0.0.1:8265
 ```
 
 ### `TunnelSession`
