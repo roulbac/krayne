@@ -326,6 +326,57 @@ krayne tun-close my-cluster -n ml-team
 
 ---
 
+## `krayne submit`
+
+Submit a Python script as a Ray job to a remote cluster. Opens a port-forward tunnel to the cluster's dashboard if one isn't already active (reusing it otherwise), then wraps `ray job submit` to upload the working directory and run `python <script>` on the head pod.
+
+Because the driver runs **on the cluster**, this path is not subject to Ray Client's strict `Python` and `Ray` version-match requirement — your local Python can differ from the cluster image.
+
+```
+krayne submit <script> --cluster <name> [OPTIONS] [-- SCRIPT_ARGS...]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|---|---|
+| `script` | Path to the Python script to submit (required) |
+
+**Options:**
+
+| Option | Default | Description |
+|---|---|---|
+| `-c`, `--cluster` | — | Target cluster name (required) |
+| `-n`, `--namespace` | `default` | Kubernetes namespace |
+| `--working-dir` | Script's parent directory | Directory uploaded to the cluster |
+| `--no-wait` | `false` | Return immediately after submission; don't tail job logs |
+
+Any positional arguments after `--` are forwarded to the script.
+
+**Examples:**
+
+```bash
+# Smallest possible invocation — uploads the script's parent dir, tails logs
+krayne submit demo.py --cluster my-cluster
+
+# Specific namespace
+krayne submit demo.py --cluster my-cluster -n ml-team
+
+# Don't block on the job — print job_id and exit
+krayne submit train.py --cluster my-cluster --no-wait
+
+# Forward args to your script
+krayne submit train.py --cluster my-cluster -- --epochs 10 --batch-size 32
+
+# Override the working directory (e.g. when your script imports a sibling package)
+krayne submit src/jobs/train.py --cluster my-cluster --working-dir src
+```
+
+!!! tip "Why prefer `krayne submit` over `ray.init('ray://…')`?"
+    Ray Client (`ray://`) requires your local Python `major.minor.patch` and `ray` package version to exactly match the cluster image, or the handshake is rejected. `krayne submit` runs the driver inside the cluster, so the local Python version is irrelevant.
+
+---
+
 ## `krayne sandbox setup`
 
 Set up a local k3s cluster with KubeRay for development.
