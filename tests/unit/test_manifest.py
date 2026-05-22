@@ -275,6 +275,23 @@ class TestBuildManifest:
         assert "tar -xz" in hook_cmd
         assert "8443" in hook_cmd
 
+    def test_lifecycle_hook_resolves_code_server_arch_in_pod(self):
+        """The code-server arch must be resolved at runtime inside the pod via
+        `uname -m`, not baked from the laptop's arch — otherwise creating a
+        cluster from an arm64 Mac onto amd64 nodes (or vice versa) downloads
+        the wrong tarball and code-server fails with `exec format error`."""
+        cfg = ClusterConfig(name="cs", services=ServicesConfig(notebook=False, code_server=True, ssh=False))
+        m = build_manifest(cfg)
+        hook_cmd = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["lifecycle"]["postStart"]["exec"]["command"][2]
+        # The hook runs `uname -m` inside the pod and branches on its output.
+        assert "uname -m" in hook_cmd
+        assert "aarch64|arm64" in hook_cmd
+        # No specific arch should be hardcoded into the tarball name — the
+        # ${ARCH} shell variable does the substitution at runtime.
+        assert "linux-amd64.tar.gz" not in hook_cmd
+        assert "linux-arm64.tar.gz" not in hook_cmd
+        assert "linux-${ARCH}.tar.gz" in hook_cmd
+
     def test_lifecycle_hook_notebook_only(self):
         cfg = ClusterConfig(
             name="nb",

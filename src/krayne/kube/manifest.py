@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import platform
 import sys
 from functools import lru_cache
 
@@ -24,10 +23,6 @@ RAY_UV_RUNTIME_ENV_HOOK = {
 }
 
 CODE_SERVER_VERSION = "4.96.4"
-_CS_ARCH = "arm64" if platform.machine() in ("arm64", "aarch64") else "amd64"
-_CS_TARBALL = f"code-server-{CODE_SERVER_VERSION}-linux-{_CS_ARCH}.tar.gz"
-_CS_URL = f"https://github.com/coder/code-server/releases/download/v{CODE_SERVER_VERSION}/{_CS_TARBALL}"
-_CS_DIR = f"/tmp/code-server-{CODE_SERVER_VERSION}-linux-{_CS_ARCH}"
 
 
 @lru_cache(maxsize=2)
@@ -144,9 +139,21 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
             " > /tmp/jupyter.log 2>&1) &"
         )
     if services.code_server:
+        # Resolve the arch inside the pod via `uname -m` rather than baking
+        # the laptop's arch into the manifest — otherwise creating a cluster
+        # from an arm64 Mac onto amd64 nodes (or vice versa) downloads the
+        # wrong tarball and code-server dies with `exec format error`.
         startup_cmds.append(
-            f"(wget -qO- {_CS_URL} | tar -xz -C /tmp"
-            f" && nohup {_CS_DIR}/bin/code-server"
+            "("
+            f"VER={CODE_SERVER_VERSION};"
+            " case \"$(uname -m)\" in"
+            " aarch64|arm64) ARCH=arm64;;"
+            " *) ARCH=amd64;;"
+            " esac;"
+            " DIR=/tmp/code-server-${VER}-linux-${ARCH};"
+            " wget -qO- \"https://github.com/coder/code-server/releases/download/v${VER}/code-server-${VER}-linux-${ARCH}.tar.gz\""
+            " | tar -xz -C /tmp"
+            " && nohup ${DIR}/bin/code-server"
             " --auth none --bind-addr 0.0.0.0:8443"
             " > /tmp/code-server.log 2>&1) &"
         )
