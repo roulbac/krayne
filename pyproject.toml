@@ -27,7 +27,7 @@ dependencies = [
     "pyyaml>=6,<7",
     "questionary>=2,<3",
     "textual>=0.75,<1",
-    "ray[client]>=2.40.0,<3",
+    "ray[client,default]>=2.43.0,<3",
 ]
 
 [project.urls]
