@@ -613,6 +613,7 @@ dependencies = [
     { name = "questionary" },
     { name = "ray", extra = ["client", "default"] },
     { name = "rich" },
+    { name = "tenacity" },
     { name = "textual" },
     { name = "typer" },
 ]
@@ -636,6 +637,7 @@ requires-dist = [
     { name = "questionary", specifier = ">=2,<3" },
     { name = "ray", extras = ["client", "default"], specifier = ">=2.43.0,<3" },
     { name = "rich", specifier = ">=13,<14" },
+    { name = "tenacity", specifier = ">=8,<10" },
     { name = "textual", specifier = ">=0.75,<1" },
     { name = "typer", specifier = ">=0.9,<1" },
 ]
@@ -1697,6 +1699,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c5/65/3ada667d32675399001bf022ad3d9f3989b57101351ebc71d6fbe2384634/smart_open-7.6.1.tar.gz", hash = "sha256:4347996e7ba21db7cd1e059632e0b30395407e4f6c660d2ddffc8f2a9ae5f990", size = 54754, upload-time = "2026-05-09T06:23:37.06Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/14/78/0f68b93564b8c6b6987a0696c582ba2591a381ab2f733a501909e949f241/smart_open-7.6.1-py3-none-any.whl", hash = "sha256:b4de6aebef023aca91cc9fb372052e1343ba3f152de215bd22391a663e3ddd21", size = 64845, upload-time = "2026-05-09T06:23:35.386Z" },
+]
+
+[[package]]
+name = "tenacity"
+version = "9.1.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/c6/ee486fd809e357697ee8a44d3d69222b344920433d3b6666ccd9b374630c/tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a", size = 49413, upload-time = "2026-02-07T10:45:33.841Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/c1/eb8f9debc45d3b7918a32ab756658a0904732f75e555402972246b0b8e71/tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55", size = 28926, upload-time = "2026-02-07T10:45:32.24Z" },
 ]
 
 [[package]]

@@ -28,6 +28,7 @@ dependencies = [
     "questionary>=2,<3",
     "textual>=0.75,<1",
     "ray[client,default]>=2.43.0,<3",
+    "tenacity>=8,<10",
 ]
 
 [project.urls]
