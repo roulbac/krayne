@@ -25,13 +25,15 @@ class ServicesConfig(BaseModel):
 class HeadNodeConfig(BaseModel):
     """Head node resource configuration. By default the head is a control plane
     only (``runs_tasks=False`` → Ray sees 0 schedulable CPUs), so user tasks are
-    routed to workers. GPU support is intentionally omitted — GPUs belong on
-    workers."""
+    routed to workers. GPUs on the head are supported but unusual — only useful
+    when ``runs_tasks=True`` or for interactive workloads (notebook, etc.) that
+    need a local accelerator."""
 
     model_config = ConfigDict(coerce_numbers_to_str=True)
 
     cpus: str = DEFAULT_HEAD_CPUS
     memory: str = DEFAULT_HEAD_MEMORY
+    gpus: int = 0
     image: str | None = None
     runs_tasks: bool = False
 

@@ -12,6 +12,17 @@ from krayne.tunnel import SERVICE_PORTS
 RAYCLUSTER_API_VERSION = "ray.io/v1"
 RAYCLUSTER_KIND = "RayCluster"
 
+# Enables Ray's uv integration on the cluster side. When set, `uv run` invocations
+# (e.g. via `ray job submit`, `kubectl exec ... uv run script.py`, or a driver
+# launched on the head pod) have their --python / --with / --with-requirements
+# captured and replayed as the worker py_executable, so workers materialize the
+# same interpreter + dependency set without baking it into the image.
+# Requires Ray >= 2.43 in the cluster image; uv binary preinstalled in >= 2.45.
+RAY_UV_RUNTIME_ENV_HOOK = {
+    "name": "RAY_RUNTIME_ENV_HOOK",
+    "value": "ray._private.runtime_env.uv_runtime_env_hook.hook",
+}
+
 CODE_SERVER_VERSION = "4.96.4"
 _CS_ARCH = "arm64" if platform.machine() in ("arm64", "aarch64") else "amd64"
 _CS_TARBALL = f"code-server-{CODE_SERVER_VERSION}-linux-{_CS_ARCH}.tar.gz"
@@ -19,8 +30,8 @@ _CS_URL = f"https://github.com/coder/code-server/releases/download/v{CODE_SERVER
 _CS_DIR = f"/tmp/code-server-{CODE_SERVER_VERSION}-linux-{_CS_ARCH}"
 
 
-@lru_cache(maxsize=1)
-def _get_ray_image() -> str:
+@lru_cache(maxsize=2)
+def _get_ray_image(gpu: bool = False) -> str:
     # `import ray` mutates termios (Ray's import chain calls tcsetattr for
     # color/signal setup), which corrupts Textual's raw-input + mouse-tracking
     # mode if this runs inside a TUI worker thread. Result is cached so that
@@ -29,7 +40,8 @@ def _get_ray_image() -> str:
 
     ray_version = ray.__version__
     py_tag = f"py{sys.version_info.major}{sys.version_info.minor}"
-    return f"rayproject/ray:{ray_version}-{py_tag}"
+    suffix = "-gpu" if gpu else ""
+    return f"rayproject/ray:{ray_version}-{py_tag}{suffix}"
 
 
 HEAD_MIN_CPUS = "1"
@@ -88,16 +100,21 @@ def _build_autoscaler_options(autoscaler: AutoscalerConfig) -> dict:
 
 
 def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
-    image = head.image or _get_ray_image()
+    image = head.image or _get_ray_image(gpu=head.gpus > 0)
     # Head is always a control plane (rayStartParams.num-cpus="0"), but it still
     # needs real CPU/memory to run GCS, autoscaler, dashboard, and the postStart
     # services (jupyter/code-server/sshd). Clamp to a minimum so the pod can boot.
     cpus = _max_quantity(head.cpus, HEAD_MIN_CPUS)
     memory = _max_quantity(head.memory, HEAD_MIN_MEMORY)
     # requests == limits → Guaranteed QoS class.
+    head_requests: dict[str, str | int] = {"cpu": cpus, "memory": memory}
+    head_limits: dict[str, str | int] = {"cpu": cpus, "memory": memory}
+    if head.gpus > 0:
+        head_requests["nvidia.com/gpu"] = head.gpus
+        head_limits["nvidia.com/gpu"] = head.gpus
     resources: dict[str, dict[str, str | int]] = {
-        "requests": {"cpu": cpus, "memory": memory},
-        "limits": {"cpu": cpus, "memory": memory},
+        "requests": head_requests,
+        "limits": head_limits,
     }
 
     # Only declare Ray-internal ports on the container. KubeRay auto-adds
@@ -114,6 +131,7 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
         "image": image,
         "ports": ports,
         "resources": resources,
+        "env": [RAY_UV_RUNTIME_ENV_HOOK],
     }
 
     startup_cmds: list[str] = []
@@ -210,7 +228,7 @@ def _build_head_spec(head: HeadNodeConfig, services: ServicesConfig) -> dict:
 
 
 def _build_worker_spec(wg: WorkerGroupConfig) -> dict:
-    image = wg.image or _get_ray_image()
+    image = wg.image or _get_ray_image(gpu=wg.gpus > 0)
     # requests == limits → Guaranteed QoS. KubeRay autodetects num-cpus, memory,
     # and (per the resource section of the docs) num-gpus from these limits.
     requests: dict[str, str | int] = {"cpu": wg.cpus, "memory": wg.memory}
@@ -223,6 +241,7 @@ def _build_worker_spec(wg: WorkerGroupConfig) -> dict:
         "name": "ray-worker",
         "image": image,
         "resources": {"requests": requests, "limits": limits},
+        "env": [RAY_UV_RUNTIME_ENV_HOOK],
     }
 
     return {

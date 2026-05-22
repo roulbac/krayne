@@ -109,10 +109,66 @@ class TestBuildManifest:
         )
         m = build_manifest(cfg)
         wg = m["spec"]["workerGroupSpecs"][0]
-        res = wg["template"]["spec"]["containers"][0]["resources"]
+        container = wg["template"]["spec"]["containers"][0]
+        res = container["resources"]
         assert res["limits"]["nvidia.com/gpu"] == 1
         assert res["requests"]["nvidia.com/gpu"] == 1
+        assert container["image"] == _get_ray_image(gpu=True)
+        assert container["image"].endswith("-gpu")
         assert "nodeSelector" not in wg["template"]["spec"]
+
+    def test_cpu_worker_uses_non_gpu_image(self):
+        cfg = ClusterConfig(name="cpu", worker_groups=[WorkerGroupConfig(gpus=0)])
+        m = build_manifest(cfg)
+        container = m["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0]
+        assert container["image"] == _get_ray_image(gpu=False)
+        assert not container["image"].endswith("-gpu")
+
+    def test_worker_image_picked_per_group(self):
+        """Each worker group independently picks GPU or CPU image based on its own gpus."""
+        cfg = ClusterConfig(
+            name="mixed",
+            worker_groups=[
+                WorkerGroupConfig(name="cpu", gpus=0),
+                WorkerGroupConfig(name="gpu", gpus=2),
+            ],
+        )
+        m = build_manifest(cfg)
+        cpu_img = m["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0]["image"]
+        gpu_img = m["spec"]["workerGroupSpecs"][1]["template"]["spec"]["containers"][0]["image"]
+        assert not cpu_img.endswith("-gpu")
+        assert gpu_img.endswith("-gpu")
+
+    def test_head_with_gpus_uses_gpu_image_and_resources(self):
+        cfg = ClusterConfig(name="hgpu", head=HeadNodeConfig(gpus=1))
+        m = build_manifest(cfg)
+        container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]
+        assert container["image"] == _get_ray_image(gpu=True)
+        assert container["image"].endswith("-gpu")
+        assert container["resources"]["requests"]["nvidia.com/gpu"] == 1
+        assert container["resources"]["limits"]["nvidia.com/gpu"] == 1
+
+    def test_head_without_gpus_uses_cpu_image(self):
+        cfg = ClusterConfig(name="hcpu", head=HeadNodeConfig(gpus=0))
+        m = build_manifest(cfg)
+        container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]
+        assert container["image"] == _get_ray_image(gpu=False)
+        assert not container["image"].endswith("-gpu")
+        assert "nvidia.com/gpu" not in container["resources"]["requests"]
+        assert "nvidia.com/gpu" not in container["resources"]["limits"]
+
+    def test_head_and_worker_independent_gpu_choices(self):
+        """Head and worker groups pick their image independently based on their own gpus."""
+        cfg = ClusterConfig(
+            name="indep",
+            head=HeadNodeConfig(gpus=1),
+            worker_groups=[WorkerGroupConfig(gpus=0)],
+        )
+        m = build_manifest(cfg)
+        head_img = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["image"]
+        worker_img = m["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0]["image"]
+        assert head_img.endswith("-gpu")
+        assert not worker_img.endswith("-gpu")
 
     def test_cpu_worker_no_node_selector(self):
         cfg = ClusterConfig(name="cpu")
@@ -274,6 +330,24 @@ class TestBuildManifest:
 
         # Daemon launch as root (privileged port 22).
         assert "sudo /usr/sbin/sshd" in hook_cmd
+
+    def test_head_sets_ray_runtime_env_hook(self):
+        cfg = ClusterConfig(name="hook")
+        m = build_manifest(cfg)
+        container = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]
+        assert {
+            "name": "RAY_RUNTIME_ENV_HOOK",
+            "value": "ray._private.runtime_env.uv_runtime_env_hook.hook",
+        } in container["env"]
+
+    def test_worker_sets_ray_runtime_env_hook(self):
+        cfg = ClusterConfig(name="hook")
+        m = build_manifest(cfg)
+        container = m["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0]
+        assert {
+            "name": "RAY_RUNTIME_ENV_HOOK",
+            "value": "ray._private.runtime_env.uv_runtime_env_hook.hook",
+        } in container["env"]
 
     def test_no_lifecycle_hook_when_no_services(self):
         cfg = ClusterConfig(

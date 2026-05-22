@@ -65,6 +65,20 @@ create_cluster(config, wait=True)
 
 ### 3. Run a Ray job against it
 
+**Recommended: `krayne submit`.** It opens a tunnel if one isn't already up, then wraps `ray job submit` so your script's driver runs **inside the cluster** — no Python version match required, no `ray.init` glue:
+
+```bash
+krayne submit demo.py --cluster my-cluster -n ml-team
+```
+
+Add `--no-wait` to skip log tailing, or pass `-- arg1 arg2 …` to forward arguments to the script. See [`docs/reference/cli.md`](docs/reference/cli.md#krayne-submit) for the full reference.
+
+<details>
+<summary><b>Advanced: Ray Client (<code>ray.init("ray://…")</code>) — strict version match required</b></summary>
+
+> [!WARNING]
+> Ray Client requires the **exact same `Python` major.minor.patch and Ray version** on your laptop as in the cluster image. A single patch difference (e.g. `3.12.6` vs `3.12.9`) is rejected at handshake. This is a known Ray pain point, not specific to krayne. Only use this path if you've pinned your local interpreter to match `rayproject/ray:<ver>-pyXY`.
+
 `open_tunnel` opens port-forward tunnels to the cluster's services so `ray.init` can reach the head node from your laptop, and closes them on exit:
 
 ```python
@@ -82,6 +96,8 @@ with open_tunnel("my-cluster", "ml-team") as session:
     ray.shutdown()
 # tunnels closed when the block exits
 ```
+
+</details>
 
 When you're done, `krayne delete my-cluster -n ml-team` (or `delete_cluster("my-cluster", "ml-team")` from the SDK) tears the cluster down.
 

@@ -324,7 +324,30 @@ Tunnels are always closed on exit, even if an exception is raised inside the `wi
 
 **Raises:** `ClusterNotFoundError`, `KubeConnectionError`
 
-**Example:**
+!!! tip "Prefer `krayne submit` for running jobs"
+    To run a Python script as a Ray job, the **recommended** path is the [`krayne submit`](cli.md#krayne-submit) CLI — it ensures a tunnel exists and submits the job via `ray job submit`, so the driver runs inside the cluster and your local Python version is irrelevant. Reach for `open_tunnel` directly when you need raw tunnel access (e.g. to browse the dashboard, hit `JobSubmissionClient` programmatically, or as part of an SDK workflow that already has a pinned Python).
+
+**Example — dashboard / `JobSubmissionClient` (no version match required):**
+
+```python
+from krayne.api import open_tunnel
+from ray.job_submission import JobSubmissionClient
+
+with open_tunnel("my-cluster") as session:
+    print(session.dashboard_url)            # http://localhost:...
+    client = JobSubmissionClient(session.dashboard_url)
+    job_id = client.submit_job(
+        entrypoint="python demo.py",
+        runtime_env={"working_dir": "."},
+    )
+    print(f"{session.dashboard_url}/#/jobs/{job_id}")
+# tunnel closed when the block exits
+```
+
+**Example — Ray Client (`ray.init("ray://…")`, advanced):**
+
+!!! warning "Strict Python and Ray version match required"
+    `ray.init("ray://…")` performs a `major.minor.patch` Python check and an exact Ray-version check against the cluster image at handshake time. A single patch difference (e.g. `3.12.6` vs `3.12.9`) is rejected. This is a known Ray pain point, not specific to krayne. Only use this path if your local interpreter is pinned to match `rayproject/ray:<ver>-pyXY`; otherwise prefer `krayne submit` or `JobSubmissionClient` (above).
 
 ```python
 import ray
@@ -332,7 +355,6 @@ from krayne.api import open_tunnel
 
 with open_tunnel("my-cluster") as session:
     ray.init(session.client_url)            # ray://localhost:...
-    print(session.dashboard_url)            # http://localhost:...
 
     @ray.remote
     def hello(i: int) -> str:

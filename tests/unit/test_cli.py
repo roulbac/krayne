@@ -168,6 +168,107 @@ class TestDelete:
         mock_delete.assert_not_called()
 
 
+class TestSubmit:
+    @pytest.fixture
+    def script(self, tmp_path):
+        p = tmp_path / "demo.py"
+        p.write_text("import ray\nray.init()\nprint('hi')\n")
+        return p
+
+    @pytest.fixture
+    def _tunnel_state(self):
+        from krayne.tunnel import TunnelInfo, TunnelState
+
+        return TunnelState(
+            cluster_name="test",
+            namespace="default",
+            tunnels=[TunnelInfo(service="dashboard", remote_port=8265, local_port=54321, local_url="http://localhost:54321")],
+            pids=[1234],
+        )
+
+    @patch("krayne.cli.submit.subprocess.run")
+    @patch("krayne.cli.submit.shutil.which", return_value="/usr/local/bin/ray")
+    @patch("krayne.tunnel.wait_for_tunnel_ready", return_value=True)
+    @patch("krayne.tunnel.start_tunnels")
+    @patch("krayne.tunnel.load_tunnel_state")
+    @patch("krayne.tunnel.is_tunnel_active", return_value=False)
+    @patch("krayne.cli.app._get_cluster_services", return_value=["dashboard"])
+    @patch("krayne.cli.app._get_cluster", return_value=_INFO)
+    def test_submit_opens_tunnel_then_runs_ray(
+        self, mock_get, mock_services, mock_active, mock_load, mock_start, mock_wait, mock_which, mock_run, script, _tunnel_state,
+    ):
+        mock_load.return_value = _tunnel_state
+        mock_run.return_value = MagicMock(returncode=0)
+        result = runner.invoke(app, ["submit", str(script), "--cluster", "test"])
+        assert result.exit_code == 0
+        mock_start.assert_called_once()
+        cmd = mock_run.call_args[0][0]
+        assert cmd[:3] == ["/usr/local/bin/ray", "job", "submit"]
+        assert "--address" in cmd
+        assert "http://localhost:54321" in cmd
+        # script gets passed relative to its parent (the working dir)
+        assert cmd[-2:] == ["python", "demo.py"]
+
+    @patch("krayne.cli.submit.subprocess.run")
+    @patch("krayne.cli.submit.shutil.which", return_value="/usr/local/bin/ray")
+    @patch("krayne.tunnel.wait_for_tunnel_ready", return_value=True)
+    @patch("krayne.tunnel.start_tunnels")
+    @patch("krayne.tunnel.load_tunnel_state")
+    @patch("krayne.tunnel.is_tunnel_active", return_value=True)
+    @patch("krayne.cli.app._get_cluster", return_value=_INFO)
+    def test_submit_reuses_active_tunnel(
+        self, mock_get, mock_active, mock_load, mock_start, mock_wait, mock_which, mock_run, script, _tunnel_state,
+    ):
+        mock_load.return_value = _tunnel_state
+        mock_run.return_value = MagicMock(returncode=0)
+        result = runner.invoke(app, ["submit", str(script), "--cluster", "test"])
+        assert result.exit_code == 0
+        mock_start.assert_not_called()
+
+    @patch("krayne.cli.submit.subprocess.run")
+    @patch("krayne.cli.submit.shutil.which", return_value="/usr/local/bin/ray")
+    @patch("krayne.tunnel.wait_for_tunnel_ready", return_value=True)
+    @patch("krayne.tunnel.start_tunnels")
+    @patch("krayne.tunnel.load_tunnel_state")
+    @patch("krayne.tunnel.is_tunnel_active", return_value=True)
+    @patch("krayne.cli.app._get_cluster", return_value=_INFO)
+    def test_submit_no_wait_and_forwards_extra_args(
+        self, mock_get, mock_active, mock_load, mock_start, mock_wait, mock_which, mock_run, script, _tunnel_state,
+    ):
+        mock_load.return_value = _tunnel_state
+        mock_run.return_value = MagicMock(returncode=0)
+        result = runner.invoke(
+            app,
+            ["submit", str(script), "--cluster", "test", "--no-wait", "--", "--epochs", "10"],
+        )
+        assert result.exit_code == 0
+        cmd = mock_run.call_args[0][0]
+        assert "--no-wait" in cmd
+        assert cmd[-4:] == ["python", "demo.py", "--epochs", "10"]
+
+    @patch("krayne.cli.app._get_cluster", return_value=_INFO)
+    def test_submit_errors_when_script_missing(self, mock_get, tmp_path):
+        result = runner.invoke(
+            app,
+            ["submit", str(tmp_path / "nope.py"), "--cluster", "test"],
+        )
+        assert result.exit_code == 1
+        assert "Script not found" in result.output
+
+    @patch("krayne.cli.app._get_cluster")
+    def test_submit_errors_when_cluster_not_ready(self, mock_get, script):
+        pending = ClusterInfo(
+            name="test", namespace="default", status="pending",
+            head_ip=None, dashboard_url=None, client_url=None, notebook_url=None,
+            code_server_url=None, ssh_url=None, num_workers=0,
+            autoscaling_enabled=True, created_at="2026-01-01T00:00:00Z",
+        )
+        mock_get.return_value = pending
+        result = runner.invoke(app, ["submit", str(script), "--cluster", "test"])
+        assert result.exit_code == 1
+        assert "not ready" in result.output
+
+
 class TestInit:
     KUBECONFIG_YAML = (
         "apiVersion: v1\n"

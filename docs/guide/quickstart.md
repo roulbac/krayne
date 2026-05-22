@@ -130,7 +130,23 @@ $ krayne describe my-first-cluster
 
 ## 5. Run a Ray job against your cluster
 
-To submit work from your laptop, you need port-forward tunnels so `ray.init` can reach the head node. The `open_tunnel` context manager handles setup and cleanup for you:
+**Recommended: `krayne submit`.** It opens a tunnel for you if one isn't already up, then submits your script as a Ray job that runs entirely inside the cluster — so your local Python version doesn't have to match anything:
+
+```bash
+krayne submit demo.py --cluster my-first-cluster
+```
+
+Add `--no-wait` to return as soon as the job is queued, or `-- arg1 arg2 …` to forward extra arguments to the script. See the [CLI reference](../reference/cli.md#krayne-submit) for the full option set.
+
+!!! tip "Tunnels (for the dashboard, notebook, etc.)"
+    `krayne submit` reuses an existing tunnel or opens one transparently. To open tunnels manually (e.g. to browse the Ray dashboard), use `krayne tun-open my-first-cluster` (close with `krayne tun-close my-first-cluster`). The TUI exposes the same on the `t` shortcut.
+
+### Advanced: Ray Client (`ray.init("ray://…")`)
+
+!!! warning "Strict Python and Ray version match required"
+    `ray.init("ray://…")` enforces an exact `major.minor.patch` match between your laptop's Python and the Python baked into the cluster image — and an exact match on the Ray version too. A single patch difference (e.g. `3.12.6` vs `3.12.9`) is rejected at handshake. This is a known Ray pain point, not specific to krayne. Only choose this path if you've pinned your local interpreter to match `rayproject/ray:<ver>-pyXY`; otherwise stick with `krayne submit`.
+
+If you've pinned your local Python to match the cluster image, you can drive Ray directly from your laptop. The `open_tunnel` context manager handles the port-forward setup and cleanup for you:
 
 ```python
 import ray
@@ -147,9 +163,6 @@ with open_tunnel("my-first-cluster") as session:
     ray.shutdown()
 # tunnels closed when the block exits
 ```
-
-!!! tip "CLI alternative"
-    You can also open tunnels from the shell with `krayne tun-open my-first-cluster` (close with `krayne tun-close my-first-cluster`). The TUI exposes the same on the `t` shortcut.
 
 ## 6. Clean up
 

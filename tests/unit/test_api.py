@@ -443,6 +443,69 @@ class TestPodLevelStatus:
         clusters = list_clusters("default", client=mock_client)
         assert clusters[0].status == "pods-pending"
 
+    def test_container_creating_overrides_crd_ready(self, mock_client):
+        """KubeRay sometimes flips status.state to 'ready' before the head
+        pod actually transitions from ContainerCreating to Running. Pod
+        signals must override the optimistic CRD state."""
+        mock_client.list_pods.return_value = [
+            {
+                "status": {
+                    "phase": "Pending",
+                    "conditions": [],
+                    "container_statuses": [
+                        {"state": {"waiting": {"reason": "ContainerCreating"}}}
+                    ],
+                },
+            },
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        # _SAMPLE_OBJ.status.state is "ready", but the pod says otherwise.
+        assert info.status == "containers-creating"
+
+    def test_image_pull_error_overrides_crd_ready(self, mock_client):
+        mock_client.list_pods.return_value = [
+            {
+                "status": {
+                    "phase": "Pending",
+                    "conditions": [],
+                    "container_statuses": [
+                        {"state": {"waiting": {"reason": "ImagePullBackOff"}}}
+                    ],
+                },
+            },
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "image-pull-error"
+
+    def test_all_running_pods_let_crd_ready_win(self, mock_client):
+        """When pods are all Running, CRD's 'ready' wins over pod's 'running'
+        because 'ready' includes additional liveness (GCS, dashboard up)."""
+        mock_client.list_pods.return_value = [
+            {"status": {"phase": "Running", "conditions": [], "container_statuses": []}},
+            {"status": {"phase": "Running", "conditions": [], "container_statuses": []}},
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "ready"
+
+    def test_wait_until_ready_blocks_on_container_creating(self, mock_client):
+        """`wait_until_ready` must consult pods too — otherwise it returns
+        immediately on KubeRay's optimistic 'ready' state."""
+        mock_client.list_pods.return_value = [
+            {
+                "status": {
+                    "phase": "Pending",
+                    "conditions": [],
+                    "container_statuses": [
+                        {"state": {"waiting": {"reason": "ContainerCreating"}}}
+                    ],
+                },
+            },
+        ]
+        with pytest.raises(ClusterTimeoutError):
+            wait_until_ready(
+                "test", "default", client=mock_client, timeout=1, _poll_interval=0.1
+            )
+
 
 class TestOpenTunnel:
     @patch("krayne.tunnel.stop_tunnels")
