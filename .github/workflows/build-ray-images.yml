@@ -30,7 +30,7 @@ jobs:
         ray_version:
           - "2.55.1"
         python_version:
-          - "3.13.6"
+          - "3.13.2"
     steps:
       - name: Checkout
         uses: actions/checkout@v4

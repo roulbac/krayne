@@ -4,7 +4,8 @@ version = "0.3.1"
 description = "CLI and SDK for creating, managing, and scaling Ray clusters on Kubernetes"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.12,<3.14"
+# 3.13.4 and 3.13.6 are excluded: skipped by conda-forge, so no matching Ray image can be built.
+requires-python = ">=3.12,<3.14,!=3.13.4,!=3.13.6"
 keywords = ["ray", "kubernetes", "kuberay", "ml", "distributed-computing", "cluster-management", "cli", "sdk"]
 classifiers = [
     "Development Status :: 3 - Alpha",
