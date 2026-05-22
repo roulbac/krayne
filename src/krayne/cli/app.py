@@ -110,4 +110,5 @@ def _current_krayne_context_for(kubeconfig: Path) -> str | None:
 # import time.
 from krayne.cli import clusters as _clusters  # noqa: E402, F401
 from krayne.cli import sandbox as _sandbox  # noqa: E402, F401
+from krayne.cli import submit as _submit  # noqa: E402, F401
 from krayne.cli import tunnel as _tunnel  # noqa: E402, F401
