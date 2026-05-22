@@ -9,6 +9,7 @@ from krayne.tunnel import (
     PORT_RANGE_END,
     PORT_RANGE_START,
     SERVICE_PORTS,
+    TunnelInfo,
     TunnelState,
     check_service_health,
     detect_services,
@@ -17,6 +18,7 @@ from krayne.tunnel import (
     local_port_for,
     start_tunnels,
     stop_tunnels,
+    wait_for_tunnel_ready,
 )
 
 
@@ -368,3 +370,28 @@ class TestTunnelState:
 
         state_file = self.tunnel_dir / "ns" / "c.json"
         assert not state_file.exists()
+
+
+class TestWaitForTunnelReady:
+    _tunnel = TunnelInfo(
+        service="dashboard",
+        remote_port=8265,
+        local_port=54321,
+        local_url="http://localhost:54321",
+    )
+
+    def test_returns_true_when_port_immediately_open(self):
+        with patch("krayne.tunnel._tcp_probe", return_value=True) as probe:
+            assert wait_for_tunnel_ready(self._tunnel, timeout=5.0) is True
+        probe.assert_called_once()
+
+    def test_returns_true_after_a_few_retries(self):
+        # Fail twice, then succeed. Tiny interval so retries are fast.
+        with patch("krayne.tunnel._tcp_probe", side_effect=[False, False, True]):
+            assert wait_for_tunnel_ready(self._tunnel, timeout=5.0, interval=0.0) is True
+
+    def test_returns_false_on_timeout(self):
+        # Probe never succeeds; tenacity should give up at the deadline.
+        with patch("krayne.tunnel._tcp_probe", return_value=False):
+            assert wait_for_tunnel_ready(self._tunnel, timeout=0.05, interval=0.01) is False
+

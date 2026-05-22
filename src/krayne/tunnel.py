@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
+import tenacity
+
 from krayne.config.settings import PRISM_DIR
 
 PORT_RANGE_START = 10000
@@ -159,6 +161,36 @@ def _tcp_probe(host: str, port: int, timeout: float) -> bool:
             return True
     except OSError:
         return False
+
+
+def wait_for_tunnel_ready(
+    tunnel: TunnelInfo,
+    *,
+    timeout: float = 30.0,
+    interval: float = 0.5,
+) -> bool:
+    """Poll a tunnel's local TCP port until it accepts connections.
+
+    ``start_tunnels`` returns as soon as ``kubectl port-forward`` has been
+    spawned, but the local port may not be listening yet (kubectl needs a
+    moment to set up the gRPC stream). Callers that immediately use the
+    tunnel (e.g. ``ray job submit``) must wait here first, otherwise they
+    race against kubectl and see ``connection refused``.
+
+    Returns ``True`` once the port accepts a TCP connection, ``False`` on
+    *timeout*.
+    """
+
+    @tenacity.retry(
+        stop=tenacity.stop_after_delay(timeout),
+        wait=tenacity.wait_fixed(interval),
+        retry=tenacity.retry_if_result(lambda reachable: not reachable),
+        retry_error_callback=lambda _state: False,
+    )
+    def _probe() -> bool:
+        return _tcp_probe("localhost", tunnel.local_port, timeout=1.0)
+
+    return _probe()
 
 
 def load_tunnel_state(cluster_name: str, namespace: str) -> TunnelState | None:

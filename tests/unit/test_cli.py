@@ -188,13 +188,14 @@ class TestSubmit:
 
     @patch("krayne.cli.submit.subprocess.run")
     @patch("krayne.cli.submit.shutil.which", return_value="/usr/local/bin/ray")
+    @patch("krayne.tunnel.wait_for_tunnel_ready", return_value=True)
     @patch("krayne.tunnel.start_tunnels")
     @patch("krayne.tunnel.load_tunnel_state")
     @patch("krayne.tunnel.is_tunnel_active", return_value=False)
     @patch("krayne.cli.app._get_cluster_services", return_value=["dashboard"])
     @patch("krayne.cli.app._get_cluster", return_value=_INFO)
     def test_submit_opens_tunnel_then_runs_ray(
-        self, mock_get, mock_services, mock_active, mock_load, mock_start, mock_which, mock_run, script, _tunnel_state,
+        self, mock_get, mock_services, mock_active, mock_load, mock_start, mock_wait, mock_which, mock_run, script, _tunnel_state,
     ):
         mock_load.return_value = _tunnel_state
         mock_run.return_value = MagicMock(returncode=0)
@@ -210,12 +211,13 @@ class TestSubmit:
 
     @patch("krayne.cli.submit.subprocess.run")
     @patch("krayne.cli.submit.shutil.which", return_value="/usr/local/bin/ray")
+    @patch("krayne.tunnel.wait_for_tunnel_ready", return_value=True)
     @patch("krayne.tunnel.start_tunnels")
     @patch("krayne.tunnel.load_tunnel_state")
     @patch("krayne.tunnel.is_tunnel_active", return_value=True)
     @patch("krayne.cli.app._get_cluster", return_value=_INFO)
     def test_submit_reuses_active_tunnel(
-        self, mock_get, mock_active, mock_load, mock_start, mock_which, mock_run, script, _tunnel_state,
+        self, mock_get, mock_active, mock_load, mock_start, mock_wait, mock_which, mock_run, script, _tunnel_state,
     ):
         mock_load.return_value = _tunnel_state
         mock_run.return_value = MagicMock(returncode=0)
@@ -225,12 +227,13 @@ class TestSubmit:
 
     @patch("krayne.cli.submit.subprocess.run")
     @patch("krayne.cli.submit.shutil.which", return_value="/usr/local/bin/ray")
+    @patch("krayne.tunnel.wait_for_tunnel_ready", return_value=True)
     @patch("krayne.tunnel.start_tunnels")
     @patch("krayne.tunnel.load_tunnel_state")
     @patch("krayne.tunnel.is_tunnel_active", return_value=True)
     @patch("krayne.cli.app._get_cluster", return_value=_INFO)
     def test_submit_no_wait_and_forwards_extra_args(
-        self, mock_get, mock_active, mock_load, mock_start, mock_which, mock_run, script, _tunnel_state,
+        self, mock_get, mock_active, mock_load, mock_start, mock_wait, mock_which, mock_run, script, _tunnel_state,
     ):
         mock_load.return_value = _tunnel_state
         mock_run.return_value = MagicMock(returncode=0)

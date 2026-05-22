@@ -38,7 +38,12 @@ def submit(
 
         krayne submit train.py --cluster foo -- --epochs 10
     """
-    from krayne.tunnel import is_tunnel_active, load_tunnel_state, start_tunnels
+    from krayne.tunnel import (
+        is_tunnel_active,
+        load_tunnel_state,
+        start_tunnels,
+        wait_for_tunnel_ready,
+    )
 
     try:
         script_path = script.expanduser().resolve()
@@ -80,14 +85,25 @@ def submit(
         state = load_tunnel_state(cluster, namespace)
         if state is None:
             raise KrayneError("Tunnel state unavailable after start; cannot continue.")
-        dashboard_url = next(
-            (t.local_url for t in state.tunnels if t.service == "dashboard"),
+        dashboard = next(
+            (t for t in state.tunnels if t.service == "dashboard"),
             None,
         )
-        if dashboard_url is None:
+        if dashboard is None:
             raise KrayneError(
                 "Dashboard tunnel not found. Check `krayne tun-open` separately."
             )
+
+        # kubectl port-forward needs a moment to bind the local port even after
+        # Popen returns; pre-existing tunnels can also go stale (PID alive but
+        # stream broken). Probe the port until it accepts a connection.
+        if not wait_for_tunnel_ready(dashboard, timeout=30.0):
+            raise KrayneError(
+                f"Dashboard tunnel for '{cluster}' did not become reachable at "
+                f"{dashboard.local_url} within 30s. Try `krayne tun-close {cluster}` "
+                "and re-run."
+            )
+        dashboard_url = dashboard.local_url
 
         ray_cli = shutil.which("ray")
         if ray_cli is None:
