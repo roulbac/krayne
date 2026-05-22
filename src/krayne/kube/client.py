@@ -347,32 +347,34 @@ def _extract_status(obj: dict, pods: list[dict] | None = None) -> str:
     return "unknown"
 
 
-def _status_from_pods(pods: list[dict]) -> str:
-    if not pods:
-        return "creating"
+def _pod_problem_signal(pod: dict) -> str | None:
+    """Return a status string when a pod is in a bad/transient state, else ``None``."""
+    status = _safe_get(pod, "status")
+    phase = status.get("phase", "")
 
-    for pod in pods:
-        status = _safe_get(pod, "status")
-        phase = status.get("phase", "")
+    if phase == "Pending":
+        for cond in status.get("conditions") or []:
+            if (
+                cond.get("type") == "PodScheduled"
+                and cond.get("status") == "False"
+                and cond.get("reason") == "Unschedulable"
+            ):
+                return "unschedulable"
 
-        if phase == "Pending":
-            for cond in status.get("conditions") or []:
-                if (
-                    cond.get("type") == "PodScheduled"
-                    and cond.get("status") == "False"
-                    and cond.get("reason") == "Unschedulable"
-                ):
-                    return "unschedulable"
+    for cs in status.get("container_statuses") or []:
+        reason = _safe_get(cs, "state", "waiting").get("reason", "")
+        if reason == "ContainerCreating":
+            return "containers-creating"
+        if reason in ("ImagePullBackOff", "ErrImagePull"):
+            return "image-pull-error"
+        if reason == "CrashLoopBackOff":
+            return "crash-loop"
 
-        for cs in status.get("container_statuses") or []:
-            reason = _safe_get(cs, "state", "waiting").get("reason", "")
-            if reason == "ContainerCreating":
-                return "containers-creating"
-            if reason in ("ImagePullBackOff", "ErrImagePull"):
-                return "image-pull-error"
-            if reason == "CrashLoopBackOff":
-                return "crash-loop"
+    return None
 
+
+def _phase_summary(pods: list[dict]) -> str:
+    """Map a set of pod phases to a single status string."""
     phases = {_safe_get(p, "status").get("phase", "") for p in pods}
     if phases == {"Running"}:
         return "running"
@@ -380,5 +382,37 @@ def _status_from_pods(pods: list[dict]) -> str:
         return "pods-pending"
     if "Failed" in phases:
         return "pods-failed"
-
     return "unknown"
+
+
+def _status_from_pods(pods: list[dict]) -> str:
+    """Derive a cluster status from raw pod dicts.
+
+    Head pod state dominates: a worker stuck in ``Unschedulable`` while the
+    autoscaler waits for capacity is normal, not a cluster failure, so we
+    refuse to downgrade the whole cluster on the strength of a worker
+    signal alone. The head's problem signals are still authoritative —
+    those genuinely block the cluster from being usable.
+    """
+    if not pods:
+        return "creating"
+
+    head_pods = [
+        p for p in pods
+        if _safe_get(p, "metadata", "labels").get("ray.io/node-type") == "head"
+    ]
+
+    if head_pods:
+        for pod in head_pods:
+            problem = _pod_problem_signal(pod)
+            if problem is not None:
+                return problem
+        return _phase_summary(head_pods)
+
+    # No head pod is labeled (older KubeRay, or odd state) — fall back to
+    # treating all pods uniformly so we still surface obvious failures.
+    for pod in pods:
+        problem = _pod_problem_signal(pod)
+        if problem is not None:
+            return problem
+    return _phase_summary(pods)
