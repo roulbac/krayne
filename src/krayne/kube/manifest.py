@@ -28,8 +28,8 @@ def _get_ray_image() -> str:
     import ray
 
     ray_version = ray.__version__
-    py_tag = f"py{sys.version_info.major}{sys.version_info.minor}"
-    return f"rayproject/ray:{ray_version}-{py_tag}"
+    py_tag = f"py{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    return f"roulbac/ray:{ray_version}-{py_tag}"
 
 
 HEAD_MIN_CPUS = "1"
