@@ -507,6 +507,125 @@ class TestPodLevelStatus:
             )
 
 
+def _head_pod(**status_overrides):
+    """Build a labelled head pod dict for status tests."""
+    status = {"phase": "Running", "conditions": [], "container_statuses": []}
+    status.update(status_overrides)
+    return {
+        "metadata": {"labels": {"ray.io/node-type": "head"}},
+        "status": status,
+    }
+
+
+def _worker_pod(**status_overrides):
+    """Build a labelled worker pod dict for status tests."""
+    status = {"phase": "Running", "conditions": [], "container_statuses": []}
+    status.update(status_overrides)
+    return {
+        "metadata": {"labels": {"ray.io/node-type": "worker"}},
+        "status": status,
+    }
+
+
+class TestHeadPodDominance:
+    """Head pod state should dominate worker pod state when deriving cluster
+    status — a worker stuck Unschedulable while the autoscaler waits for
+    capacity is normal, not a cluster failure."""
+
+    def _no_state_obj(self):
+        return {**_SAMPLE_OBJ, "status": {}}
+
+    def test_head_running_worker_unschedulable_is_running(self, mock_client):
+        """Bug fix: head Running + worker Unschedulable previously reported
+        the whole cluster as 'unschedulable'. Should be 'ready' (CRD says so
+        and head is up)."""
+        mock_client.list_pods.return_value = [
+            _head_pod(),
+            _worker_pod(
+                phase="Pending",
+                conditions=[
+                    {"type": "PodScheduled", "status": "False", "reason": "Unschedulable"}
+                ],
+            ),
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "ready"
+
+    def test_head_unschedulable_dominates_running_workers(self, mock_client):
+        """Head problems still surface — that's a real cluster blocker."""
+        mock_client.get_ray_cluster.side_effect = lambda *a, **kw: self._no_state_obj()
+        mock_client.list_pods.return_value = [
+            _head_pod(
+                phase="Pending",
+                conditions=[
+                    {"type": "PodScheduled", "status": "False", "reason": "Unschedulable"}
+                ],
+            ),
+            _worker_pod(),
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "unschedulable"
+
+    def test_head_container_creating_dominates_running_workers(self, mock_client):
+        mock_client.list_pods.return_value = [
+            _head_pod(
+                phase="Pending",
+                container_statuses=[
+                    {"state": {"waiting": {"reason": "ContainerCreating"}}}
+                ],
+            ),
+            _worker_pod(),
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        # Overrides CRD's optimistic "ready" from _SAMPLE_OBJ.
+        assert info.status == "containers-creating"
+
+    def test_worker_container_creating_does_not_downgrade(self, mock_client):
+        """A worker mid-spawn (image pull, scale-up) should not block the
+        cluster from being reported as ready."""
+        mock_client.list_pods.return_value = [
+            _head_pod(),
+            _worker_pod(
+                phase="Pending",
+                container_statuses=[
+                    {"state": {"waiting": {"reason": "ContainerCreating"}}}
+                ],
+            ),
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "ready"
+
+    def test_worker_crash_loop_does_not_downgrade(self, mock_client):
+        mock_client.list_pods.return_value = [
+            _head_pod(),
+            _worker_pod(
+                container_statuses=[
+                    {"state": {"waiting": {"reason": "CrashLoopBackOff"}}}
+                ],
+            ),
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "ready"
+
+    def test_no_head_label_falls_back_to_uniform_scan(self, mock_client):
+        """When no pod carries the head label (older KubeRay), fall back to
+        the old behavior so we still surface obvious failures."""
+        mock_client.get_ray_cluster.side_effect = lambda *a, **kw: self._no_state_obj()
+        mock_client.list_pods.return_value = [
+            {
+                "status": {
+                    "phase": "Pending",
+                    "conditions": [],
+                    "container_statuses": [
+                        {"state": {"waiting": {"reason": "ImagePullBackOff"}}}
+                    ],
+                },
+            },
+        ]
+        info = get_cluster("test", "default", client=mock_client)
+        assert info.status == "image-pull-error"
+
+
 class TestOpenTunnel:
     @patch("krayne.tunnel.stop_tunnels")
     @patch("krayne.tunnel.start_tunnels")
