@@ -131,7 +131,8 @@ class DefaultKubeClient:
 
     def get_cluster_status(self, name: str, namespace: str) -> str:
         obj = self.get_ray_cluster(name, namespace)
-        return _extract_status(obj)
+        pods = self.list_pods(name, namespace)
+        return _extract_status(obj, pods=pods)
 
     def list_pods(self, cluster_name: str, namespace: str) -> list[dict]:
         try:
@@ -305,12 +306,33 @@ def _safe_get(d: dict | None, *keys: str) -> dict:
     return cur
 
 
+# Pod-derived statuses that override an optimistic CRD state. KubeRay sometimes
+# flips RayCluster.status.state to "ready" before the head pod has actually
+# transitioned from ContainerCreating → Running, so when pods are observable
+# and show one of these failure/transition signals we trust the pods.
+_POD_OVERRIDES: frozenset[str] = frozenset({
+    "containers-creating",
+    "image-pull-error",
+    "crash-loop",
+    "unschedulable",
+    "pods-pending",
+    "pods-failed",
+})
+
+
 def _extract_status(obj: dict, pods: list[dict] | None = None) -> str:
     """Pull the high-level status string from a RayCluster object.
 
-    When the CRD state is unavailable and *pods* are provided, a more
-    granular status is derived from pod phases and container states.
+    Pod-level failure or transition signals (e.g. ContainerCreating)
+    take precedence over an optimistic CRD ``status.state`` so the UI
+    doesn't claim the cluster is ready before the head pod is actually
+    running. When the CRD state is empty, pod-derived status is used
+    as a full fallback.
     """
+    pod_status = _status_from_pods(pods) if pods is not None else None
+    if pod_status in _POD_OVERRIDES:
+        return pod_status
+
     status = obj.get("status", {})
     state = status.get("state", "")
     if state:
@@ -320,9 +342,8 @@ def _extract_status(obj: dict, pods: list[dict] | None = None) -> str:
     for cond in conditions:
         if cond.get("type") == "Ready" and cond.get("status") == "True":
             return "ready"
-    # Derive status from pods when CRD state is missing
-    if pods is not None:
-        return _status_from_pods(pods)
+    if pod_status is not None:
+        return pod_status
     return "unknown"
 
 

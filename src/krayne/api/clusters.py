@@ -217,9 +217,10 @@ def wait_until_ready(
     deadline = time.monotonic() + timeout
     while True:
         obj = kube.get_ray_cluster(name, namespace)
-        status = _extract_status(obj)
+        pods = kube.list_pods(name, namespace)
+        status = _extract_status(obj, pods=pods)
         if status == "ready":
-            return _obj_to_info(obj)
+            return _obj_to_info(obj, pods=pods)
         if time.monotonic() >= deadline:
             raise ClusterTimeoutError(name, namespace, timeout)
         time.sleep(_poll_interval)
