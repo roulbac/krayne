@@ -203,48 +203,53 @@ class CreateFlowScreen(KrayneScreen):
         idx = self._extra_worker_groups
 
         # Resource fields in Workers tab
-        wg_container = self.query_one("#extra-wg-container")
-        section = Vertical(classes="form-section", id=f"section-wg{idx}")
-        section.mount(Static(f"[bold]Worker Group {idx + 1}[/bold]", classes="form-section-title"))
-
-        columns = Horizontal(classes="wg-columns")
-
-        col1 = Vertical(classes="wg-col")
-        for label_text, input_id, default in [
-            ("Name:", f"input-wg{idx}-name", f"worker-{idx + 1}"),
-            ("CPUs:", f"input-wg{idx}-cpus", DEFAULT_CPUS),
-            ("Memory:", f"input-wg{idx}-memory", DEFAULT_MEMORY),
-        ]:
-            row = Horizontal(classes="form-row")
-            row.mount(Label(label_text))
-            row.mount(Input(value=default, id=input_id))
-            col1.mount(row)
-
-        col2 = Vertical(classes="wg-col")
-        gpus_row = Horizontal(classes="form-row")
-        gpus_row.mount(Label("GPUs:"))
-        gpus_row.mount(Input(value="0", id=f"input-wg{idx}-gpus"))
-        col2.mount(gpus_row)
-
-        columns.mount(col1)
-        columns.mount(col2)
-        section.mount(columns)
-        wg_container.mount(section)
+        col1 = Vertical(
+            *(
+                Horizontal(
+                    Label(label_text),
+                    Input(value=default, id=input_id),
+                    classes="form-row",
+                )
+                for label_text, input_id, default in [
+                    ("Name:", f"input-wg{idx}-name", f"worker-{idx + 1}"),
+                    ("CPUs:", f"input-wg{idx}-cpus", DEFAULT_CPUS),
+                    ("Memory:", f"input-wg{idx}-memory", DEFAULT_MEMORY),
+                ]
+            ),
+            classes="wg-col",
+        )
+        col2 = Vertical(
+            Horizontal(
+                Label("GPUs:"),
+                Input(value="0", id=f"input-wg{idx}-gpus"),
+                classes="form-row",
+            ),
+            classes="wg-col",
+        )
+        section = Vertical(
+            Static(f"[bold]Worker Group {idx + 1}[/bold]", classes="form-section-title"),
+            Horizontal(col1, col2, classes="wg-columns"),
+            classes="form-section",
+            id=f"section-wg{idx}",
+        )
+        self.query_one("#extra-wg-container").mount(section)
 
         # Scaling fields in Autoscaling tab
-        sc_container = self.query_one("#extra-scaling-container")
-        sc_section = Vertical(classes="form-section", id=f"scaling-wg{idx}")
-        sc_section.mount(Static(f"[bold]Worker Group {idx + 1}[/bold]", classes="form-section-title"))
-        sc_row = Horizontal(classes="form-row")
+        sc_row_children: list = []
         for label_text, input_id, default in [
             ("Replicas:", f"input-wg{idx}-replicas", "0"),
             ("Min:", f"input-wg{idx}-min-replicas", "0"),
             ("Max:", f"input-wg{idx}-max-replicas", "1"),
         ]:
-            sc_row.mount(Label(label_text))
-            sc_row.mount(Input(value=default, id=input_id))
-        sc_section.mount(sc_row)
-        sc_container.mount(sc_section)
+            sc_row_children.append(Label(label_text))
+            sc_row_children.append(Input(value=default, id=input_id))
+        sc_section = Vertical(
+            Static(f"[bold]Worker Group {idx + 1}[/bold]", classes="form-section-title"),
+            Horizontal(*sc_row_children, classes="form-row"),
+            classes="form-section",
+            id=f"scaling-wg{idx}",
+        )
+        self.query_one("#extra-scaling-container").mount(sc_section)
 
     # ── Actions ─────────────────────────────────────────
 

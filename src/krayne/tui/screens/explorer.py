@@ -76,7 +76,7 @@ class ExplorerScreen(KrayneScreen):
         ])
         self.watch(self.app, "namespace", self._on_namespace_change, init=False)
         self._do_refresh()
-        self.set_interval(5, self._do_refresh)
+        self.set_interval(2, self._do_refresh)
 
     def _on_namespace_change(self, old: str, new: str) -> None:
         self._update_header()
@@ -97,6 +97,7 @@ class ExplorerScreen(KrayneScreen):
             thread=True,
             name="refresh_clusters",
             group="refresh",
+            exclusive=True,
         )
 
     @staticmethod

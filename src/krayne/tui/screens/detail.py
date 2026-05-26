@@ -77,12 +77,15 @@ class ClusterDetailScreen(KrayneScreen):
             ("?", "Help"),
         ])
         self._fetch_details()
+        self.set_interval(2, self._fetch_details)
 
     def _fetch_details(self) -> None:
         self.run_worker(
             partial(self._load_data, self.cluster_name, self.namespace),
             thread=True,
             name="fetch_details",
+            group="fetch_details",
+            exclusive=True,
         )
 
     @staticmethod
