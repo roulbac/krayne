@@ -16,13 +16,12 @@ from krayne.errors import KrayneError
 )
 def submit(
     ctx: typer.Context,
-    script: Path = typer.Argument(..., help="Python script to submit to the cluster."),
     cluster: str = typer.Option(..., "--cluster", "-c", help="Target cluster name."),
     namespace: str = typer.Option("default", "-n", "--namespace", help="Kubernetes namespace."),
     working_dir: Path | None = typer.Option(
         None,
         "--working-dir",
-        help="Directory uploaded to the cluster (defaults to the script's parent).",
+        help="Directory uploaded to the cluster (defaults to the current directory).",
     ),
     no_wait: bool = typer.Option(
         False,
@@ -30,13 +29,18 @@ def submit(
         help="Submit and return immediately instead of tailing job logs to completion.",
     ),
 ) -> None:
-    """Submit a Python script as a Ray job to a remote cluster.
+    """Submit a Ray job to a remote cluster.
 
-    Wraps ``ray job submit``: ensures a dashboard tunnel is open (opening one if
-    needed), then runs the job entrypoint against ``http://localhost:<port>``.
-    Extra positional arguments after the script are forwarded to it, e.g.::
+    Mirrors ``ray job submit`` argv: everything after ``--`` is the entrypoint
+    command executed on the cluster's head pod, so the caller picks the
+    interpreter (``python``, ``uv run``, ``bash``, ...). Opens a dashboard
+    tunnel if one isn't already up.
 
-        krayne submit train.py --cluster foo -- --epochs 10
+    Examples::
+
+        krayne submit --cluster foo -- python train.py --epochs 10
+        krayne submit --cluster foo -- uv run --extra demo demo_serve.py
+        krayne submit --cluster foo --no-wait -- bash entrypoint.sh
     """
     from krayne.tunnel import (
         is_tunnel_active,
@@ -46,21 +50,16 @@ def submit(
     )
 
     try:
-        script_path = script.expanduser().resolve()
-        if not script_path.is_file():
-            raise KrayneError(f"Script not found: {script_path}")
+        entrypoint = list(ctx.args)
+        if not entrypoint:
+            raise KrayneError(
+                "Missing entrypoint. Pass the command to run on the cluster "
+                "after `--`, e.g. `krayne submit --cluster foo -- python train.py`."
+            )
 
-        wd = (working_dir or script_path.parent).expanduser().resolve()
+        wd = (working_dir or Path.cwd()).expanduser().resolve()
         if not wd.is_dir():
             raise KrayneError(f"Working directory not found: {wd}")
-
-        try:
-            rel = script_path.relative_to(wd)
-        except ValueError as exc:
-            raise KrayneError(
-                f"Script {script_path} is not inside working directory {wd}. "
-                "Pass --working-dir to point at the right parent."
-            ) from exc
 
         info = _state._get_cluster(cluster, namespace, kubeconfig=_state._kubeconfig)
         if info.status not in ("ready", "running"):
@@ -118,10 +117,11 @@ def submit(
         ]
         if no_wait:
             cmd.append("--no-wait")
-        cmd += ["--", "python", str(rel), *ctx.args]
+        cmd += ["--", *entrypoint]
 
         _state.console.print(
-            f"Submitting [bold]{rel}[/bold] to [bold]{cluster}[/bold] via {dashboard_url}",
+            f"Submitting [bold]{' '.join(entrypoint)}[/bold] to "
+            f"[bold]{cluster}[/bold] via {dashboard_url}",
             style="dim",
         )
         result = subprocess.run(cmd)
