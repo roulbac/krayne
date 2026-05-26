@@ -68,7 +68,7 @@ create_cluster(config, wait=True)
 **Recommended: `krayne submit`.** It opens a tunnel if one isn't already up, then wraps `ray job submit` so your script's driver runs **inside the cluster** — no Python version match required, no `ray.init` glue:
 
 ```bash
-krayne submit demo.py --cluster my-cluster -n ml-team
+krayne submit --cluster my-cluster -n ml-team -- python run.py
 ```
 
 Add `--no-wait` to skip log tailing, or pass `-- arg1 arg2 …` to forward arguments to the script. See [`docs/reference/cli.md`](docs/reference/cli.md#krayne-submit) for the full reference.
