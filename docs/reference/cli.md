@@ -328,19 +328,15 @@ krayne tun-close my-cluster -n ml-team
 
 ## `krayne submit`
 
-Submit a Python script as a Ray job to a remote cluster. Opens a port-forward tunnel to the cluster's dashboard if one isn't already active (reusing it otherwise), then wraps `ray job submit` to upload the working directory and run `python <script>` on the head pod.
+Submit a Ray job to a remote cluster. Opens a port-forward tunnel to the cluster's dashboard if one isn't already active (reusing it otherwise), then wraps `ray job submit` to upload the working directory and execute the user-supplied entrypoint on the head pod.
+
+The CLI mirrors `ray job submit` argv: **everything after `--` is the entrypoint command**, so the caller chooses how the driver is invoked (plain `python`, `uv run`, `bash`, etc.). This means deps that aren't in the cluster image can be brought in via `uv run`'s PEP 723 / `pyproject.toml` handling, without krayne picking a runner for you.
 
 Because the driver runs **on the cluster**, this path is not subject to Ray Client's strict `Python` and `Ray` version-match requirement — your local Python can differ from the cluster image.
 
 ```
-krayne submit <script> --cluster <name> [OPTIONS] [-- SCRIPT_ARGS...]
+krayne submit --cluster <name> [OPTIONS] -- ENTRYPOINT...
 ```
-
-**Arguments:**
-
-| Argument | Description |
-|---|---|
-| `script` | Path to the Python script to submit (required) |
 
 **Options:**
 
@@ -348,28 +344,32 @@ krayne submit <script> --cluster <name> [OPTIONS] [-- SCRIPT_ARGS...]
 |---|---|---|
 | `-c`, `--cluster` | — | Target cluster name (required) |
 | `-n`, `--namespace` | `default` | Kubernetes namespace |
-| `--working-dir` | Script's parent directory | Directory uploaded to the cluster |
+| `--working-dir` | Current directory | Directory uploaded to the cluster |
 | `--no-wait` | `false` | Return immediately after submission; don't tail job logs |
 
-Any positional arguments after `--` are forwarded to the script.
+Everything after `--` is forwarded verbatim as the entrypoint passed to `ray job submit -- …`.
 
 **Examples:**
 
 ```bash
-# Smallest possible invocation — uploads the script's parent dir, tails logs
-krayne submit demo.py --cluster my-cluster
+# Plain interpreter on the cluster's stock image
+krayne submit --cluster my-cluster -- python demo.py
 
 # Specific namespace
-krayne submit demo.py --cluster my-cluster -n ml-team
+krayne submit --cluster my-cluster -n ml-team -- python demo.py
 
-# Don't block on the job — print job_id and exit
-krayne submit train.py --cluster my-cluster --no-wait
+# Install deps from a project's pyproject.toml / uv.lock on the cluster
+# (requires `uv` on the head pod — preinstalled in rayproject/ray ≥ 2.45)
+krayne submit --cluster my-cluster -- uv run --extra demo demo_serve.py
 
 # Forward args to your script
-krayne submit train.py --cluster my-cluster -- --epochs 10 --batch-size 32
+krayne submit --cluster my-cluster -- python train.py --epochs 10 --batch-size 32
+
+# Don't block on the job — print job_id and exit
+krayne submit --cluster my-cluster --no-wait -- python train.py
 
 # Override the working directory (e.g. when your script imports a sibling package)
-krayne submit src/jobs/train.py --cluster my-cluster --working-dir src
+krayne submit --cluster my-cluster --working-dir src -- python jobs/train.py
 ```
 
 !!! tip "Why prefer `krayne submit` over `ray.init('ray://…')`?"

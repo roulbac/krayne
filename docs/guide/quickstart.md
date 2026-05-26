@@ -130,13 +130,15 @@ $ krayne describe my-first-cluster
 
 ## 5. Run a Ray job against your cluster
 
-**Recommended: `krayne submit`.** It opens a tunnel for you if one isn't already up, then submits your script as a Ray job that runs entirely inside the cluster — so your local Python version doesn't have to match anything:
+**Recommended: `krayne submit`.** It opens a tunnel for you if one isn't already up, then submits a Ray job that runs entirely inside the cluster — so your local Python version doesn't have to match anything. The argv after `--` is the entrypoint executed on the head pod; you choose plain `python`, `uv run` (to honour PEP 723 / project `pyproject.toml`), `bash`, etc.:
 
 ```bash
-krayne submit demo.py --cluster my-first-cluster
+krayne submit --cluster my-first-cluster -- python demo.py
+# install deps from a project's lockfile on the cluster:
+krayne submit --cluster my-first-cluster -- uv run --extra demo demo_serve.py
 ```
 
-Add `--no-wait` to return as soon as the job is queued, or `-- arg1 arg2 …` to forward extra arguments to the script. See the [CLI reference](../reference/cli.md#krayne-submit) for the full option set.
+Add `--no-wait` to return as soon as the job is queued. See the [CLI reference](../reference/cli.md#krayne-submit) for the full option set.
 
 !!! tip "Tunnels (for the dashboard, notebook, etc.)"
     `krayne submit` reuses an existing tunnel or opens one transparently. To open tunnels manually (e.g. to browse the Ray dashboard), use `krayne tun-open my-first-cluster` (close with `krayne tun-close my-first-cluster`). The TUI exposes the same on the `t` shortcut.
