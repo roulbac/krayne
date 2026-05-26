@@ -199,14 +199,14 @@ class TestSubmit:
     ):
         mock_load.return_value = _tunnel_state
         mock_run.return_value = MagicMock(returncode=0)
-        result = runner.invoke(app, ["submit", str(script), "--cluster", "test"])
+        result = runner.invoke(app, ["submit", "--cluster", "test", "--", "python", "demo.py"])
         assert result.exit_code == 0
         mock_start.assert_called_once()
         cmd = mock_run.call_args[0][0]
         assert cmd[:3] == ["/usr/local/bin/ray", "job", "submit"]
         assert "--address" in cmd
         assert "http://localhost:54321" in cmd
-        # script gets passed relative to its parent (the working dir)
+        # entrypoint after `--` is forwarded verbatim
         assert cmd[-2:] == ["python", "demo.py"]
 
     @patch("krayne.cli.submit.subprocess.run")
@@ -221,7 +221,7 @@ class TestSubmit:
     ):
         mock_load.return_value = _tunnel_state
         mock_run.return_value = MagicMock(returncode=0)
-        result = runner.invoke(app, ["submit", str(script), "--cluster", "test"])
+        result = runner.invoke(app, ["submit", "--cluster", "test", "--", "python", "demo.py"])
         assert result.exit_code == 0
         mock_start.assert_not_called()
 
@@ -239,7 +239,7 @@ class TestSubmit:
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(
             app,
-            ["submit", str(script), "--cluster", "test", "--no-wait", "--", "--epochs", "10"],
+            ["submit", "--cluster", "test", "--no-wait", "--", "python", "demo.py", "--epochs", "10"],
         )
         assert result.exit_code == 0
         cmd = mock_run.call_args[0][0]
@@ -247,13 +247,10 @@ class TestSubmit:
         assert cmd[-4:] == ["python", "demo.py", "--epochs", "10"]
 
     @patch("krayne.cli.app._get_cluster", return_value=_INFO)
-    def test_submit_errors_when_script_missing(self, mock_get, tmp_path):
-        result = runner.invoke(
-            app,
-            ["submit", str(tmp_path / "nope.py"), "--cluster", "test"],
-        )
+    def test_submit_errors_when_entrypoint_missing(self, mock_get):
+        result = runner.invoke(app, ["submit", "--cluster", "test"])
         assert result.exit_code == 1
-        assert "Script not found" in result.output
+        assert "Missing entrypoint" in result.output
 
     @patch("krayne.cli.app._get_cluster")
     def test_submit_errors_when_cluster_not_ready(self, mock_get, script):
@@ -264,7 +261,7 @@ class TestSubmit:
             autoscaling_enabled=True, created_at="2026-01-01T00:00:00Z",
         )
         mock_get.return_value = pending
-        result = runner.invoke(app, ["submit", str(script), "--cluster", "test"])
+        result = runner.invoke(app, ["submit", "--cluster", "test", "--", "python", "demo.py"])
         assert result.exit_code == 1
         assert "not ready" in result.output
 
