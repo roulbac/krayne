@@ -283,3 +283,43 @@ class TestServicesAndTunnel:
         banner = _retry(lambda: _tcp_probe("localhost", t.local_port), retries=5, delay=2.0)
         if banner:
             assert banner.startswith(b"SSH-")
+
+    def test_tunnel_survives_head_pod_restart(self):
+        """Manager re-binds forwarders after the head pod is deleted.
+
+        This is the core regression test for the per-cluster manager: the
+        old kubectl-subprocess model would leave dead PIDs behind when the
+        head pod restarted; the manager re-resolves the new pod and
+        re-binds without user intervention.
+        """
+        import subprocess
+
+        tunnels = start_tunnels(
+            self.CLUSTER_NAME, self.NAMESPACE, ["dashboard"],
+            kubeconfig=self._kubeconfig,
+        )
+        lport = tunnels[0].local_port
+        url = f"http://localhost:{lport}/api/version"
+        assert _retry(lambda: _http_probe(url)) == 200
+
+        # Kill the head pod. KubeRay re-creates it.
+        subprocess.run(
+            [
+                "kubectl", "--kubeconfig", self._kubeconfig,
+                "-n", self.NAMESPACE, "delete", "pod",
+                "-l", f"ray.io/cluster={self.CLUSTER_NAME},ray.io/node-type=head",
+                "--wait=false",
+            ],
+            check=True,
+        )
+
+        # Wait for the cluster to be ready again, then re-probe.
+        _wait_for_ready(self.CLUSTER_NAME, self.NAMESPACE, self._client,
+                        timeout=_CLUSTER_READY_TIMEOUT)
+        time.sleep(_SERVICE_STARTUP_GRACE)
+
+        # The manager should have reconnected within a few reconcile ticks.
+        # Give it generous time + retries.
+        assert _retry(
+            lambda: _http_probe(url), retries=60, delay=2.0,
+        ) == 200
