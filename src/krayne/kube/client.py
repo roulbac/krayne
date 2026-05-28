@@ -241,11 +241,15 @@ class DefaultKubeClient:
         The caller obtains per-port sockets via ``.socket(port)`` and is
         responsible for closing them when done.
         """
+        # The portforward helper parses the ``ports`` query param with
+        # ``value.split(',')`` — it must be a comma-separated *string*, not
+        # a list (a list raises "'list' object has no attribute 'split'").
+        ports_param = ",".join(str(p) for p in ports)
         return k8s_portforward(
             self._core.connect_get_namespaced_pod_portforward,
             pod_name,
             namespace,
-            ports=ports,
+            ports=ports_param,
         )
 
     def _ensure_namespace(self, namespace: str) -> None:
