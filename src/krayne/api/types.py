@@ -88,6 +88,35 @@ class TunnelSession:
                 return t.local_url
         return None
 
+    def is_alive(self) -> bool:
+        """Return ``True`` iff the per-cluster tunnel manager is healthy.
+
+        Reads ``~/.krayne/tunnels/<ns>/<cluster>.json`` and checks the
+        manager's PID + heartbeat freshness.
+        """
+        from krayne.tunnel import is_tunnel_active
+
+        return is_tunnel_active(self.cluster_name, self.namespace)
+
+    def wait_ready(self, timeout: float = 30.0) -> bool:
+        """Block until every tunnel in this session reports ``OPEN``.
+
+        Returns ``True`` on success, ``False`` on timeout. The underlying
+        ``open_tunnel(...)`` already waits, so this is mostly useful for
+        callers that hold a long-lived session and want a programmatic
+        re-check after a suspected interruption.
+        """
+        from krayne import tunnel_state
+
+        services = {t.service for t in self.tunnels}
+        try:
+            tunnel_state.wait_until_open(
+                self.cluster_name, self.namespace, services, timeout=timeout,
+            )
+        except TimeoutError:
+            return False
+        return True
+
     def __getattr__(self, name: str) -> str | None:
         if name.endswith("_url"):
             service = name[: -len("_url")].replace("_", "-")

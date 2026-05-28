@@ -93,9 +93,9 @@ def submit(
                 "Dashboard tunnel not found. Check `krayne tun-open` separately."
             )
 
-        # kubectl port-forward needs a moment to bind the local port even after
-        # Popen returns; pre-existing tunnels can also go stale (PID alive but
-        # stream broken). Probe the port until it accepts a connection.
+        # start_tunnels already blocks on the manager's status, but probe
+        # the TCP port one more time as a final readiness check in case the
+        # listener reports OPEN before its accept() loop is actually ready.
         if not wait_for_tunnel_ready(dashboard, timeout=30.0):
             raise KrayneError(
                 f"Dashboard tunnel for '{cluster}' did not become reachable at "

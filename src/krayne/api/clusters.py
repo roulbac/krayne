@@ -176,10 +176,14 @@ def open_tunnel(
     *,
     client: KubeClient | None = None,
     kubeconfig: str | None = None,
+    wait_ready: bool = True,
 ) -> Generator[TunnelSession, None, None]:
     """Context manager that opens port-forward tunnels to all cluster services.
 
-    Tunnels are automatically closed when the context exits.
+    Tunnels are automatically closed when the context exits. ``start_tunnels``
+    already blocks until each service reports OPEN; ``wait_ready=False`` is
+    only useful if you want to skip the timeout and check
+    :meth:`TunnelSession.wait_ready` yourself later.
 
     Usage::
 
@@ -192,7 +196,9 @@ def open_tunnel(
 
     kube = _resolve_client(client, kubeconfig)
     services = get_cluster_services(name, namespace, client=kube)
-    tunnels = start_tunnels(name, namespace, services, kubeconfig=kubeconfig)
+    tunnels = start_tunnels(
+        name, namespace, services, kubeconfig=kubeconfig, wait=wait_ready,
+    )
     try:
         yield TunnelSession(
             cluster_name=name,

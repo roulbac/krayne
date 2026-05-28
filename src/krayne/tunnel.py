@@ -1,24 +1,48 @@
+"""Public tunnel API — thin shims over the per-cluster manager subprocess.
+
+`start_tunnels` writes the desired-tunnel set into the state file under
+``~/.krayne/tunnels/<ns>/<cluster>.json``, ensures the manager subprocess
+(``python -m krayne._manager``) is running, and blocks until each
+requested service reports ``OPEN`` (or the deadline expires).
+
+`stop_tunnels` clears the desired set; the manager observes the empty
+set and self-exits after a few idle seconds. Per-service teardown via
+`stop_tunnel_service`.
+
+The module preserves the function names + signatures used today by the
+CLI (`cli/tunnel.py`, `cli/submit.py`, `cli/clusters.py`), the SDK
+(`api/clusters.py`, `api/types.py`), and the TUI screens. The underlying
+mechanism changes wholesale; the surface does not.
+
+NOTE: Callers must not invoke `start_tunnels` from inside an event loop
+that owns user-visible UI rendering — it blocks for up to 30s. The TUI
+calls it from a Textual worker thread, which is fine.
+"""
+
 from __future__ import annotations
 
 import hashlib
-import json
-import os
-import signal
 import socket
 import subprocess
+import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
-from pathlib import Path
 from urllib.parse import urlparse
 
 import tenacity
 
-from krayne.config.settings import PRISM_DIR
+from krayne import tunnel_state
+from krayne.errors import KrayneError
+from krayne.tunnel_state import (
+    TUNNEL_DIR,
+    KubeConfigRef,
+    ServiceState,
+    TunnelInfo,
+    TunnelState,
+)
 
 PORT_RANGE_START = 10000
 PORT_RANGE_END = 60000
-
-TUNNEL_DIR = PRISM_DIR / "tunnels"
 
 # service name -> (remote port, URL scheme)
 SERVICE_PORTS: dict[str, tuple[int, str]] = {
@@ -30,48 +54,18 @@ SERVICE_PORTS: dict[str, tuple[int, str]] = {
 }
 
 
-@dataclass(frozen=True)
-class TunnelInfo:
-    """Metadata for a single port-forward tunnel."""
-
-    service: str
-    remote_port: int
-    local_port: int
-    local_url: str
-
-
-@dataclass
-class TunnelState:
-    """Persisted state for an active tunnel session."""
-
-    cluster_name: str
-    namespace: str
-    tunnels: list[TunnelInfo]
-    pids: list[int]
-
-
-def _state_path(cluster_name: str, namespace: str) -> Path:
-    return TUNNEL_DIR / namespace / f"{cluster_name}.json"
-
-
-def _pid_alive(pid: int) -> bool:
-    """Check whether a process with *pid* is still running."""
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+# --- Pure helpers (unchanged across the refactor) ----------------------------
 
 
 def local_port_for(cluster_name: str, namespace: str, service_name: str) -> int:
-    """Return a deterministic local port for the given (cluster, namespace, service) triple."""
+    """Return a deterministic local port for the given (cluster, ns, service)."""
     key = f"{cluster_name}/{namespace}/{service_name}"
     h = int(hashlib.sha256(key.encode()).hexdigest(), 16)
     return PORT_RANGE_START + (h % (PORT_RANGE_END - PORT_RANGE_START))
 
 
 def head_port_names(obj: dict) -> set[str]:
-    """Collect all named ports from head containers and headService spec."""
+    """Collect named ports from head containers and headService spec."""
     head_spec = obj.get("spec", {}).get("headGroupSpec", {})
     containers = head_spec.get("template", {}).get("spec", {}).get("containers", [])
     names: set[str] = set()
@@ -101,21 +95,7 @@ def check_service_health(
     tunnel_map: dict[str, str],
     timeout: float = 0.5,
 ) -> dict[str, str]:
-    """Probe each declared service and return its observed status.
-
-    Returned status is one of:
-    - ``"available"`` — TCP probe succeeded, or no probe target was reachable
-      and the cluster reports ready (best-effort fallback)
-    - ``"pending"`` — cluster is not yet ready; head pod still starting
-    - ``"unreachable"`` — cluster reports ready but the service port did not
-      respond within *timeout*
-
-    A tunnel-backed ``localhost:<port>`` is preferred when a service has an
-    open tunnel, since that path is always reachable from the caller. When no
-    tunnel is open the head pod IP is probed; that succeeds when the caller is
-    in-cluster and harmlessly times out otherwise (we then trust the cluster
-    status and report ``"available"``).
-    """
+    """Probe each declared service and return ``available`` / ``pending`` / ``unreachable``."""
     if cluster_status != "ready":
         return {svc: "pending" for svc in declared_services}
 
@@ -169,16 +149,12 @@ def wait_for_tunnel_ready(
     timeout: float = 30.0,
     interval: float = 0.5,
 ) -> bool:
-    """Poll a tunnel's local TCP port until it accepts connections.
+    """Poll *tunnel*'s local TCP port until it accepts connections.
 
-    ``start_tunnels`` returns as soon as ``kubectl port-forward`` has been
-    spawned, but the local port may not be listening yet (kubectl needs a
-    moment to set up the gRPC stream). Callers that immediately use the
-    tunnel (e.g. ``ray job submit``) must wait here first, otherwise they
-    race against kubectl and see ``connection refused``.
-
-    Returns ``True`` once the port accepts a TCP connection, ``False`` on
-    *timeout*.
+    Retained for callers that want a final TCP-level readiness check
+    independent of the state file (e.g. `cli/submit.py`). `start_tunnels`
+    already waits on the manager's published status before returning, so
+    this is normally a fast no-op.
     """
 
     @tenacity.retry(
@@ -193,71 +169,57 @@ def wait_for_tunnel_ready(
     return _probe()
 
 
-def load_tunnel_state(cluster_name: str, namespace: str) -> TunnelState | None:
-    """Load persisted tunnel state, returning ``None`` if absent or stale."""
-    path = _state_path(cluster_name, namespace)
-    if not path.exists():
-        return None
-    try:
-        raw = json.loads(path.read_text())
-        tunnels = [TunnelInfo(**t) for t in raw["tunnels"]]
-        pids = raw["pids"]
-        return TunnelState(
-            cluster_name=raw["cluster_name"],
-            namespace=raw["namespace"],
-            tunnels=tunnels,
-            pids=pids,
-        )
-    except (json.JSONDecodeError, KeyError, TypeError):
-        path.unlink(missing_ok=True)
-        return None
-
-
-def _save_tunnel_state(state: TunnelState) -> None:
-    path = _state_path(state.cluster_name, state.namespace)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data = {
-        "cluster_name": state.cluster_name,
-        "namespace": state.namespace,
-        "tunnels": [asdict(t) for t in state.tunnels],
-        "pids": state.pids,
-    }
-    path.write_text(json.dumps(data, indent=2))
-
-
-def _remove_tunnel_state(cluster_name: str, namespace: str) -> None:
-    path = _state_path(cluster_name, namespace)
-    path.unlink(missing_ok=True)
-
-
-def is_tunnel_active(cluster_name: str, namespace: str) -> bool:
-    """Return ``True`` if a tunnel session is running for this cluster."""
-    state = load_tunnel_state(cluster_name, namespace)
-    if state is None:
-        return False
-    if all(_pid_alive(pid) for pid in state.pids):
-        return True
-    # Some processes died — clean up the stale state
-    stop_tunnels(cluster_name, namespace)
-    return False
+# --- Settings resolution ----------------------------------------------------
 
 
 def _resolve_kube_settings(
     kubeconfig: str | None, context: str | None = None
 ) -> tuple[str | None, str | None]:
-    """Resolve kubeconfig and context from krayne settings when neither is explicit.
-
-    When the caller supplies either value, the supplied values are used
-    verbatim (the settings file is not consulted — the caller is
-    asserting a specific target).  Otherwise, ``~/.krayne/config.yaml``
-    is read and validated by :func:`load_krayne_settings`.
-    """
+    """Resolve kubeconfig and context from krayne settings when neither is explicit."""
     if kubeconfig is not None or context is not None:
         return kubeconfig, context
     from krayne.config.settings import load_krayne_settings
 
     settings = load_krayne_settings()
     return settings.kubeconfig, settings.kube_context
+
+
+# --- Public API: state queries ---------------------------------------------
+
+
+def load_tunnel_state(cluster_name: str, namespace: str) -> TunnelState | None:
+    """Load the persisted state, returning ``None`` if absent or stale.
+
+    Legacy v1 files are reaped (their kubectl PIDs are SIGTERMed and the
+    file is removed); ``None`` is returned in that case.
+    """
+    return tunnel_state.load_state(cluster_name, namespace)
+
+
+def is_tunnel_active(cluster_name: str, namespace: str) -> bool:
+    """Return ``True`` iff a healthy manager owns the tunnel session."""
+    state = tunnel_state.load_state(cluster_name, namespace)
+    if state is None:
+        return False
+    if not tunnel_state.manager_alive(state.manager):
+        # Manager dropped: clear any stale `manager:` entry so the next
+        # start_tunnels respawns cleanly.
+        if state.manager is not None:
+            tunnel_state.update(
+                cluster_name, namespace,
+                lambda s: _clear_dead_manager(s),
+            )
+        return False
+    return True
+
+
+def _clear_dead_manager(state: TunnelState) -> TunnelState:
+    state.manager = None
+    state.status = {}
+    return state
+
+
+# --- Public API: lifecycle --------------------------------------------------
 
 
 def start_tunnels(
@@ -267,136 +229,217 @@ def start_tunnels(
     *,
     kubeconfig: str | None = None,
     context: str | None = None,
+    timeout: float = 30.0,
+    wait: bool = True,
 ) -> list[TunnelInfo]:
-    """Start ``kubectl port-forward`` processes for each service.
+    """Ensure tunnels for *services* are open, spawning the manager if needed.
 
-    Port-forwards to the head Service (``svc/{cluster_name}-head-svc``).
-    Processes are daemonised (detached).  State is persisted to disk so
-    that :func:`stop_tunnels` can clean up later.
+    Writes the desired set into the state file, spawns the per-cluster
+    manager subprocess (``python -m krayne._manager``) if one isn't already
+    alive, then (when ``wait=True``) blocks until each requested service
+    reports ``OPEN`` (or raises on timeout). With ``wait=False`` the
+    desired state is written and the manager spawned, but readiness is
+    not waited on — the caller is responsible.
 
-    When *kubeconfig* and *context* are not supplied, both are loaded
-    from ``~/.krayne/config.yaml`` and passed through as
-    ``--kubeconfig`` and ``--context`` flags, so the subprocess targets
-    the same cluster as the in-process Kubernetes client.
-
-    **Idempotent** — if a tunnel is already active for this cluster the
-    existing tunnel info is returned without spawning new processes.
+    **Idempotent** — if a manager is already running with the desired set
+    open, returns immediately.
     """
-    if is_tunnel_active(cluster_name, namespace):
-        state = load_tunnel_state(cluster_name, namespace)
-        assert state is not None  # guarded by is_tunnel_active
-        return state.tunnels
-
-    kubeconfig, context = _resolve_kube_settings(kubeconfig, context)
-    svc_target = f"svc/{cluster_name}-head-svc"
-    tunnels: list[TunnelInfo] = []
-    pids: list[int] = []
-
-    for service in services:
-        if service not in SERVICE_PORTS:
-            continue
-        remote_port, scheme = SERVICE_PORTS[service]
-        lport = local_port_for(cluster_name, namespace, service)
-
-        cmd = [
-            "kubectl", "port-forward",
-            "-n", namespace,
-            svc_target,
-            f"{lport}:{remote_port}",
-        ]
-        if kubeconfig:
-            cmd.extend(["--kubeconfig", kubeconfig])
-        if context:
-            cmd.extend(["--context", context])
-
-        proc = subprocess.Popen(
-            cmd,
-            # stdin must be redirected too — otherwise kubectl inherits the
-            # parent's controlling TTY and breaks Textual's alt-screen / mouse
-            # tracking, leaking escape sequences as visible characters.
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            # Detach from parent so the tunnel survives CLI exit
-            start_new_session=True,
-        )
-        pids.append(proc.pid)
-
-        local_url = f"{scheme}://localhost:{lport}"
-        tunnels.append(TunnelInfo(
-            service=service,
-            remote_port=remote_port,
-            local_port=lport,
-            local_url=local_url,
-        ))
-
-    state = TunnelState(
-        cluster_name=cluster_name,
-        namespace=namespace,
-        tunnels=tunnels,
-        pids=pids,
+    resolved_kubeconfig, resolved_context = _resolve_kube_settings(
+        kubeconfig, context,
     )
-    _save_tunnel_state(state)
-    return tunnels
 
+    desired = [
+        _build_tunnel_info(cluster_name, namespace, svc)
+        for svc in services
+        if svc in SERVICE_PORTS
+    ]
+    desired_services = {t.service for t in desired}
 
-def stop_tunnel_service(cluster_name: str, namespace: str, service: str) -> bool:
-    """Stop the tunnel for a single service, leaving others running.
-
-    Returns ``True`` if the service tunnel was found and stopped,
-    ``False`` otherwise.
-    """
-    state = load_tunnel_state(cluster_name, namespace)
-    if state is None:
-        return False
-
-    idx = None
-    for i, t in enumerate(state.tunnels):
-        if t.service == service:
-            idx = i
-            break
-    if idx is None:
-        return False
-
-    if idx < len(state.pids):
-        try:
-            os.kill(state.pids[idx], signal.SIGTERM)
-        except OSError:
-            pass
-
-    remaining_tunnels = [t for i, t in enumerate(state.tunnels) if i != idx]
-    remaining_pids = [p for i, p in enumerate(state.pids) if i != idx]
-
-    if not remaining_tunnels:
-        # No tunnels left — clean up entirely
-        _remove_tunnel_state(cluster_name, namespace)
-    else:
-        new_state = TunnelState(
-            cluster_name=cluster_name,
-            namespace=namespace,
-            tunnels=remaining_tunnels,
-            pids=remaining_pids,
+    # Write desired state under the lock; preserves existing entries for
+    # other services that were already requested.
+    def _merge(state: TunnelState) -> TunnelState:
+        state.cluster_name = cluster_name
+        state.namespace = namespace
+        state.kube_config = KubeConfigRef(
+            kubeconfig=resolved_kubeconfig,
+            context=resolved_context,
         )
-        _save_tunnel_state(new_state)
-    return True
+        by_svc = {t.service: t for t in state.desired_tunnels}
+        for info in desired:
+            by_svc[info.service] = info
+        state.desired_tunnels = list(by_svc.values())
+        return state
+
+    state = tunnel_state.update(cluster_name, namespace, _merge)
+
+    if not desired:
+        return []
+
+    _ensure_manager_running(state)
+
+    if not wait:
+        return desired
+
+    try:
+        tunnel_state.wait_until_open(
+            cluster_name, namespace, desired_services, timeout=timeout,
+        )
+    except TimeoutError as exc:
+        raise KrayneError(str(exc)) from exc
+
+    final = tunnel_state.load_state(cluster_name, namespace)
+    failed = [
+        svc for svc in desired_services
+        if final is not None
+        and final.status.get(svc) is not None
+        and final.status[svc].state == ServiceState.FAILED
+    ]
+    if failed:
+        last_errors = ", ".join(
+            f"{svc}: {final.status[svc].last_error or '?'}"
+            for svc in failed if final is not None
+        )
+        raise KrayneError(
+            f"Tunnel manager could not open services {failed}: {last_errors}"
+        )
+
+    return desired
 
 
 def stop_tunnels(cluster_name: str, namespace: str) -> bool:
-    """Terminate all port-forward processes for a tunnel session.
+    """Clear the desired-tunnel set. The manager self-exits when idle.
 
-    **Idempotent** — returns ``True`` if a tunnel was stopped,
-    ``False`` if no tunnel was active.
+    Returns ``True`` if state existed (i.e. there was something to stop),
+    ``False`` if no session was active.
     """
-    state = load_tunnel_state(cluster_name, namespace)
-    if state is None:
-        _remove_tunnel_state(cluster_name, namespace)
+    state = tunnel_state.load_state(cluster_name, namespace)
+    if state is None or (
+        not state.desired_tunnels and state.manager is None
+    ):
+        tunnel_state.delete_state(cluster_name, namespace)
         return False
 
-    for pid in state.pids:
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except OSError:
-            pass  # already dead
+    def _clear(s: TunnelState) -> TunnelState:
+        s.desired_tunnels = []
+        return s
 
-    _remove_tunnel_state(cluster_name, namespace)
+    tunnel_state.update(cluster_name, namespace, _clear)
+
+    # Best-effort: signal the manager so it exits without waiting out the
+    # full idle window. Even without this, it would notice on the next tick.
+    if state.manager is not None:
+        try:
+            import os
+            import signal as _signal
+
+            os.kill(state.manager.pid, _signal.SIGTERM)
+        except OSError:
+            pass
+
+    # Give the manager a brief moment to clear its slot, then remove the
+    # state file. Tolerate slow shutdown.
+    for _ in range(20):  # ~2s
+        cur = tunnel_state.load_state(cluster_name, namespace)
+        if cur is None or cur.manager is None:
+            break
+        time.sleep(0.1)
+    tunnel_state.delete_state(cluster_name, namespace)
     return True
+
+
+def stop_tunnel_service(cluster_name: str, namespace: str, service: str) -> bool:
+    """Remove a single service from the desired set.
+
+    Returns ``True`` if the service was in the desired set, ``False``
+    otherwise. The manager closes the corresponding forwarder on its
+    next reconcile tick.
+    """
+    state = tunnel_state.load_state(cluster_name, namespace)
+    if state is None:
+        return False
+    if not any(t.service == service for t in state.desired_tunnels):
+        return False
+
+    def _drop(s: TunnelState) -> TunnelState:
+        s.desired_tunnels = [t for t in s.desired_tunnels if t.service != service]
+        return s
+
+    tunnel_state.update(cluster_name, namespace, _drop)
+
+    # If that was the last desired tunnel, fully tear down so the next
+    # start_tunnels behaves like a clean start.
+    remaining = tunnel_state.load_state(cluster_name, namespace)
+    if remaining is None or not remaining.desired_tunnels:
+        stop_tunnels(cluster_name, namespace)
+    return True
+
+
+# --- Manager spawning -------------------------------------------------------
+
+
+def _build_tunnel_info(
+    cluster_name: str, namespace: str, service: str,
+) -> TunnelInfo:
+    remote_port, scheme = SERVICE_PORTS[service]
+    lport = local_port_for(cluster_name, namespace, service)
+    return TunnelInfo(
+        service=service,
+        remote_port=remote_port,
+        local_port=lport,
+        local_url=f"{scheme}://localhost:{lport}",
+    )
+
+
+def _ensure_manager_running(state: TunnelState) -> None:
+    """Spawn the per-cluster manager subprocess if one isn't alive.
+
+    Detached via ``start_new_session=True`` (matches the historic kubectl
+    spawn pattern) so it outlives the CLI. stdin/stdout/stderr are
+    redirected to ``/dev/null``; the manager re-opens its own stderr to
+    the per-cluster log file via ``RotatingFileHandler``.
+    """
+    if tunnel_state.manager_alive(state.manager):
+        return
+
+    subprocess.Popen(  # noqa: S603 — args are constructed from trusted strings
+        [sys.executable, "-m", "krayne._manager",
+         state.cluster_name, state.namespace],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+        close_fds=True,
+    )
+
+    # Wait briefly for the new manager to claim the slot.
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        cur = tunnel_state.load_state(state.cluster_name, state.namespace)
+        if cur is not None and tunnel_state.manager_alive(cur.manager):
+            return
+        time.sleep(0.1)
+    raise KrayneError(
+        f"Tunnel manager for '{state.cluster_name}/{state.namespace}' "
+        f"did not start within 5s. Check "
+        f"{tunnel_state.log_path(state.cluster_name, state.namespace)}."
+    )
+
+
+__all__ = [
+    "PORT_RANGE_END",
+    "PORT_RANGE_START",
+    "SERVICE_PORTS",
+    "TUNNEL_DIR",
+    "TunnelInfo",
+    "TunnelState",
+    "check_service_health",
+    "detect_services",
+    "head_port_names",
+    "is_tunnel_active",
+    "load_tunnel_state",
+    "local_port_for",
+    "start_tunnels",
+    "stop_tunnel_service",
+    "stop_tunnels",
+    "wait_for_tunnel_ready",
+]
