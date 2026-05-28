@@ -14,6 +14,7 @@ per-service Forwarder tasks. All blocking Kubernetes-client calls run via
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import logging.handlers
 import os
@@ -390,15 +391,15 @@ class Forwarder:
                 self._open_portforward, pod, abandon_on_cancel=True,
             )
             sock = ws.socket(self.info.remote_port)
-            try:
-                async with anyio.create_task_group() as tg:
-                    tg.start_soon(self._pump_client_to_pod, client, sock)
-                    tg.start_soon(self._pump_pod_to_client, client, sock)
-            finally:
-                # Defensive shutdown: ensure the blocking pump threads
-                # return from their next recv/sendall.
-                with suppress(OSError):
-                    sock.shutdown(socket.SHUT_RDWR)
+            # Drive the pod-side socket through the event loop directly:
+            # loop.sock_recv / loop.sock_sendall are real awaitables, so
+            # cancellation and teardown are handled by asyncio with no worker
+            # threads — there is no blocking recv left parked in a thread that
+            # we'd have to force-close to unblock.
+            sock.setblocking(False)
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(self._pump_client_to_pod, client, sock)
+                tg.start_soon(self._pump_pod_to_client, client, sock)
         except anyio.get_cancelled_exc_class():
             raise
         except Exception as exc:
@@ -426,34 +427,28 @@ class Forwarder:
     async def _pump_client_to_pod(
         self, client: anyio.abc.SocketStream, sock: socket.socket,
     ) -> None:
+        loop = asyncio.get_running_loop()
         while True:
             try:
                 data = await client.receive(65536)
             except (anyio.EndOfStream, anyio.ClosedResourceError):
                 with suppress(OSError):
-                    await anyio.to_thread.run_sync(
-                        sock.shutdown, socket.SHUT_WR,
-                        abandon_on_cancel=True,
-                    )
+                    sock.shutdown(socket.SHUT_WR)
                 return
-            if not data:
-                with suppress(OSError):
-                    await anyio.to_thread.run_sync(
-                        sock.shutdown, socket.SHUT_WR,
-                        abandon_on_cancel=True,
-                    )
+            try:
+                await loop.sock_sendall(sock, data)
+            except OSError:
                 return
-            await anyio.to_thread.run_sync(
-                sock.sendall, data, abandon_on_cancel=True,
-            )
 
     async def _pump_pod_to_client(
         self, client: anyio.abc.SocketStream, sock: socket.socket,
     ) -> None:
+        loop = asyncio.get_running_loop()
         while True:
-            data = await anyio.to_thread.run_sync(
-                sock.recv, 65536, abandon_on_cancel=True,
-            )
+            try:
+                data = await loop.sock_recv(sock, 65536)
+            except OSError:
+                return
             if not data:
                 with suppress(Exception):
                     await client.send_eof()
