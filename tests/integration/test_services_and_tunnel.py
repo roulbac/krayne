@@ -302,24 +302,34 @@ class TestServicesAndTunnel:
         url = f"http://localhost:{lport}/api/version"
         assert _retry(lambda: _http_probe(url)) == 200
 
+        old_pod = self._client.head_pod_name(self.CLUSTER_NAME, self.NAMESPACE)
+        assert old_pod is not None
+
         # Kill the head pod. KubeRay re-creates it.
         subprocess.run(
             [
                 "kubectl", "--kubeconfig", self._kubeconfig,
-                "-n", self.NAMESPACE, "delete", "pod",
-                "-l", f"ray.io/cluster={self.CLUSTER_NAME},ray.io/node-type=head",
+                "-n", self.NAMESPACE, "delete", "pod", old_pod,
                 "--wait=false",
             ],
             check=True,
         )
 
-        # Wait for the cluster to be ready again, then re-probe.
-        _wait_for_ready(self.CLUSTER_NAME, self.NAMESPACE, self._client,
-                        timeout=_CLUSTER_READY_TIMEOUT)
-        time.sleep(_SERVICE_STARTUP_GRACE)
+        # Wait for a *different* head pod to become Running+Ready (don't
+        # trust the CRD status, which can report a stale "ready" in the
+        # window right after deletion).
+        deadline = time.monotonic() + _CLUSTER_READY_TIMEOUT
+        new_pod = None
+        while time.monotonic() < deadline:
+            candidate = self._client.head_pod_name(self.CLUSTER_NAME, self.NAMESPACE)
+            if candidate is not None and candidate != old_pod:
+                new_pod = candidate
+                break
+            time.sleep(_POLL_INTERVAL)
+        assert new_pod is not None, "new head pod never became ready"
 
-        # The manager should have reconnected within a few reconcile ticks.
-        # Give it generous time + retries.
+        # Give the Ray dashboard a moment to come up inside the new pod,
+        # then assert the manager reconnected the tunnel transparently.
         assert _retry(
             lambda: _http_probe(url), retries=60, delay=2.0,
         ) == 200
