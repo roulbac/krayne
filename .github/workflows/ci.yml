@@ -36,6 +36,17 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: unit-tests
+    permissions:
+      contents: read
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - name: mechanism
+            selector: "not survives_head_pod_restart"
+          - name: restart
+            selector: "survives_head_pod_restart"
     steps:
       - uses: actions/checkout@v4
 
@@ -51,5 +62,38 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Run integration tests
-        run: uv run pytest tests/integration -v -m integration --timeout=600
+      - name: Run integration tests (${{ matrix.suite.name }})
+        run: |
+          set -o pipefail
+          uv run pytest tests/integration -v -m integration --timeout=600 \
+            -k "${{ matrix.suite.selector }}" 2>&1 | tee /tmp/pytest.log
+
+      - name: Post diagnostics on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "<!-- ci-diag -->"
+            echo "### CI diagnostics — integration/${{ matrix.suite.name }}"
+            echo ""
+            echo "<details><summary>pytest tail</summary>"
+            echo ""
+            echo '```'
+            tail -c 8000 /tmp/pytest.log 2>/dev/null || echo "(no pytest log)"
+            echo '```'
+            echo "</details>"
+            echo ""
+            echo "<details><summary>manager logs</summary>"
+            echo ""
+            echo '```'
+            for f in ~/.krayne/tunnels/*/*.log; do
+              [ -e "$f" ] || continue
+              echo "== $f =="
+              tail -c 6000 "$f"
+            done 2>/dev/null || true
+            echo '(end)'
+            echo '```'
+            echo "</details>"
+          } > /tmp/diag.md
+          gh pr comment 36 --repo roulbac/krayne --body-file /tmp/diag.md || true

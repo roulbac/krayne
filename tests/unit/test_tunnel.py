@@ -1,30 +1,33 @@
 from __future__ import annotations
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from krayne import tunnel_state
 from krayne.tunnel import (
     PORT_RANGE_END,
     PORT_RANGE_START,
     SERVICE_PORTS,
     TunnelInfo,
-    TunnelState,
     check_service_health,
     detect_services,
     is_tunnel_active,
     load_tunnel_state,
     local_port_for,
     start_tunnels,
+    stop_tunnel_service,
     stop_tunnels,
     wait_for_tunnel_ready,
 )
+from krayne.tunnel_state import ServiceState, ServiceStatus
+
+
+# --- Pure helpers (unchanged) -----------------------------------------------
 
 
 class TestLocalPortFor:
     def test_deterministic(self):
-        """Same inputs always produce the same port."""
         p1 = local_port_for("my-cluster", "default", "dashboard")
         p2 = local_port_for("my-cluster", "default", "dashboard")
         assert p1 == p2
@@ -123,7 +126,6 @@ class TestCheckServiceHealth:
         assert health == {"dashboard": "pending", "client": "pending"}
 
     def test_no_targets_falls_back_to_available(self):
-        # Cluster is ready but we have no probe target (no tunnel, no head_ip)
         health = check_service_health(
             cluster_status="ready",
             head_ip=None,
@@ -165,8 +167,8 @@ class TestCheckServiceHealth:
 
     def test_mixed_results_per_service(self):
         results_by_target = {
-            ("localhost", 54321): True,   # dashboard via tunnel — up
-            ("10.0.0.1", 8888): False,    # notebook direct probe — fails
+            ("localhost", 54321): True,
+            ("10.0.0.1", 8888): False,
         }
 
         def fake_probe(host, port, _timeout):
@@ -182,65 +184,90 @@ class TestCheckServiceHealth:
         assert health == {"dashboard": "available", "notebook": "unreachable"}
 
 
-class TestStartTunnels:
-    @pytest.fixture(autouse=True)
-    def _isolate_tunnel_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("krayne.tunnel.TUNNEL_DIR", tmp_path / "tunnels")
+# --- Lifecycle (manager-based) ---------------------------------------------
 
-    @patch("krayne.tunnel.subprocess.Popen")
-    def test_launches_kubectl_processes(self, mock_popen):
-        mock_proc = MagicMock()
-        mock_proc.pid = 1234
-        mock_popen.return_value = mock_proc
+
+@pytest.fixture()
+def isolated_state(tmp_path, monkeypatch):
+    """Redirect TUNNEL_DIR so writes don't touch the user's ~/.krayne."""
+    tunnel_dir = tmp_path / "tunnels"
+    monkeypatch.setattr("krayne.tunnel_state.TUNNEL_DIR", tunnel_dir)
+    monkeypatch.setattr("krayne.tunnel.TUNNEL_DIR", tunnel_dir)
+    return tunnel_dir
+
+
+def _fake_manager_open(monkeypatch, services):
+    """Patch out manager spawning + readiness wait, simulating a healthy
+    manager that opened every requested service.
+
+    Returns the mock used for ``_ensure_manager_running`` so tests can
+    assert on call counts / args.
+    """
+    spawned: list[object] = []
+
+    def fake_ensure(state):
+        # Simulate the manager claiming its slot and marking services OPEN.
+        def _claim(s):
+            s.status = {
+                svc: ServiceStatus(state=ServiceState.OPEN)
+                for svc in services
+            }
+            from krayne.tunnel_state import ManagerInfo
+            import time as _t
+            s.manager = ManagerInfo(pid=99999, start_time=_t.time(), heartbeat=_t.time())
+            return s
+
+        tunnel_state.update(state.cluster_name, state.namespace, _claim)
+        spawned.append(state)
+
+    monkeypatch.setattr("krayne.tunnel._ensure_manager_running", fake_ensure)
+    # Manager always reports alive in this fake.
+    monkeypatch.setattr(
+        "krayne.tunnel_state.manager_alive", lambda info, **_: info is not None,
+    )
+    return spawned
+
+
+class TestStartTunnels:
+    def test_writes_desired_state(self, isolated_state, monkeypatch):
+        _fake_manager_open(monkeypatch, ["dashboard", "notebook"])
 
         tunnels = start_tunnels(
-            "my-cluster", "default", ["dashboard", "notebook"]
+            "my-cluster", "default", ["dashboard", "notebook"],
         )
-
         assert len(tunnels) == 2
-        assert mock_popen.call_count == 2
+        services = {t.service for t in tunnels}
+        assert services == {"dashboard", "notebook"}
 
-        # Check first call is for dashboard
-        first_call_args = mock_popen.call_args_list[0][0][0]
-        assert "kubectl" in first_call_args
-        assert "port-forward" in first_call_args
-        assert "svc/my-cluster-head-svc" in first_call_args
-        assert "-n" in first_call_args
-        assert "default" in first_call_args
+        state = load_tunnel_state("my-cluster", "default")
+        assert state is not None
+        assert state.cluster_name == "my-cluster"
+        assert {t.service for t in state.desired_tunnels} == services
 
-    @patch("krayne.tunnel.subprocess.Popen")
-    def test_kubeconfig_passed(self, mock_popen):
-        mock_popen.return_value = MagicMock(pid=99)
-
-        start_tunnels(
-            "c", "ns", ["dashboard"], kubeconfig="/my/kubeconfig"
-        )
-
-        call_args = mock_popen.call_args_list[0][0][0]
-        assert "--kubeconfig" in call_args
-        assert "/my/kubeconfig" in call_args
-
-    @patch("krayne.tunnel.subprocess.Popen")
-    def test_context_passed(self, mock_popen):
-        mock_popen.return_value = MagicMock(pid=99)
+    def test_kubeconfig_persisted(self, isolated_state, monkeypatch):
+        _fake_manager_open(monkeypatch, ["dashboard"])
 
         start_tunnels(
             "c", "ns", ["dashboard"],
             kubeconfig="/my/kubeconfig", context="my-ctx",
         )
+        state = load_tunnel_state("c", "ns")
+        assert state is not None
+        assert state.kube_config.kubeconfig == "/my/kubeconfig"
+        assert state.kube_config.context == "my-ctx"
 
-        call_args = mock_popen.call_args_list[0][0][0]
-        assert "--context" in call_args
-        assert "my-ctx" in call_args
-
-    @patch("krayne.tunnel.subprocess.Popen")
     def test_kubeconfig_and_context_from_settings(
-        self, mock_popen, tmp_path
+        self, isolated_state, tmp_path, monkeypatch,
     ):
-        """When neither is supplied, both are loaded from ~/.krayne/config.yaml."""
-        from krayne.config.settings import (
-            KrayneSettings,
-            save_krayne_settings,
+        """When neither is supplied, both load from ~/.krayne/config.yaml."""
+        from krayne.config.settings import KrayneSettings, save_krayne_settings
+
+        monkeypatch.setattr(
+            "krayne.config.settings.PRISM_DIR", tmp_path / "krayne",
+        )
+        monkeypatch.setattr(
+            "krayne.config.settings.PRISM_CONFIG_FILE",
+            tmp_path / "krayne" / "config.yaml",
         )
 
         kubeconfig = tmp_path / "kubeconfig"
@@ -252,23 +279,19 @@ class TestStartTunnels:
             "  context: {cluster: c, user: u}\n"
         )
         save_krayne_settings(
-            KrayneSettings(
-                kubeconfig=str(kubeconfig), kube_context="settings-ctx"
-            )
+            KrayneSettings(kubeconfig=str(kubeconfig), kube_context="settings-ctx")
         )
 
-        mock_popen.return_value = MagicMock(pid=99)
+        _fake_manager_open(monkeypatch, ["dashboard"])
         start_tunnels("c", "ns", ["dashboard"])
 
-        call_args = mock_popen.call_args_list[0][0][0]
-        assert "--kubeconfig" in call_args
-        assert str(kubeconfig) in call_args
-        assert "--context" in call_args
-        assert "settings-ctx" in call_args
+        state = load_tunnel_state("c", "ns")
+        assert state is not None
+        assert state.kube_config.kubeconfig == str(kubeconfig)
+        assert state.kube_config.context == "settings-ctx"
 
-    @patch("krayne.tunnel.subprocess.Popen")
-    def test_tunnel_info_fields(self, mock_popen):
-        mock_popen.return_value = MagicMock(pid=42)
+    def test_tunnel_info_fields(self, isolated_state, monkeypatch):
+        _fake_manager_open(monkeypatch, ["dashboard"])
 
         tunnels = start_tunnels("c", "ns", ["dashboard"])
 
@@ -278,98 +301,154 @@ class TestStartTunnels:
         assert t.local_port == local_port_for("c", "ns", "dashboard")
         assert t.local_url == f"http://localhost:{t.local_port}"
 
-    @patch("krayne.tunnel.subprocess.Popen")
-    def test_unknown_service_skipped(self, mock_popen):
-        mock_popen.return_value = MagicMock(pid=1)
-
+    def test_unknown_service_skipped(self, isolated_state, monkeypatch):
+        _fake_manager_open(monkeypatch, [])
         tunnels = start_tunnels("c", "ns", ["nonexistent"])
+        assert tunnels == []
 
-        assert len(tunnels) == 0
+    def test_wait_false_returns_without_polling(self, isolated_state, monkeypatch):
+        """wait=False should write desired state + spawn but not block."""
+        spawned = []
+        monkeypatch.setattr(
+            "krayne.tunnel._ensure_manager_running",
+            lambda state: spawned.append(state),
+        )
+
+        tunnels = start_tunnels("c", "ns", ["dashboard"], wait=False)
+        assert len(tunnels) == 1
+        assert len(spawned) == 1
+
+    def test_raises_when_service_marked_failed(self, isolated_state, monkeypatch):
+        def fake_ensure(state):
+            def _mark_failed(s):
+                from krayne.tunnel_state import ManagerInfo
+                import time as _t
+                s.manager = ManagerInfo(pid=1, start_time=_t.time(), heartbeat=_t.time())
+                s.status = {
+                    "dashboard": ServiceStatus(
+                        state=ServiceState.FAILED, last_error="bind: refused",
+                    )
+                }
+                return s
+
+            tunnel_state.update(state.cluster_name, state.namespace, _mark_failed)
+
+        monkeypatch.setattr("krayne.tunnel._ensure_manager_running", fake_ensure)
+        monkeypatch.setattr(
+            "krayne.tunnel_state.manager_alive", lambda info, **_: info is not None,
+        )
+
+        with pytest.raises(Exception) as excinfo:
+            start_tunnels("c", "ns", ["dashboard"])
+        assert "dashboard" in str(excinfo.value)
 
 
-class TestIdempotency:
-    @pytest.fixture(autouse=True)
-    def _isolate_tunnel_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("krayne.tunnel.TUNNEL_DIR", tmp_path / "tunnels")
-
-    @patch("krayne.tunnel._pid_alive", return_value=True)
-    @patch("krayne.tunnel.subprocess.Popen")
-    def test_start_is_idempotent(self, mock_popen, mock_alive):
-        mock_popen.return_value = MagicMock(pid=100)
-
-        # First start
-        tunnels1 = start_tunnels("c", "ns", ["dashboard"])
-        assert mock_popen.call_count == 1
-
-        # Second start — no new processes
-        tunnels2 = start_tunnels("c", "ns", ["dashboard"])
-        assert mock_popen.call_count == 1  # still 1
-        assert tunnels1 == tunnels2
-
-    @patch("krayne.tunnel.subprocess.Popen")
-    def test_stop_is_idempotent(self, mock_popen):
-        mock_popen.return_value = MagicMock(pid=100)
-
+class TestStopTunnels:
+    def test_clears_desired_set(self, isolated_state, monkeypatch):
+        _fake_manager_open(monkeypatch, ["dashboard"])
         start_tunnels("c", "ns", ["dashboard"])
 
-        # First stop
+        # Pretend the manager exited cleanly when we asked it to.
+        monkeypatch.setattr(
+            "krayne.tunnel_state.manager_alive", lambda info, **_: False,
+        )
         assert stop_tunnels("c", "ns") is True
-        # Second stop — no-op
-        assert stop_tunnels("c", "ns") is False
+        assert load_tunnel_state("c", "ns") is None
 
-    def test_stop_without_start(self):
+    def test_returns_false_when_no_state(self, isolated_state):
         assert stop_tunnels("nonexistent", "default") is False
 
+    def test_stop_service_removes_single_entry(self, isolated_state, monkeypatch):
+        _fake_manager_open(monkeypatch, ["dashboard", "notebook"])
+        start_tunnels("c", "ns", ["dashboard", "notebook"])
 
-class TestTunnelState:
-    @pytest.fixture(autouse=True)
-    def _isolate_tunnel_dir(self, tmp_path, monkeypatch):
-        self.tunnel_dir = tmp_path / "tunnels"
-        monkeypatch.setattr("krayne.tunnel.TUNNEL_DIR", self.tunnel_dir)
+        assert stop_tunnel_service("c", "ns", "dashboard") is True
+        state = load_tunnel_state("c", "ns")
+        assert state is not None
+        assert [t.service for t in state.desired_tunnels] == ["notebook"]
 
-    @patch("krayne.tunnel.subprocess.Popen")
-    def test_state_persisted_to_disk(self, mock_popen):
-        mock_popen.return_value = MagicMock(pid=555)
-
-        start_tunnels("my-cluster", "default", ["dashboard"])
-
-        state_file = self.tunnel_dir / "default" / "my-cluster.json"
-        assert state_file.exists()
-        data = json.loads(state_file.read_text())
-        assert data["cluster_name"] == "my-cluster"
-        assert data["pids"] == [555]
-
-    @patch("krayne.tunnel.subprocess.Popen")
-    def test_state_removed_on_stop(self, mock_popen):
-        mock_popen.return_value = MagicMock(pid=555)
-
-        start_tunnels("my-cluster", "default", ["dashboard"])
-        stop_tunnels("my-cluster", "default")
-
-        state_file = self.tunnel_dir / "default" / "my-cluster.json"
-        assert not state_file.exists()
-
-    @patch("krayne.tunnel._pid_alive", return_value=True)
-    @patch("krayne.tunnel.subprocess.Popen")
-    def test_is_tunnel_active_true(self, mock_popen, mock_alive):
-        mock_popen.return_value = MagicMock(pid=123)
+    def test_stop_service_returns_false_for_missing(self, isolated_state, monkeypatch):
+        _fake_manager_open(monkeypatch, ["dashboard"])
         start_tunnels("c", "ns", ["dashboard"])
+
+        assert stop_tunnel_service("c", "ns", "nonexistent") is False
+
+
+class TestIsTunnelActive:
+    def test_no_state(self, isolated_state):
+        assert is_tunnel_active("c", "ns") is False
+
+    def test_alive_manager_active(self, isolated_state, monkeypatch):
+        _fake_manager_open(monkeypatch, ["dashboard"])
+        start_tunnels("c", "ns", ["dashboard"])
+        # Fake leaves the alive predicate in place; tunnel is "active".
         assert is_tunnel_active("c", "ns") is True
 
-    def test_is_tunnel_active_false_when_no_state(self):
-        assert is_tunnel_active("c", "ns") is False
-
-    @patch("krayne.tunnel._pid_alive", return_value=False)
-    @patch("krayne.tunnel.subprocess.Popen")
-    def test_stale_state_cleaned_up(self, mock_popen, mock_alive):
-        mock_popen.return_value = MagicMock(pid=999)
+    def test_dead_manager_clears_slot(self, isolated_state, monkeypatch):
+        _fake_manager_open(monkeypatch, ["dashboard"])
         start_tunnels("c", "ns", ["dashboard"])
 
-        # PIDs are dead, so is_tunnel_active should clean up
+        # Now flip the fake to report the manager as dead. is_tunnel_active
+        # should clear the manager + status field for the next caller.
+        monkeypatch.setattr(
+            "krayne.tunnel_state.manager_alive", lambda info, **_: False,
+        )
         assert is_tunnel_active("c", "ns") is False
+        state = load_tunnel_state("c", "ns")
+        assert state is not None
+        assert state.manager is None
 
-        state_file = self.tunnel_dir / "ns" / "c.json"
-        assert not state_file.exists()
+
+class TestEnsureManagerSpawn:
+    """Asserts that Popen is invoked with the expected manager argv."""
+
+    def test_subprocess_args(self, isolated_state, monkeypatch):
+        # Alive iff state.manager is set. Initially None → spawn triggers.
+        monkeypatch.setattr(
+            "krayne.tunnel_state.manager_alive",
+            lambda info, **_: info is not None,
+        )
+
+        # When Popen is called, simulate the manager claiming its slot and
+        # marking dashboard OPEN so the subsequent wait returns immediately.
+        def fake_popen(*_args, **_kwargs):
+            from krayne.tunnel_state import ManagerInfo
+            import time as _t
+
+            def _claim(s):
+                s.manager = ManagerInfo(
+                    pid=1, start_time=_t.time(), heartbeat=_t.time(),
+                )
+                s.status = {"dashboard": ServiceStatus(state=ServiceState.OPEN)}
+                return s
+
+            tunnel_state.update("c", "ns", _claim)
+            return MagicMock(pid=1)
+
+        mock_popen = MagicMock(side_effect=fake_popen)
+        monkeypatch.setattr("krayne.tunnel.subprocess.Popen", mock_popen)
+
+        start_tunnels("c", "ns", ["dashboard"])
+
+        assert mock_popen.call_count == 1
+        argv = mock_popen.call_args[0][0]
+        assert argv[1:] == ["-m", "krayne._manager", "c", "ns"]
+        # Detached invocation.
+        assert mock_popen.call_args.kwargs.get("start_new_session") is True
+
+
+def _set_open(state, service):
+    from krayne.tunnel_state import ManagerInfo
+    import time as _t
+    state.status[service] = ServiceStatus(state=ServiceState.OPEN)
+    if state.manager is None:
+        state.manager = ManagerInfo(
+            pid=1, start_time=_t.time(), heartbeat=_t.time(),
+        )
+    return state
+
+
+# --- TCP probe (unchanged) -------------------------------------------------
 
 
 class TestWaitForTunnelReady:
@@ -386,12 +465,9 @@ class TestWaitForTunnelReady:
         probe.assert_called_once()
 
     def test_returns_true_after_a_few_retries(self):
-        # Fail twice, then succeed. Tiny interval so retries are fast.
         with patch("krayne.tunnel._tcp_probe", side_effect=[False, False, True]):
             assert wait_for_tunnel_ready(self._tunnel, timeout=5.0, interval=0.0) is True
 
     def test_returns_false_on_timeout(self):
-        # Probe never succeeds; tenacity should give up at the deadline.
         with patch("krayne.tunnel._tcp_probe", return_value=False):
             assert wait_for_tunnel_ready(self._tunnel, timeout=0.05, interval=0.01) is False
-

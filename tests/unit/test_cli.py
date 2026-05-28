@@ -182,8 +182,7 @@ class TestSubmit:
         return TunnelState(
             cluster_name="test",
             namespace="default",
-            tunnels=[TunnelInfo(service="dashboard", remote_port=8265, local_port=54321, local_url="http://localhost:54321")],
-            pids=[1234],
+            desired_tunnels=[TunnelInfo(service="dashboard", remote_port=8265, local_port=54321, local_url="http://localhost:54321")],
         )
 
     @patch("krayne.cli.submit.subprocess.run")
@@ -480,8 +479,7 @@ class TestTunOpen:
 
         state = TunnelState(
             cluster_name="test", namespace="default",
-            tunnels=[TunnelInfo(service="dashboard", remote_port=8265, local_port=12345, local_url="http://localhost:12345")],
-            pids=[123],
+            desired_tunnels=[TunnelInfo(service="dashboard", remote_port=8265, local_port=12345, local_url="http://localhost:12345")],
         )
         mock_load.return_value = state
         result = runner.invoke(app, ["tun-open", "test"])

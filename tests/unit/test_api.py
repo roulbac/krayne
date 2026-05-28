@@ -641,7 +641,10 @@ class TestOpenTunnel:
             assert session.cluster_name == "test"
             assert session.namespace == "default"
             assert len(session.tunnels) == 2
-        mock_start.assert_called_once_with("test", "default", ["dashboard", "client", "notebook", "ssh"], kubeconfig=None)
+        mock_start.assert_called_once_with(
+            "test", "default", ["dashboard", "client", "notebook", "ssh"],
+            kubeconfig=None, wait=True,
+        )
         mock_stop.assert_called_once_with("test", "default")
 
     @patch("krayne.tunnel.stop_tunnels")

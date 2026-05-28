@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Protocol, runtime_checkable
+from collections.abc import Iterator
+from typing import Any, Protocol, runtime_checkable
 
 from kubernetes import client as k8s_client  # type: ignore[import-untyped]
 from kubernetes import config as k8s_config  # type: ignore[import-untyped]
+from kubernetes import watch as k8s_watch  # type: ignore[import-untyped]
 from kubernetes.client.exceptions import ApiException  # type: ignore[import-untyped]
+from kubernetes.stream import portforward as k8s_portforward  # type: ignore[import-untyped]
 
 from krayne.errors import (
     ClusterAlreadyExistsError,
@@ -35,6 +38,18 @@ class KubeClient(Protocol):
     def list_pods(self, cluster_name: str, namespace: str) -> list[dict]: ...
     def get_head_node_port(self, cluster_name: str, namespace: str, port_name: str) -> int | None: ...
     def list_namespaces(self) -> list[str]: ...
+    def head_pod_name(self, cluster_name: str, namespace: str) -> str | None: ...
+    def watch_pods(
+        self,
+        cluster_name: str,
+        namespace: str,
+        *,
+        resource_version: str | None = None,
+        timeout_seconds: int = 0,
+    ) -> Iterator[dict]: ...
+    def portforward(
+        self, pod_name: str, namespace: str, ports: list[int]
+    ) -> Any: ...
 
 
 class DefaultKubeClient:
@@ -163,6 +178,79 @@ class DefaultKubeClient:
             return sorted(ns.metadata.name for ns in (resp.items or []))
         except ApiException as exc:
             raise KubeConnectionError(str(exc)) from exc
+
+    def head_pod_name(self, cluster_name: str, namespace: str) -> str | None:
+        """Return the name of a Running head pod, or ``None`` if none exists.
+
+        Used by the tunnel manager to pick a pod to port-forward to. Filters
+        by ``ray.io/cluster=<name>`` (same selector as :meth:`list_pods`),
+        further restricted to ``ray.io/node-type=head``.
+        """
+        try:
+            resp = self._core.list_namespaced_pod(
+                namespace=namespace,
+                label_selector=(
+                    f"ray.io/cluster={cluster_name},ray.io/node-type=head"
+                ),
+            )
+        except ApiException as exc:
+            raise KubeConnectionError(str(exc)) from exc
+        for pod in resp.items or []:
+            if (pod.status.phase or "") != "Running":
+                continue
+            for cond in pod.status.conditions or []:
+                if cond.type == "Ready" and cond.status == "True":
+                    return pod.metadata.name
+        return None
+
+    def watch_pods(
+        self,
+        cluster_name: str,
+        namespace: str,
+        *,
+        resource_version: str | None = None,
+        timeout_seconds: int = 0,
+    ) -> Iterator[dict]:
+        """Yield raw watch events for pods matching the cluster label.
+
+        Blocking generator — designed to be consumed from a worker thread
+        (e.g. via ``anyio.to_thread.run_sync``). Yields the raw event dicts
+        produced by ``kubernetes.watch.Watch().stream(...)``: ``{"type":
+        "ADDED" | "MODIFIED" | "DELETED", "object": <V1Pod>}``.
+        """
+        w = k8s_watch.Watch()
+        kwargs: dict[str, Any] = {
+            "namespace": namespace,
+            "label_selector": f"ray.io/cluster={cluster_name}",
+        }
+        if resource_version is not None:
+            kwargs["resource_version"] = resource_version
+        if timeout_seconds:
+            kwargs["timeout_seconds"] = timeout_seconds
+        try:
+            yield from w.stream(self._core.list_namespaced_pod, **kwargs)
+        finally:
+            w.stop()
+
+    def portforward(
+        self, pod_name: str, namespace: str, ports: list[int]
+    ) -> Any:
+        """Open an in-process port-forward session to *pod_name*.
+
+        Returns the ``kubernetes.stream.ws_client.PortForward`` instance.
+        The caller obtains per-port sockets via ``.socket(port)`` and is
+        responsible for closing them when done.
+        """
+        # The portforward helper parses the ``ports`` query param with
+        # ``value.split(',')`` — it must be a comma-separated *string*, not
+        # a list (a list raises "'list' object has no attribute 'split'").
+        ports_param = ",".join(str(p) for p in ports)
+        return k8s_portforward(
+            self._core.connect_get_namespaced_pod_portforward,
+            pod_name,
+            namespace,
+            ports=ports_param,
+        )
 
     def _ensure_namespace(self, namespace: str) -> None:
         try:

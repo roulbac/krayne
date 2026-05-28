@@ -283,3 +283,53 @@ class TestServicesAndTunnel:
         banner = _retry(lambda: _tcp_probe("localhost", t.local_port), retries=5, delay=2.0)
         if banner:
             assert banner.startswith(b"SSH-")
+
+    def test_tunnel_survives_head_pod_restart(self):
+        """Manager re-binds forwarders after the head pod is deleted.
+
+        This is the core regression test for the per-cluster manager: the
+        old kubectl-subprocess model would leave dead PIDs behind when the
+        head pod restarted; the manager re-resolves the new pod and
+        re-binds without user intervention.
+        """
+        import subprocess
+
+        tunnels = start_tunnels(
+            self.CLUSTER_NAME, self.NAMESPACE, ["dashboard"],
+            kubeconfig=self._kubeconfig,
+        )
+        lport = tunnels[0].local_port
+        url = f"http://localhost:{lport}/api/version"
+        assert _retry(lambda: _http_probe(url)) == 200
+
+        old_pod = self._client.head_pod_name(self.CLUSTER_NAME, self.NAMESPACE)
+        assert old_pod is not None
+
+        # Kill the head pod. KubeRay re-creates it.
+        subprocess.run(
+            [
+                "kubectl", "--kubeconfig", self._kubeconfig,
+                "-n", self.NAMESPACE, "delete", "pod", old_pod,
+                "--wait=false",
+            ],
+            check=True,
+        )
+
+        # Wait for a *different* head pod to become Running+Ready (don't
+        # trust the CRD status, which can report a stale "ready" in the
+        # window right after deletion).
+        deadline = time.monotonic() + _CLUSTER_READY_TIMEOUT
+        new_pod = None
+        while time.monotonic() < deadline:
+            candidate = self._client.head_pod_name(self.CLUSTER_NAME, self.NAMESPACE)
+            if candidate is not None and candidate != old_pod:
+                new_pod = candidate
+                break
+            time.sleep(_POLL_INTERVAL)
+        assert new_pod is not None, "new head pod never became ready"
+
+        # Give the Ray dashboard a moment to come up inside the new pod,
+        # then assert the manager reconnected the tunnel transparently.
+        assert _retry(
+            lambda: _http_probe(url), retries=60, delay=2.0,
+        ) == 200
