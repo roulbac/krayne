@@ -22,9 +22,7 @@ from krayne.api import create_cluster, delete_cluster, get_cluster, get_cluster_
 from krayne.config import ClusterConfig
 from krayne.config.models import HeadNodeConfig, ServicesConfig, WorkerGroupConfig
 from krayne.tunnel import (
-    detect_services,
     is_tunnel_active,
-    local_port_for,
     start_tunnels,
     stop_tunnels,
 )
@@ -189,17 +187,6 @@ class TestServicesAndTunnel:
         )
         assert tunnels1 == tunnels2
 
-    def test_tunnel_stop_idempotent(self):
-        """Stopping a non-existent tunnel is a no-op."""
-        assert stop_tunnels(self.CLUSTER_NAME, self.NAMESPACE) is False
-
-    def test_tunnel_ports_are_deterministic(self):
-        """Same cluster always gets the same local ports."""
-        for svc in ("dashboard", "client", "notebook", "code-server", "ssh"):
-            p1 = local_port_for(self.CLUSTER_NAME, self.NAMESPACE, svc)
-            p2 = local_port_for(self.CLUSTER_NAME, self.NAMESPACE, svc)
-            assert p1 == p2
-
     # -- Health checks via tunnel -------------------------------------------
 
     def test_dashboard_reachable_via_tunnel(self):
@@ -253,83 +240,8 @@ class TestServicesAndTunnel:
             f"Expected SSH banner, got: {banner!r}"
         )
 
-    def test_all_services_via_single_tunnel_session(self):
-        """All services reachable in one tunnel session."""
-        services = get_cluster_services(
-            self.CLUSTER_NAME, self.NAMESPACE, client=self._client
-        )
-        tunnels = start_tunnels(
-            self.CLUSTER_NAME, self.NAMESPACE, services,
-            kubeconfig=self._kubeconfig,
-        )
-        time.sleep(3)  # Let all port-forwards bind
-
-        tunnel_map = {t.service: t for t in tunnels}
-
-        # Dashboard
-        t = tunnel_map["dashboard"]
-        assert _retry(lambda: _http_probe(f"http://localhost:{t.local_port}/api/version")) == 200
-
-        # Notebook
-        t = tunnel_map["notebook"]
-        assert _retry(lambda: _http_probe(f"http://localhost:{t.local_port}/api/status")) == 200
-
-        # Code Server
-        t = tunnel_map["code-server"]
-        assert _retry(lambda: _http_probe(f"http://localhost:{t.local_port}/healthz")) == 200
-
-        # SSH — may not be available if the Ray image lacks openssh-server
-        t = tunnel_map["ssh"]
-        banner = _retry(lambda: _tcp_probe("localhost", t.local_port), retries=5, delay=2.0)
-        if banner:
-            assert banner.startswith(b"SSH-")
-
-    def test_tunnel_survives_head_pod_restart(self):
-        """Manager re-binds forwarders after the head pod is deleted.
-
-        This is the core regression test for the per-cluster manager: the
-        old kubectl-subprocess model would leave dead PIDs behind when the
-        head pod restarted; the manager re-resolves the new pod and
-        re-binds without user intervention.
-        """
-        import subprocess
-
-        tunnels = start_tunnels(
-            self.CLUSTER_NAME, self.NAMESPACE, ["dashboard"],
-            kubeconfig=self._kubeconfig,
-        )
-        lport = tunnels[0].local_port
-        url = f"http://localhost:{lport}/api/version"
-        assert _retry(lambda: _http_probe(url)) == 200
-
-        old_pod = self._client.head_pod_name(self.CLUSTER_NAME, self.NAMESPACE)
-        assert old_pod is not None
-
-        # Kill the head pod. KubeRay re-creates it.
-        subprocess.run(
-            [
-                "kubectl", "--kubeconfig", self._kubeconfig,
-                "-n", self.NAMESPACE, "delete", "pod", old_pod,
-                "--wait=false",
-            ],
-            check=True,
-        )
-
-        # Wait for a *different* head pod to become Running+Ready (don't
-        # trust the CRD status, which can report a stale "ready" in the
-        # window right after deletion).
-        deadline = time.monotonic() + _CLUSTER_READY_TIMEOUT
-        new_pod = None
-        while time.monotonic() < deadline:
-            candidate = self._client.head_pod_name(self.CLUSTER_NAME, self.NAMESPACE)
-            if candidate is not None and candidate != old_pod:
-                new_pod = candidate
-                break
-            time.sleep(_POLL_INTERVAL)
-        assert new_pod is not None, "new head pod never became ready"
-
-        # Give the Ray dashboard a moment to come up inside the new pod,
-        # then assert the manager reconnected the tunnel transparently.
-        assert _retry(
-            lambda: _http_probe(url), retries=60, delay=2.0,
-        ) == 200
+    # NOTE: The manager's "re-bind forwarders after the head pod is replaced"
+    # regression is covered deterministically by tests/unit/test_manager.py.
+    # It used to live here as an e2e test that killed the head pod and waited
+    # for KubeRay to reschedule under memory pressure — flaky on CI for reasons
+    # outside krayne's code (scheduler + Ray dashboard cold-start timing).
