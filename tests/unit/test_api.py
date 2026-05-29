@@ -16,7 +16,7 @@ from krayne.api import (
     wait_until_ready,
 )
 from krayne.api.types import ClusterDetails, ClusterInfo, TunnelSession
-from krayne.config import ClusterConfig, WorkerGroupConfig
+from krayne.config import ClusterConfig
 from krayne.errors import ClusterTimeoutError, KrayneError
 
 

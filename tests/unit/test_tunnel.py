@@ -437,17 +437,6 @@ class TestEnsureManagerSpawn:
         assert mock_popen.call_args.kwargs.get("start_new_session") is True
 
 
-def _set_open(state, service):
-    from krayne.tunnel_state import ManagerInfo
-    import time as _t
-    state.status[service] = ServiceStatus(state=ServiceState.OPEN)
-    if state.manager is None:
-        state.manager = ManagerInfo(
-            pid=1, start_time=_t.time(), heartbeat=_t.time(),
-        )
-    return state
-
-
 # --- TCP probe (unchanged) -------------------------------------------------
 
 
