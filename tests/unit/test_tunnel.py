@@ -15,6 +15,7 @@ from krayne.tunnel import (
     is_tunnel_active,
     load_tunnel_state,
     local_port_for,
+    probe_service,
     start_tunnels,
     stop_tunnel_service,
     stop_tunnels,
@@ -135,7 +136,7 @@ class TestCheckServiceHealth:
         assert health == {"dashboard": "available"}
 
     def test_tunnel_target_probed(self):
-        with patch("krayne.tunnel._tcp_probe", return_value=True) as probe:
+        with patch("krayne.tunnel.probe_service", return_value=True) as probe:
             health = check_service_health(
                 cluster_status="ready",
                 head_ip="10.0.0.1",
@@ -143,10 +144,10 @@ class TestCheckServiceHealth:
                 tunnel_map={"dashboard": "http://localhost:54321"},
             )
         assert health == {"dashboard": "available"}
-        probe.assert_called_once_with("localhost", 54321, 0.5)
+        probe.assert_called_once_with("localhost", 54321, "dashboard", timeout=1.0)
 
     def test_unreachable_when_probe_fails(self):
-        with patch("krayne.tunnel._tcp_probe", return_value=False):
+        with patch("krayne.tunnel.probe_service", return_value=False):
             health = check_service_health(
                 cluster_status="ready",
                 head_ip=None,
@@ -156,14 +157,16 @@ class TestCheckServiceHealth:
         assert health == {"dashboard": "unreachable"}
 
     def test_head_ip_used_when_no_tunnel(self):
-        with patch("krayne.tunnel._tcp_probe", return_value=True) as probe:
+        with patch("krayne.tunnel.probe_service", return_value=True) as probe:
             check_service_health(
                 cluster_status="ready",
                 head_ip="10.0.0.1",
                 declared_services=["dashboard"],
                 tunnel_map={},
             )
-        probe.assert_called_once_with("10.0.0.1", SERVICE_PORTS["dashboard"][0], 0.5)
+        probe.assert_called_once_with(
+            "10.0.0.1", SERVICE_PORTS["dashboard"][0], "dashboard", timeout=1.0,
+        )
 
     def test_mixed_results_per_service(self):
         results_by_target = {
@@ -171,10 +174,10 @@ class TestCheckServiceHealth:
             ("10.0.0.1", 8888): False,
         }
 
-        def fake_probe(host, port, _timeout):
+        def fake_probe(host, port, _service, *, timeout):
             return results_by_target.get((host, port), False)
 
-        with patch("krayne.tunnel._tcp_probe", side_effect=fake_probe):
+        with patch("krayne.tunnel.probe_service", side_effect=fake_probe):
             health = check_service_health(
                 cluster_status="ready",
                 head_ip="10.0.0.1",
@@ -437,7 +440,116 @@ class TestEnsureManagerSpawn:
         assert mock_popen.call_args.kwargs.get("start_new_session") is True
 
 
-# --- TCP probe (unchanged) -------------------------------------------------
+# --- Service probe ----------------------------------------------------------
+
+
+class _StubServer:
+    """Tiny loopback TCP server that runs ``handle(conn)`` per connection.
+
+    Used to exercise :func:`probe_service` against real sockets without
+    standing up an actual Ray head pod.
+    """
+
+    def __init__(self, handle):
+        import socket as _socket
+        import threading
+
+        self._handle = handle
+        self._sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        self._sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+        self._sock.bind(("127.0.0.1", 0))
+        self._sock.listen(8)
+        self.port = self._sock.getsockname()[1]
+        self._stop = False
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+
+    def _serve(self):
+        while not self._stop:
+            try:
+                conn, _ = self._sock.accept()
+            except OSError:
+                return
+            try:
+                self._handle(conn)
+            except OSError:
+                pass
+            finally:
+                conn.close()
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *_exc):
+        self._stop = True
+        self._sock.close()
+
+
+def _free_port() -> int:
+    """Return a port with nothing listening on it."""
+    import socket as _socket
+
+    s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+class TestProbeService:
+    def test_dispatch_by_service(self):
+        with patch("krayne.tunnel._http_probe", return_value=True) as http, \
+             patch("krayne.tunnel._banner_probe", return_value=True) as banner, \
+             patch("krayne.tunnel._connect_through_probe", return_value=True) as tcp:
+            for svc in ("dashboard", "notebook", "code-server"):
+                probe_service("h", 1, svc)
+            probe_service("h", 2, "ssh")
+            probe_service("h", 3, "client")
+        assert http.call_count == 3
+        banner.assert_called_once()
+        tcp.assert_called_once()
+
+    def test_http_serving(self):
+        def handle(conn):
+            conn.recv(4096)
+            conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+
+        with _StubServer(handle) as srv:
+            assert probe_service("127.0.0.1", srv.port, "dashboard", timeout=2.0) is True
+
+    def test_http_error_status_counts_as_serving(self):
+        def handle(conn):
+            conn.recv(4096)
+            conn.sendall(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
+
+        with _StubServer(handle) as srv:
+            assert probe_service("127.0.0.1", srv.port, "dashboard", timeout=2.0) is True
+
+    def test_http_down(self):
+        assert probe_service("127.0.0.1", _free_port(), "dashboard", timeout=0.5) is False
+
+    def test_ssh_banner_serving(self):
+        def handle(conn):
+            conn.sendall(b"SSH-2.0-OpenSSH_9.0\r\n")
+
+        with _StubServer(handle) as srv:
+            assert probe_service("127.0.0.1", srv.port, "ssh", timeout=2.0) is True
+
+    def test_ssh_no_banner_is_down(self):
+        # Accept then immediately close — mirrors the forwarder failing to reach
+        # the in-pod port: the client sees EOF rather than a banner.
+        with _StubServer(lambda conn: None) as srv:
+            assert probe_service("127.0.0.1", srv.port, "ssh", timeout=1.0) is False
+
+    def test_client_connection_held_open_is_serving(self):
+        import time as _t
+
+        with _StubServer(lambda conn: _t.sleep(0.5)) as srv:
+            assert probe_service("127.0.0.1", srv.port, "client", timeout=0.2) is True
+
+    def test_client_connection_closed_is_down(self):
+        with _StubServer(lambda conn: None) as srv:
+            assert probe_service("127.0.0.1", srv.port, "client", timeout=1.0) is False
 
 
 class TestWaitForTunnelReady:
@@ -448,15 +560,15 @@ class TestWaitForTunnelReady:
         local_url="http://localhost:54321",
     )
 
-    def test_returns_true_when_port_immediately_open(self):
-        with patch("krayne.tunnel._tcp_probe", return_value=True) as probe:
+    def test_returns_true_when_service_immediately_responds(self):
+        with patch("krayne.tunnel.probe_service", return_value=True) as probe:
             assert wait_for_tunnel_ready(self._tunnel, timeout=5.0) is True
-        probe.assert_called_once()
+        probe.assert_called_once_with("localhost", 54321, "dashboard", timeout=1.0)
 
     def test_returns_true_after_a_few_retries(self):
-        with patch("krayne.tunnel._tcp_probe", side_effect=[False, False, True]):
+        with patch("krayne.tunnel.probe_service", side_effect=[False, False, True]):
             assert wait_for_tunnel_ready(self._tunnel, timeout=5.0, interval=0.0) is True
 
     def test_returns_false_on_timeout(self):
-        with patch("krayne.tunnel._tcp_probe", return_value=False):
+        with patch("krayne.tunnel.probe_service", return_value=False):
             assert wait_for_tunnel_ready(self._tunnel, timeout=0.05, interval=0.01) is False

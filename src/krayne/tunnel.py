@@ -93,9 +93,16 @@ def check_service_health(
     head_ip: str | None,
     declared_services: list[str],
     tunnel_map: dict[str, str],
-    timeout: float = 0.5,
+    timeout: float = 1.0,
 ) -> dict[str, str]:
-    """Probe each declared service and return ``available`` / ``pending`` / ``unreachable``."""
+    """Probe each declared service and return ``available`` / ``pending`` / ``unreachable``.
+
+    A service counts as ``available`` only when it actually responds — an HTTP
+    request for the dashboard/notebook/code-server, an SSH banner read, or a
+    connect-through for the Ray client (see :func:`probe_service`). Binding a
+    local tunnel listener is not enough, so a service that has crashed inside
+    the head pod reads as ``unreachable`` even while its tunnel is up.
+    """
     if cluster_status != "ready":
         return {svc: "pending" for svc in declared_services}
 
@@ -109,7 +116,7 @@ def check_service_health(
     if targets:
         with ThreadPoolExecutor(max_workers=len(targets)) as pool:
             futures = {
-                svc: pool.submit(_tcp_probe, host, port, timeout)
+                svc: pool.submit(probe_service, host, port, svc, timeout=timeout)
                 for svc, (host, port) in targets.items()
             }
             for svc, fut in futures.items():
@@ -135,10 +142,71 @@ def _probe_target(
     return None
 
 
-def _tcp_probe(host: str, port: int, timeout: float) -> bool:
+def probe_service(
+    host: str, port: int, service: str, *, timeout: float = 1.0,
+) -> bool:
+    """Return ``True`` iff *service* at ``host:port`` is actually responding.
+
+    The in-process tunnel forwarder binds its local listener *before* it dials
+    the head pod, so a bare TCP connect succeeds the moment the listener is up
+    — it proves nothing about the in-pod service. This probe goes a level
+    deeper, per service type:
+
+    - HTTP services (``dashboard``, ``notebook``, ``code-server``): issue an
+      HTTP ``GET`` and treat *any* response — including 3xx/4xx/5xx — as
+      serving, since the server clearly answered.
+    - ``ssh``: read the greeting banner sshd sends immediately on connect.
+    - everything else (``client`` / Ray gRPC): connect through and require the
+      peer to stay up rather than immediately EOF/reset. Best-effort: a
+      silent-but-healthy gRPC server can't be positively confirmed without
+      speaking the protocol, so this can't distinguish it from a slow forwarder
+      teardown.
+    """
+    scheme = SERVICE_PORTS.get(service, (0, ""))[1]
+    if scheme == "http":
+        return _http_probe(host, port, timeout)
+    if service == "ssh":
+        return _banner_probe(host, port, timeout)
+    return _connect_through_probe(host, port, timeout)
+
+
+def _http_probe(host: str, port: int, timeout: float) -> bool:
+    import urllib.error
+    import urllib.request
+
+    # Bypass any ambient proxy config — these are loopback tunnel addresses.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    url = f"http://{host}:{port}/"
     try:
-        with socket.create_connection((host, port), timeout=timeout):
+        with opener.open(url, timeout=timeout):  # noqa: S310 - loopback tunnel
             return True
+    except urllib.error.HTTPError:
+        # The server answered with a status code (401/404/5xx/…): it's serving.
+        return True
+    except (urllib.error.URLError, OSError):
+        return False
+
+
+def _banner_probe(host: str, port: int, timeout: float) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            sock.settimeout(timeout)
+            return len(sock.recv(32)) > 0
+    except OSError:
+        return False
+
+
+def _connect_through_probe(host: str, port: int, timeout: float) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            # Wait only briefly for an immediate EOF/reset; a server that holds
+            # the connection open (e.g. gRPC awaiting the client preface) is
+            # treated as serving without blocking for the full timeout.
+            sock.settimeout(min(timeout, 0.3))
+            try:
+                return len(sock.recv(1)) > 0
+            except TimeoutError:
+                return True
     except OSError:
         return False
 
@@ -149,12 +217,13 @@ def wait_for_tunnel_ready(
     timeout: float = 30.0,
     interval: float = 0.5,
 ) -> bool:
-    """Poll *tunnel*'s local TCP port until it accepts connections.
+    """Poll *tunnel* until the in-pod service behind it actually responds.
 
-    Retained for callers that want a final TCP-level readiness check
-    independent of the state file (e.g. `cli/submit.py`). `start_tunnels`
-    already waits on the manager's published status before returning, so
-    this is normally a fast no-op.
+    Used by callers that need an end-to-end readiness guarantee before handing
+    the local URL to another tool (e.g. `cli/submit.py` before `ray job
+    submit`). `start_tunnels` only waits until the manager binds the local
+    listener (``OPEN``), which does **not** mean the in-pod service is serving
+    yet — so this probes through the tunnel via :func:`probe_service`.
     """
 
     @tenacity.retry(
@@ -164,7 +233,9 @@ def wait_for_tunnel_ready(
         retry_error_callback=lambda _state: False,
     )
     def _probe() -> bool:
-        return _tcp_probe("localhost", tunnel.local_port, timeout=1.0)
+        return probe_service(
+            "localhost", tunnel.local_port, tunnel.service, timeout=1.0,
+        )
 
     return _probe()
 
@@ -438,6 +509,7 @@ __all__ = [
     "is_tunnel_active",
     "load_tunnel_state",
     "local_port_for",
+    "probe_service",
     "start_tunnels",
     "stop_tunnel_service",
     "stop_tunnels",

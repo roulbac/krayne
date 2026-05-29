@@ -180,14 +180,22 @@ def open_tunnel(
 ) -> Generator[TunnelSession, None, None]:
     """Context manager that opens port-forward tunnels to all cluster services.
 
-    Tunnels are automatically closed when the context exits. ``start_tunnels``
-    already blocks until each service reports OPEN; ``wait_ready=False`` is
-    only useful if you want to skip the timeout and check
-    :meth:`TunnelSession.wait_ready` yourself later.
+    Tunnels are automatically closed when the context exits. With
+    ``wait_ready=True`` (the default) this blocks until each service's local
+    listener is bound (``OPEN``) so the ``*_url`` attributes are usable; pass
+    ``wait_ready=False`` to skip that wait.
+
+    Binding the listener does **not** guarantee the in-pod service is serving
+    yet (the dashboard / Ray Client server may still be initializing). For an
+    end-to-end readiness guarantee before using a URL, call
+    :meth:`TunnelSession.wait_ready`, which probes each service through its
+    tunnel. Opening tunnels never fails just because one service is slow or
+    crashed — readiness is per-service.
 
     Usage::
 
         with open_tunnel("my-cluster") as session:
+            session.wait_ready()          # block until services respond
             ray.init(session.client_url)
             print(session.dashboard_url)
         # tunnels are closed here

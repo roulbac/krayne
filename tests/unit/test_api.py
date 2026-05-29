@@ -692,3 +692,47 @@ class TestTunnelSession:
         session = TunnelSession(cluster_name="c", namespace="ns", tunnels=[])
         assert session.dashboard_url is None
         assert session.client_url is None
+
+    @staticmethod
+    def _session():
+        from krayne.tunnel import TunnelInfo
+
+        return TunnelSession(
+            cluster_name="c",
+            namespace="ns",
+            tunnels=[
+                TunnelInfo(service="dashboard", remote_port=8265, local_port=11111, local_url="http://localhost:11111"),
+                TunnelInfo(service="client", remote_port=10001, local_port=22222, local_url="ray://localhost:22222"),
+            ],
+        )
+
+    def test_wait_ready_probes_each_service(self):
+        with patch("krayne.tunnel_state.wait_until_open") as wopen, \
+             patch("krayne.tunnel.wait_for_tunnel_ready", return_value=True) as probe:
+            assert self._session().wait_ready(timeout=5.0) is True
+        wopen.assert_called_once()
+        # Every tunnel is probed end-to-end, not just the OPEN listener wait.
+        assert probe.call_count == 2
+
+    def test_wait_ready_false_when_listener_never_opens(self):
+        with patch(
+            "krayne.tunnel_state.wait_until_open", side_effect=TimeoutError("nope"),
+        ), patch("krayne.tunnel.wait_for_tunnel_ready") as probe:
+            assert self._session().wait_ready(timeout=0.1) is False
+        # Bailed before probing any service.
+        probe.assert_not_called()
+
+    def test_wait_ready_false_when_a_service_never_responds(self):
+        with patch("krayne.tunnel_state.wait_until_open"), \
+             patch("krayne.tunnel.wait_for_tunnel_ready", return_value=False):
+            assert self._session().wait_ready(timeout=0.1) is False
+
+    def test_wait_ready_filters_to_requested_services(self):
+        with patch("krayne.tunnel_state.wait_until_open") as wopen, \
+             patch("krayne.tunnel.wait_for_tunnel_ready", return_value=True) as probe:
+            assert self._session().wait_ready(
+                timeout=5.0, services=["dashboard"],
+            ) is True
+        # Only the dashboard tunnel is waited on / probed, not the client.
+        wopen.assert_called_once_with("c", "ns", {"dashboard"}, timeout=5.0)
+        assert probe.call_count == 1

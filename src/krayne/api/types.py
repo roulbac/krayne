@@ -98,23 +98,53 @@ class TunnelSession:
 
         return is_tunnel_active(self.cluster_name, self.namespace)
 
-    def wait_ready(self, timeout: float = 30.0) -> bool:
-        """Block until every tunnel in this session reports ``OPEN``.
+    def wait_ready(
+        self, timeout: float = 30.0, *, services: list[str] | None = None,
+    ) -> bool:
+        """Block until the requested services are actually responding.
 
-        Returns ``True`` on success, ``False`` on timeout. The underlying
-        ``open_tunnel(...)`` already waits, so this is mostly useful for
-        callers that hold a long-lived session and want a programmatic
-        re-check after a suspected interruption.
+        Two phases: first wait for the manager to report each tunnel's local
+        listener bound (``OPEN``), then probe each service end-to-end through
+        its tunnel (an HTTP request for the dashboard/notebook/code-server, an
+        SSH banner read, a connect-through for the Ray client) until it
+        answers. Returns ``True`` only when every requested service responds,
+        ``False`` on timeout — so a service that crashed inside the head pod
+        surfaces as ``False`` rather than a spuriously-ready session.
+
+        By default this waits for every service in the session. Pass
+        *services* to wait for only a subset (e.g. ``["dashboard"]`` when
+        that's all you need) so a slow-to-bootstrap auxiliary service like
+        code-server doesn't hold up readiness for the rest.
+
+        Note the Ray client (gRPC) probe is best-effort; see
+        :func:`krayne.tunnel.probe_service`.
         """
-        from krayne import tunnel_state
+        import time
 
-        services = {t.service for t in self.tunnels}
+        from krayne import tunnel_state
+        from krayne.tunnel import wait_for_tunnel_ready
+
+        tunnels = self.tunnels
+        if services is not None:
+            wanted = set(services)
+            tunnels = [t for t in tunnels if t.service in wanted]
+
+        deadline = time.monotonic() + timeout
         try:
             tunnel_state.wait_until_open(
-                self.cluster_name, self.namespace, services, timeout=timeout,
+                self.cluster_name,
+                self.namespace,
+                {t.service for t in tunnels},
+                timeout=timeout,
             )
         except TimeoutError:
             return False
+        for tunnel in tunnels:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not wait_for_tunnel_ready(
+                tunnel, timeout=remaining,
+            ):
+                return False
         return True
 
     def __getattr__(self, name: str) -> str | None:

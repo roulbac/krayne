@@ -93,9 +93,10 @@ def submit(
                 "Dashboard tunnel not found. Check `krayne tun-open` separately."
             )
 
-        # start_tunnels already blocks on the manager's status, but probe
-        # the TCP port one more time as a final readiness check in case the
-        # listener reports OPEN before its accept() loop is actually ready.
+        # start_tunnels only waits until the manager binds the local listener
+        # (OPEN); that does not mean the dashboard inside the head pod is
+        # serving yet. Probe end-to-end through the tunnel before handing the
+        # URL to `ray job submit` so we don't race the dashboard coming up.
         if not wait_for_tunnel_ready(dashboard, timeout=30.0):
             raise KrayneError(
                 f"Dashboard tunnel for '{cluster}' did not become reachable at "
