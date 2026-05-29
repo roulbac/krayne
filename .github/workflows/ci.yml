@@ -90,3 +90,62 @@ jobs:
             echo "</details>"
           } > /tmp/diag.md
           gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/diag.md || true
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run e2e tests
+        run: |
+          set -o pipefail
+          uv run pytest tests/e2e -v -m e2e --timeout=600 \
+            2>&1 | tee /tmp/pytest.log
+
+      - name: Post diagnostics on failure
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "<!-- ci-diag-e2e -->"
+            echo "### CI diagnostics — e2e tests"
+            echo ""
+            echo "<details><summary>pytest tail</summary>"
+            echo ""
+            echo '```'
+            tail -c 8000 /tmp/pytest.log 2>/dev/null || echo "(no pytest log)"
+            echo '```'
+            echo "</details>"
+            echo ""
+            echo "<details><summary>manager logs</summary>"
+            echo ""
+            echo '```'
+            for f in ~/.krayne/tunnels/*/*.log; do
+              [ -e "$f" ] || continue
+              echo "== $f =="
+              tail -c 6000 "$f"
+            done 2>/dev/null || true
+            echo '(end)'
+            echo '```'
+            echo "</details>"
+          } > /tmp/diag.md
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/diag.md || true
