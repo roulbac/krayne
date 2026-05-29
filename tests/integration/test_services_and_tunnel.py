@@ -13,11 +13,13 @@ from __future__ import annotations
 
 import socket
 import time
+from concurrent.futures import ThreadPoolExecutor
 from urllib.error import URLError
 from urllib.request import urlopen
 
 import pytest
 
+from krayne import tunnel_state
 from krayne.api import create_cluster, delete_cluster, get_cluster, get_cluster_services
 from krayne.config import ClusterConfig
 from krayne.config.models import HeadNodeConfig, ServicesConfig, WorkerGroupConfig
@@ -26,6 +28,7 @@ from krayne.tunnel import (
     start_tunnels,
     stop_tunnels,
 )
+from krayne.tunnel_state import ServiceState
 
 pytestmark = pytest.mark.integration
 
@@ -33,6 +36,21 @@ pytestmark = pytest.mark.integration
 _CLUSTER_READY_TIMEOUT = 300
 _SERVICE_STARTUP_GRACE = 60
 _POLL_INTERVAL = 3
+
+# HTTP services and a cheap, always-200 endpoint on each.
+_HTTP_ENDPOINTS = {
+    "dashboard": "/api/version",
+    "notebook": "/api/status",
+    "code-server": "/healthz",
+}
+
+# Concurrency knobs for the load test. The dashboard is weighted heavily because
+# that's the real browser pattern (many parallel XHRs); every urlopen is a fresh
+# connection, so each one drives a fresh port-forward handshake and maximises
+# contention on the manager's shared kube client.
+_CONCURRENT_WORKERS = 24
+_REQUEST_PLAN = ["dashboard"] * 48 + ["notebook"] * 12 + ["code-server"] * 12
+_CONCURRENT_REQUEST_TIMEOUT = 10
 
 
 def _wait_for_ready(name: str, namespace: str, client, timeout: int) -> None:
@@ -72,6 +90,21 @@ def _http_probe(url: str, timeout: int = 5) -> int:
         return 0
     except Exception:
         return 0
+
+
+def _http_request(url: str) -> tuple[bool, str]:
+    """Make a single request with no retry. Returns ``(ok, detail)``.
+
+    Unlike :func:`_http_probe` this surfaces the failure mode (reset, EOF, ...)
+    so the concurrent load test can assert on it instead of masking it.
+    """
+    try:
+        resp = urlopen(url, timeout=_CONCURRENT_REQUEST_TIMEOUT)  # noqa: S310
+        return (resp.status == 200, f"{url} -> {resp.status}")
+    except URLError as exc:
+        return (False, f"{url} -> URLError({exc.reason})")
+    except Exception as exc:  # noqa: BLE001 — surface anything (resets, EOF, ...)
+        return (False, f"{url} -> {type(exc).__name__}({exc})")
 
 
 def _tcp_probe(host: str, port: int, timeout: int = 5) -> bytes:
@@ -239,6 +272,73 @@ class TestServicesAndTunnel:
         assert banner and banner.startswith(b"SSH-"), (
             f"Expected SSH banner, got: {banner!r}"
         )
+
+    # -- Concurrency regression ---------------------------------------------
+
+    def test_concurrent_load_across_services(self):
+        """Tunnels must stay healthy under concurrent load.
+
+        Regression for the shared-``ApiClient`` port-forward race: the other
+        tests here open one service and probe it sequentially with retries, so
+        two client operations never overlap — the exact condition the bug needs.
+        This opens all services at once (multiple forwarders + the head-pod
+        watch share the manager's kube client) and fires many parallel,
+        no-retry requests, mimicking a browser hammering the dashboard.
+        """
+        services = get_cluster_services(
+            self.CLUSTER_NAME, self.NAMESPACE, client=self._client
+        )
+        tunnels = start_tunnels(
+            self.CLUSTER_NAME, self.NAMESPACE, services,
+            kubeconfig=self._kubeconfig,
+        )
+        ports = {t.service: t.local_port for t in tunnels}
+        urls = {
+            svc: f"http://localhost:{ports[svc]}{path}"
+            for svc, path in _HTTP_ENDPOINTS.items()
+        }
+
+        # Warm up each service so cold-start can't be mistaken for the race.
+        for url in urls.values():
+            status = _retry(lambda u=url: _http_probe(u))
+            assert status == 200, f"Service never became ready: {url} ({status})"
+
+        # Only count routing errors produced from here on.
+        log_file = tunnel_state.log_path(self.CLUSTER_NAME, self.NAMESPACE)
+        log_offset = log_file.stat().st_size if log_file.exists() else 0
+
+        # Strict concurrent phase: many parallel requests, no retries.
+        request_urls = [urls[svc] for svc in _REQUEST_PLAN]
+        with ThreadPoolExecutor(max_workers=_CONCURRENT_WORKERS) as pool:
+            results = list(pool.map(_http_request, request_urls))
+
+        failures = [detail for ok, detail in results if not ok]
+        assert not failures, (
+            f"{len(failures)}/{len(results)} concurrent requests failed:\n"
+            + "\n".join(failures[:20])
+        )
+
+        # The race surfaces as this exact error when a normal list/watch call
+        # picks up the port-forward request shim off the shared client.
+        new_log = ""
+        if log_file.exists():
+            with log_file.open("r", encoding="utf-8", errors="replace") as fh:
+                fh.seek(log_offset)
+                new_log = fh.read()
+        assert "Missing required parameter `ports`" not in new_log, (
+            "Manager logged the shared-ApiClient port-forward race while "
+            "serving concurrent traffic."
+        )
+
+        # No forwarder should have exhausted its restart budget.
+        state = tunnel_state.load_state(self.CLUSTER_NAME, self.NAMESPACE)
+        assert state is not None
+        failed = {
+            svc: st.last_error
+            for svc, st in state.status.items()
+            if st.state == ServiceState.FAILED
+        }
+        assert not failed, f"Services entered FAILED state: {failed}"
 
     # NOTE: The manager's "re-bind forwarders after the head pod is replaced"
     # regression is covered deterministically by tests/unit/test_manager.py.

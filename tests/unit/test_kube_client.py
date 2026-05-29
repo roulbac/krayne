@@ -33,6 +33,26 @@ class TestPortforward:
             client.portforward("head-pod", "default", [8265, 10001])
         assert mock_pf.call_args.kwargs["ports"] == "8265,10001"
 
+    def test_uses_isolated_api_client(self):
+        """The k8s portforward helper swaps ``api_client.request`` for a
+        websocket shim during the handshake (restoring it in a finally). On the
+        shared ``self._core`` client that swap races with concurrent list/watch
+        calls, which then fail with ``Missing required parameter `ports```.
+        Each portforward must therefore run on its own ApiClient — so the
+        connect method handed to the helper must NOT be bound to ``self._core``.
+        """
+        client = _client_without_config()
+        captured: dict = {}
+
+        def fake_pf(api_method, pod, ns, *, ports):
+            captured["api_client"] = api_method.__self__.api_client
+            return MagicMock()
+
+        with patch("krayne.kube.client.k8s_portforward", side_effect=fake_pf):
+            client.portforward("head-pod", "default", [8265])
+
+        assert captured["api_client"] is not client._core.api_client
+
 
 class TestHeadPodName:
     def _pod(self, name, phase, ready):

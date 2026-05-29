@@ -245,12 +245,27 @@ class DefaultKubeClient:
         # ``value.split(',')`` — it must be a comma-separated *string*, not
         # a list (a list raises "'list' object has no attribute 'split'").
         ports_param = ",".join(str(p) for p in ports)
-        return k8s_portforward(
-            self._core.connect_get_namespaced_pod_portforward,
-            pod_name,
-            namespace,
-            ports=ports_param,
-        )
+        # kubernetes' portforward() temporarily swaps api_client.request for a
+        # websocket shim and restores it in a finally — a mutation of shared
+        # state that is NOT thread-safe. The tunnel manager runs many
+        # forwarders plus a pod-watch concurrently; if they shared one
+        # ApiClient, a normal list/watch overlapping a handshake would observe
+        # the shim and fail with "Missing required parameter `ports`", and an
+        # in-flight forward could have its request restored out from under it.
+        # Give every call its own ApiClient so the swap stays thread-local. The
+        # returned PortForward owns its websocket and does not retain the
+        # client, so we close it once the handshake completes.
+        api_client = k8s_client.ApiClient()
+        try:
+            core = k8s_client.CoreV1Api(api_client)
+            return k8s_portforward(
+                core.connect_get_namespaced_pod_portforward,
+                pod_name,
+                namespace,
+                ports=ports_param,
+            )
+        finally:
+            api_client.close()
 
     def _ensure_namespace(self, namespace: str) -> None:
         try:
