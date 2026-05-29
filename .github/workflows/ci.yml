@@ -69,9 +69,10 @@ jobs:
             -k "${{ matrix.suite.selector }}" 2>&1 | tee /tmp/pytest.log
 
       - name: Post diagnostics on failure
-        if: failure()
+        if: failure() && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           {
             echo "<!-- ci-diag -->"
@@ -96,4 +97,4 @@ jobs:
             echo '```'
             echo "</details>"
           } > /tmp/diag.md
-          gh pr comment 36 --repo roulbac/krayne --body-file /tmp/diag.md || true
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/diag.md || true

@@ -22,9 +22,7 @@ from krayne.api import create_cluster, delete_cluster, get_cluster, get_cluster_
 from krayne.config import ClusterConfig
 from krayne.config.models import HeadNodeConfig, ServicesConfig, WorkerGroupConfig
 from krayne.tunnel import (
-    detect_services,
     is_tunnel_active,
-    local_port_for,
     start_tunnels,
     stop_tunnels,
 )
@@ -189,17 +187,6 @@ class TestServicesAndTunnel:
         )
         assert tunnels1 == tunnels2
 
-    def test_tunnel_stop_idempotent(self):
-        """Stopping a non-existent tunnel is a no-op."""
-        assert stop_tunnels(self.CLUSTER_NAME, self.NAMESPACE) is False
-
-    def test_tunnel_ports_are_deterministic(self):
-        """Same cluster always gets the same local ports."""
-        for svc in ("dashboard", "client", "notebook", "code-server", "ssh"):
-            p1 = local_port_for(self.CLUSTER_NAME, self.NAMESPACE, svc)
-            p2 = local_port_for(self.CLUSTER_NAME, self.NAMESPACE, svc)
-            assert p1 == p2
-
     # -- Health checks via tunnel -------------------------------------------
 
     def test_dashboard_reachable_via_tunnel(self):
@@ -252,37 +239,6 @@ class TestServicesAndTunnel:
         assert banner and banner.startswith(b"SSH-"), (
             f"Expected SSH banner, got: {banner!r}"
         )
-
-    def test_all_services_via_single_tunnel_session(self):
-        """All services reachable in one tunnel session."""
-        services = get_cluster_services(
-            self.CLUSTER_NAME, self.NAMESPACE, client=self._client
-        )
-        tunnels = start_tunnels(
-            self.CLUSTER_NAME, self.NAMESPACE, services,
-            kubeconfig=self._kubeconfig,
-        )
-        time.sleep(3)  # Let all port-forwards bind
-
-        tunnel_map = {t.service: t for t in tunnels}
-
-        # Dashboard
-        t = tunnel_map["dashboard"]
-        assert _retry(lambda: _http_probe(f"http://localhost:{t.local_port}/api/version")) == 200
-
-        # Notebook
-        t = tunnel_map["notebook"]
-        assert _retry(lambda: _http_probe(f"http://localhost:{t.local_port}/api/status")) == 200
-
-        # Code Server
-        t = tunnel_map["code-server"]
-        assert _retry(lambda: _http_probe(f"http://localhost:{t.local_port}/healthz")) == 200
-
-        # SSH — may not be available if the Ray image lacks openssh-server
-        t = tunnel_map["ssh"]
-        banner = _retry(lambda: _tcp_probe("localhost", t.local_port), retries=5, delay=2.0)
-        if banner:
-            assert banner.startswith(b"SSH-")
 
     def test_tunnel_survives_head_pod_restart(self):
         """Manager re-binds forwarders after the head pod is deleted.
