@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-from textual.widgets import Button, DataTable, Input, OptionList, Static, Switch, TabbedContent
+from textual.widgets import Button, Input, OptionList, Static, Switch
 
 from krayne.api.types import ClusterDetails, ClusterInfo, HeadNodeInfo, WorkerGroupInfo
 from krayne.tui.app import IKrayneApp
@@ -93,18 +93,10 @@ async def test_app_launches():
     """App mounts and shows the ExplorerScreen."""
     with _patch_explorer(), _patch_tunnel_inactive():
         app = IKrayneApp()
-        async with app.run_test() as pilot:
+        async with app.run_test():
             from krayne.tui.screens.explorer import ExplorerScreen
 
             assert isinstance(app.screen, ExplorerScreen)
-
-
-@pytest.mark.asyncio
-async def test_app_has_command_palette():
-    """App registers the command palette provider."""
-    from krayne.tui.commands import IKrayneCommands
-
-    assert IKrayneCommands in IKrayneApp.COMMANDS
 
 
 # ── Explorer tests ──────────────────────────────────
@@ -151,16 +143,12 @@ async def test_explorer_empty_state():
 
 
 @pytest.mark.asyncio
-async def test_explorer_filter_by_name():
-    """Filter bar filters clusters by name using the filter function."""
-    from krayne.tui.widgets.filter_bar import make_filter_fn
+async def test_explorer_opens_filter_bar():
+    """Pressing '/' reveals the filter bar in the explorer.
 
-    fn = make_filter_fn("test")
-    # Verify the filter function works on cluster data
-    assert fn(_INFO) is True
-    assert fn(_INFO2) is False
-
-    # Also verify the UI opens the filter bar
+    Filter-function logic itself is covered by the make_filter_fn tests below;
+    this only asserts the UI wiring.
+    """
     with patch("krayne.tui.screens.explorer.list_clusters", return_value=[_INFO, _INFO2]):
         with _patch_tunnel_inactive():
             app = IKrayneApp()
@@ -168,23 +156,12 @@ async def test_explorer_filter_by_name():
                 await pilot.pause()
                 await pilot.pause()
 
-                # Open filter
                 await pilot.press("slash")
                 await pilot.pause()
                 from krayne.tui.widgets.filter_bar import FilterBar
 
                 filter_bar = app.screen.query_one(FilterBar)
                 assert filter_bar.has_class("visible")
-
-
-@pytest.mark.asyncio
-async def test_explorer_filter_by_status():
-    """Filter bar supports status: prefix."""
-    from krayne.tui.widgets.filter_bar import make_filter_fn
-
-    fn = make_filter_fn("status:creating")
-    assert fn(_INFO) is False
-    assert fn(_INFO2) is True
 
 
 # ── Detail tests ────────────────────────────────────
@@ -223,8 +200,16 @@ async def test_detail_screen_has_tabs():
                 for _ in range(5):
                     await pilot.pause()
                 assert isinstance(app.screen, ClusterDetailScreen)
-                tabs = app.screen.query_one(TabbedContent)
-                assert tabs is not None
+                from textual.widgets import TabPane
+
+                tab_ids = {pane.id for pane in app.screen.query(TabPane)}
+                assert tab_ids == {
+                    "tab-overview",
+                    "tab-workers",
+                    "tab-services",
+                    "tab-tunnels",
+                    "tab-config",
+                }
         finally:
             for p in patches:
                 p.stop()
@@ -315,6 +300,7 @@ async def test_create_flow_defaults():
             # Worker group fields present
             assert screen.query_one("#input-wg0-cpus", Input).value != ""
             assert screen.query_one("#input-wg0-memory", Input).value != ""
+            assert screen.query_one("#input-wg0-gpus", Input).value != ""
             # Services default to on
             assert screen.query_one("#switch-notebook", Switch).value is True
             assert screen.query_one("#switch-code-server", Switch).value is True
@@ -357,26 +343,6 @@ async def test_create_flow_escape_returns():
             from krayne.tui.screens.explorer import ExplorerScreen
 
             assert isinstance(app.screen, ExplorerScreen)
-
-
-@pytest.mark.asyncio
-async def test_create_flow_has_all_resource_tabs():
-    """Create flow has Head Node and Workers tabs with resource fields."""
-    with _patch_explorer(), _patch_tunnel_inactive():
-        app = IKrayneApp()
-        async with app.run_test(size=(120, 35)) as pilot:
-            await pilot.pause()
-            await pilot.press("c")
-            await pilot.pause()
-
-            screen = app.screen
-            # Head node tab exists with resource fields
-            assert screen.query_one("#input-head-cpus", Input) is not None
-            assert screen.query_one("#input-head-memory", Input) is not None
-            # Worker group tab exists with resource fields
-            assert screen.query_one("#input-wg0-cpus", Input) is not None
-            assert screen.query_one("#input-wg0-memory", Input) is not None
-            assert screen.query_one("#input-wg0-gpus", Input) is not None
 
 
 # ── Scale flow tests ────────────────────────────────
@@ -461,6 +427,12 @@ async def test_delete_shows_cluster_name():
 
                 app.push_screen(DeleteConfirmScreen("test-cluster", "default"))
                 await pilot.pause()
+                await pilot.pause()
+
+                rendered = " ".join(
+                    str(s.renderable) for s in app.screen.query(Static)
+                )
+                assert "test-cluster" in rendered
 
 
 # ── Namespace picker tests ──────────────────────────

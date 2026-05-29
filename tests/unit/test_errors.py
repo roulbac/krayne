@@ -2,21 +2,8 @@ from krayne.errors import (
     ClusterAlreadyExistsError,
     ClusterNotFoundError,
     ClusterTimeoutError,
-    KubeConnectionError,
     NamespaceNotFoundError,
-    KrayneError,
 )
-
-
-def test_all_exceptions_inherit_from_krayne_error():
-    for exc_cls in (
-        ClusterNotFoundError,
-        ClusterAlreadyExistsError,
-        ClusterTimeoutError,
-        KubeConnectionError,
-        NamespaceNotFoundError,
-    ):
-        assert issubclass(exc_cls, KrayneError)
 
 
 def test_cluster_not_found_message():

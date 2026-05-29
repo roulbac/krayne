@@ -46,14 +46,15 @@ def _skip_kuberay_check(monkeypatch):
 @pytest.fixture()
 def real_assert_kuberay_installed():
     """Return the un-stubbed :func:`assert_kuberay_installed` function."""
-    import krayne.kube.client as mod
 
     # Bypass the autouse stub by going through the original unbound
     # function captured at import time.
     return _ORIGINAL_ASSERT_KUBERAY_INSTALLED
 
 
-import krayne.kube.client as _kube_client_mod
+# Imported here (not at top) to capture the original function before the
+# autouse stub below replaces it.
+import krayne.kube.client as _kube_client_mod  # noqa: E402
 
 _ORIGINAL_ASSERT_KUBERAY_INSTALLED = _kube_client_mod.assert_kuberay_installed
 del _kube_client_mod

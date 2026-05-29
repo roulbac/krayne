@@ -85,6 +85,9 @@ class TestGet:
     def test_get_empty(self, mock_list):
         result = runner.invoke(app, ["get"])
         assert result.exit_code == 0
+        # Empty list still renders the table header, with no cluster rows.
+        assert "Ray Clusters" in result.output
+        assert "test" not in result.output
 
 
 class TestDescribe:

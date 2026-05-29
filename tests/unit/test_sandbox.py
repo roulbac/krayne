@@ -13,11 +13,8 @@ from krayne.errors import (
     SandboxNotFoundError,
 )
 from krayne.sandbox.manager import (
-    SANDBOX_CONTAINER_NAME,
     SETUP_STEPS,
     STEP_DOCKER,
-    STEP_K3S_CONTAINER,
-    SandboxStatus,
     sandbox_status,
     setup_sandbox,
     teardown_sandbox,

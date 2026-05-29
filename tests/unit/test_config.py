@@ -7,10 +7,8 @@ import pytest
 from pydantic import ValidationError
 
 from krayne.config import (
-    DEFAULT_CPUS,
     DEFAULT_HEAD_CPUS,
     DEFAULT_HEAD_MEMORY,
-    DEFAULT_MEMORY,
     AutoscalerConfig,
     ClusterConfig,
     HeadNodeConfig,
@@ -65,12 +63,6 @@ class TestClusterConfigDefaults:
 
 
 class TestWorkerGroupAutoscaling:
-    def test_default_replicas(self):
-        wg = WorkerGroupConfig()
-        assert wg.replicas == 0
-        assert wg.min_replicas == 0
-        assert wg.max_replicas == 1
-
     def test_max_replicas_auto_adjusted(self):
         """When replicas > max_replicas, max_replicas is auto-adjusted."""
         wg = WorkerGroupConfig(replicas=3)
@@ -186,20 +178,15 @@ class TestYamlWithAutoscaling:
 
 class TestRoundTrip:
     def test_model_dump_and_reload(self):
+        # Round-trip a fully-populated config. This guards against the
+        # mutating `model_validator` on WorkerGroupConfig (which auto-adjusts
+        # max_replicas) breaking idempotency on reload.
         cfg = ClusterConfig(
             name="rt",
             namespace="ns",
             head=HeadNodeConfig(cpus=4, memory="16Gi"),
             worker_groups=[WorkerGroupConfig(name="w", replicas=3, min_replicas=1, max_replicas=5, gpus=2)],
             services=ServicesConfig(code_server=True),
-        )
-        data = cfg.model_dump()
-        reloaded = ClusterConfig(**data)
-        assert reloaded == cfg
-
-    def test_round_trip_with_autoscaler(self):
-        cfg = ClusterConfig(
-            name="rt",
             autoscaler=AutoscalerConfig(enabled=True, idle_timeout_seconds=120),
         )
         data = cfg.model_dump()

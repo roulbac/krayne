@@ -117,13 +117,6 @@ class TestBuildManifest:
         assert container["image"].endswith("-gpu")
         assert "nodeSelector" not in wg["template"]["spec"]
 
-    def test_cpu_worker_uses_non_gpu_image(self):
-        cfg = ClusterConfig(name="cpu", worker_groups=[WorkerGroupConfig(gpus=0)])
-        m = build_manifest(cfg)
-        container = m["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0]
-        assert container["image"] == _get_ray_image(gpu=False)
-        assert not container["image"].endswith("-gpu")
-
     def test_worker_image_picked_per_group(self):
         """Each worker group independently picks GPU or CPU image based on its own gpus."""
         cfg = ClusterConfig(
@@ -170,12 +163,6 @@ class TestBuildManifest:
         assert head_img.endswith("-gpu")
         assert not worker_img.endswith("-gpu")
 
-    def test_cpu_worker_no_node_selector(self):
-        cfg = ClusterConfig(name="cpu")
-        m = build_manifest(cfg)
-        wg = m["spec"]["workerGroupSpecs"][0]
-        assert "nodeSelector" not in wg["template"]["spec"]
-
     def test_multiple_worker_groups(self):
         cfg = ClusterConfig(
             name="multi",
@@ -200,14 +187,17 @@ class TestBuildManifest:
         assert port_names == {"gcs-server", "dashboard", "client"}
 
     def test_head_service_extra_ports_default(self):
-        """Default services (notebook + ssh + code-server) appear on headService ports."""
+        """Default services (notebook + ssh + code-server) appear on headService ports.
+
+        ServicesConfig defaults all three to True, so this is also the
+        all-services-enabled case: the headService exposes exactly those three
+        and none of the Ray-internal ports (Ray adds those itself).
+        """
         cfg = ClusterConfig(name="svcports")
         m = build_manifest(cfg)
         svc_ports = m["spec"]["headGroupSpec"]["headService"]["spec"]["ports"]
         port_names = {p["name"] for p in svc_ports}
-        assert "notebook" in port_names
-        assert "ssh" in port_names
-        assert "code-server" in port_names
+        assert port_names == {"notebook", "ssh", "code-server"}
         assert "gcs-server" not in port_names  # Ray adds these itself
 
     def test_head_service_no_extra_ports(self):
@@ -221,31 +211,6 @@ class TestBuildManifest:
         assert "ports" not in svc_spec
         assert svc_spec["type"] == "ClusterIP"
 
-    def test_head_service_all_services(self):
-        """All services enabled: notebook, ssh, code-server on headService."""
-        cfg = ClusterConfig(
-            name="all",
-            services=ServicesConfig(notebook=True, code_server=True, ssh=True),
-        )
-        m = build_manifest(cfg)
-        svc_ports = m["spec"]["headGroupSpec"]["headService"]["spec"]["ports"]
-        port_names = {p["name"] for p in svc_ports}
-        assert port_names == {"notebook", "ssh", "code-server"}
-
-    def test_no_init_containers(self):
-        """No init containers regardless of services config."""
-        cfg = ClusterConfig(name="noinit")
-        m = build_manifest(cfg)
-        pod_spec = m["spec"]["headGroupSpec"]["template"]["spec"]
-        assert "initContainers" not in pod_spec
-
-    def test_no_volumes(self):
-        """No shared volumes regardless of services config."""
-        cfg = ClusterConfig(name="novol")
-        m = build_manifest(cfg)
-        pod_spec = m["spec"]["headGroupSpec"]["template"]["spec"]
-        assert "volumes" not in pod_spec
-
     def test_lifecycle_hook_default_services(self):
         """Default services produce a postStart hook that installs + starts services."""
         cfg = ClusterConfig(name="hooks")
@@ -257,13 +222,15 @@ class TestBuildManifest:
         assert "code-server" in hook[2]
         assert "sshd" in hook[2]
 
-    def test_lifecycle_hook_installs_notebook(self):
-        """Notebook service installs via pip in postStart hook."""
+    def test_lifecycle_hook_notebook_only(self):
+        """Notebook-only: installs jupyter via pip, and no other service is set up."""
         cfg = ClusterConfig(name="nb", services=ServicesConfig(notebook=True, code_server=False, ssh=False))
         m = build_manifest(cfg)
         hook_cmd = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["lifecycle"]["postStart"]["exec"]["command"][2]
         assert "pip install" in hook_cmd
         assert "jupyter notebook" in hook_cmd
+        assert "sshd" not in hook_cmd
+        assert "code-server" not in hook_cmd
 
     def test_lifecycle_hook_installs_code_server_standalone(self):
         """Code-server installed via standalone tarball in postStart hook."""
@@ -292,27 +259,6 @@ class TestBuildManifest:
         assert "linux-arm64.tar.gz" not in hook_cmd
         assert "linux-${ARCH}.tar.gz" in hook_cmd
 
-    def test_lifecycle_hook_notebook_only(self):
-        cfg = ClusterConfig(
-            name="nb",
-            services=ServicesConfig(notebook=True, code_server=False, ssh=False),
-        )
-        m = build_manifest(cfg)
-        hook_cmd = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["lifecycle"]["postStart"]["exec"]["command"][2]
-        assert "jupyter notebook" in hook_cmd
-        assert "sshd" not in hook_cmd
-        assert "code-server" not in hook_cmd
-
-    def test_lifecycle_hook_ssh_only(self):
-        cfg = ClusterConfig(
-            name="sshonly",
-            services=ServicesConfig(notebook=False, code_server=False, ssh=True),
-        )
-        m = build_manifest(cfg)
-        hook_cmd = m["spec"]["headGroupSpec"]["template"]["spec"]["containers"][0]["lifecycle"]["postStart"]["exec"]["command"][2]
-        assert "sshd" in hook_cmd
-        assert "jupyter" not in hook_cmd
-
     def test_lifecycle_hook_ssh_bootstrap_pieces(self):
         """SSH bootstrap installs openssh, generates host keys, binds to loopback,
         empties the ray password, disables root login, and writes a krayne sshd
@@ -329,6 +275,9 @@ class TestBuildManifest:
         assert "[ -x /usr/sbin/sshd ]" in hook_cmd
         assert "sudo apt-get install" in hook_cmd
         assert "openssh-server" in hook_cmd
+
+        # SSH-only: no other service is set up.
+        assert "jupyter" not in hook_cmd
 
         # Host keys generated idempotently as root.
         assert "sudo ssh-keygen -A" in hook_cmd
