@@ -39,14 +39,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    strategy:
-      fail-fast: false
-      matrix:
-        suite:
-          - name: mechanism
-            selector: "not survives_head_pod_restart"
-          - name: restart
-            selector: "survives_head_pod_restart"
     steps:
       - uses: actions/checkout@v4
 
@@ -62,11 +54,11 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Run integration tests (${{ matrix.suite.name }})
+      - name: Run integration tests
         run: |
           set -o pipefail
           uv run pytest tests/integration -v -m integration --timeout=600 \
-            -k "${{ matrix.suite.selector }}" 2>&1 | tee /tmp/pytest.log
+            2>&1 | tee /tmp/pytest.log
 
       - name: Post diagnostics on failure
         if: failure() && github.event_name == 'pull_request'
@@ -76,7 +68,7 @@ jobs:
         run: |
           {
             echo "<!-- ci-diag -->"
-            echo "### CI diagnostics — integration/${{ matrix.suite.name }}"
+            echo "### CI diagnostics — integration tests"
             echo ""
             echo "<details><summary>pytest tail</summary>"
             echo ""
