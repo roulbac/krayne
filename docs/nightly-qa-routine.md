@@ -37,11 +37,15 @@ commit status with `scripts/claude_qa_status.sh`; that status is the real signal
      `/schedule daily krayne QA at 2am`.)
    - **Prompt**: paste the prompt below.
 
-> **Integration tests need Docker.** `krayne sandbox setup` spins up a Docker-in-Docker
-> Kubernetes cluster (Docker + kubectl + Helm). If the routine's environment doesn't provide
-> Docker, the prompt below detects that and reports unit-test results only, rather than failing
-> the whole check on a missing prerequisite. To run the full suite, use an environment image
-> that has Docker available.
+> **Integration tests and Docker.** `krayne sandbox setup` spins up a Docker-in-Docker
+> Kubernetes cluster (Docker + kubectl + Helm). The Claude Code cloud environment **ships
+> Docker** (`docker`, `dockerd`, `docker compose` are pre-installed and Docker Hub is in the
+> Trusted allowlist), so the full suite can run by default — no custom image needed. The two
+> things to watch: the Docker daemon may need to be started in the session (`dockerd` or
+> `sudo service docker start`), and the sandbox checks for a minimum CPU/memory, so a
+> resource-constrained environment can still fail `krayne sandbox setup`. The prompt below
+> keeps a `docker info` guard so that if Docker genuinely isn't reachable, it reports
+> unit-test results only rather than failing the whole check on a missing prerequisite.
 
 ## The routine prompt
 
@@ -64,11 +68,14 @@ Steps:
      uv run pytest tests/unit -v --timeout=60
    Capture pass/fail and the count of failures.
 
-5. Run integration tests ONLY if Docker is available (check: `docker info` succeeds). They
-   require Docker + kubectl + Helm via the krayne sandbox:
+5. Run integration tests (Docker + kubectl + Helm via the krayne sandbox). First make sure
+   the Docker daemon is up: if `docker info` fails, try to start it (`sudo service docker
+   start` or `sudo dockerd >/tmp/dockerd.log 2>&1 &` then wait for `docker info` to succeed).
+   Once Docker responds:
      uv run pytest tests/integration -v -m integration --timeout=600
-   If `docker info` fails, skip integration tests and note "integration skipped: no Docker"
-   in the description — do NOT treat a missing Docker daemon as a test failure.
+   Only if Docker still cannot be started after a reasonable attempt, skip integration tests
+   and note "integration skipped: no Docker" in the description — do NOT treat an unreachable
+   Docker daemon as a test failure.
 
 6. Post the final commit status with scripts/claude_qa_status.sh:
    - All run suites passed  -> --state success
