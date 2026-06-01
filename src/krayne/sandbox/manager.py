@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import glob
 import json
 import subprocess
 import time
@@ -23,9 +24,14 @@ from krayne.errors import (
 )
 
 SANDBOX_CONTAINER_NAME = "krayne-sandbox"
-K3S_IMAGE = "rancher/k3s:v1.35.2-k3s1"
+K3S_IMAGE = "rancher/k3s:v1.34.8-k3s1"
 HELM_IMAGE = "alpine/helm"
-KUBERAY_HELM_REPO = "https://ray-project.github.io/kuberay-helm"
+KUBERAY_CHART_VERSION = "1.6.1"
+KUBERAY_CHART_URL = (
+    "https://github.com/ray-project/kuberay-helm/releases/download/"
+    f"kuberay-operator-{KUBERAY_CHART_VERSION}/"
+    f"kuberay-operator-{KUBERAY_CHART_VERSION}.tgz"
+)
 SANDBOX_KUBECONFIG = PRISM_DIR / "sandbox-kubeconfig"
 
 MIN_CPUS = 2
@@ -123,20 +129,23 @@ def _k3s_node_ready() -> bool:
     return result.returncode == 0 and "Ready" in result.stdout
 
 
-def _raycluster_crd_registered(kubeconfig: str) -> bool:
+def _raycluster_crd_registered() -> bool:
     result = subprocess.run(
-        ["kubectl", "--kubeconfig", kubeconfig, "get", "crd", "rayclusters.ray.io"],
+        [
+            "docker", "exec", SANDBOX_CONTAINER_NAME,
+            "kubectl", "get", "crd", "rayclusters.ray.io",
+        ],
         capture_output=True,
         text=True,
     )
     return result.returncode == 0
 
 
-def _deployment_available(name: str, kubeconfig: str, namespace: str) -> bool:
+def _deployment_available(name: str, namespace: str) -> bool:
     result = subprocess.run(
         [
-            "kubectl", "--kubeconfig", kubeconfig,
-            "get", "deployment", name,
+            "docker", "exec", SANDBOX_CONTAINER_NAME,
+            "kubectl", "get", "deployment", name,
             "-n", namespace,
             "-o", "jsonpath={.status.availableReplicas}",
         ],
@@ -170,12 +179,79 @@ def _check_docker(on_progress: ProgressCallback) -> None:
     _notify(on_progress, STEP_DOCKER, "done")
 
 
+def _build_ca_bundle() -> str | None:
+    """Merge host CA bundle with extra certs (e.g. corporate proxy CAs).
+
+    Returns the path to a merged bundle file, or None if no extra CAs exist.
+    """
+    extra_certs = glob.glob("/usr/local/share/ca-certificates/*.crt")
+    if not extra_certs:
+        return None
+    host_bundle = Path("/etc/ssl/certs/ca-certificates.crt")
+    if not host_bundle.exists():
+        return None
+    merged = PRISM_DIR / "sandbox-ca-certificates.crt"
+    PRISM_DIR.mkdir(parents=True, exist_ok=True)
+    parts = [host_bundle.read_text()]
+    for cert_file in extra_certs:
+        parts.append(Path(cert_file).read_text())
+    merged.write_text("\n".join(parts))
+    return str(merged)
+
+
+_RUNC_WRAPPER = """\
+#!/bin/sh
+# Neutralise negative oomScoreAdj values that runc's nsexec cannot apply
+# inside nested pid-namespaces on cgroup-v1 hosts (kernel 6.x+).
+bundle=""
+is_create=0
+prev=""
+for arg in "$@"; do
+  case "$arg" in create) is_create=1 ;; --bundle=*) bundle="${arg#--bundle=}" ;; esac
+  [ "$prev" = "--bundle" ] && bundle="$arg"
+  prev="$arg"
+done
+if [ "$is_create" = "1" ] && [ -n "$bundle" ] && [ -f "$bundle/config.json" ]; then
+  sed -i 's/"oomScoreAdj":-[0-9]*/"oomScoreAdj":0/g' "$bundle/config.json"
+fi
+exec /bin/runc.real "$@"
+"""
+
+
+def _install_runc_wrapper() -> None:
+    """Swap runc with a wrapper that zeroes negative oomScoreAdj values.
+
+    On cgroup-v1 hosts with kernel >= 6.x, runc 1.4+ fails to set negative
+    oom_score_adj inside nested pid-namespaces (``nsexec: failed to update
+    /proc/self/oom_score_adj: Permission denied``).  The wrapper patches the
+    OCI config before delegating to the real binary.
+    """
+    result = subprocess.run(
+        ["docker", "exec", SANDBOX_CONTAINER_NAME, "stat", "/sys/fs/cgroup/cgroup.controllers"],
+        capture_output=True, text=True,
+    )
+    if result.returncode == 0:
+        return
+    subprocess.run(
+        ["docker", "exec", SANDBOX_CONTAINER_NAME,
+         "sh", "-c", "cp /bin/runc /bin/runc.real"],
+        capture_output=True, text=True, check=True,
+    )
+    subprocess.run(
+        ["docker", "exec", SANDBOX_CONTAINER_NAME,
+         "sh", "-c", f"cat > /bin/runc << 'WRAPPER_EOF'\n{_RUNC_WRAPPER}WRAPPER_EOF\nchmod +x /bin/runc"],
+        capture_output=True, text=True, check=True,
+    )
+
+
 def _start_k3s_container(on_progress: ProgressCallback) -> None:
     if _container_exists():
         _notify(on_progress, STEP_K3S_CONTAINER, "failed")
         raise SandboxAlreadyExistsError()
 
     _notify(on_progress, STEP_K3S_CONTAINER, "in_progress")
+    ca_bundle = _build_ca_bundle()
+    ca_args = ["-v", f"{ca_bundle}:/etc/ssl/certs/ca-certificates.crt:ro"] if ca_bundle else []
     _run([
         "docker", "run", "-d",
         "--name", SANDBOX_CONTAINER_NAME,
@@ -185,10 +261,12 @@ def _start_k3s_container(on_progress: ProgressCallback) -> None:
         "--cpus", str(MIN_CPUS),
         "--memory", f"{SANDBOX_MEMORY_GB}g",
         "-e", "K3S_KUBECONFIG_MODE=644",
+        *ca_args,
         K3S_IMAGE,
         "server", "--disable=traefik",
         "--kube-apiserver-arg", "service-node-port-range=30000-30100",
     ])
+    _install_runc_wrapper()
     _notify(on_progress, STEP_K3S_CONTAINER, "done")
 
 
@@ -208,22 +286,25 @@ def _extract_kubeconfig(on_progress: ProgressCallback) -> str:
 
 def _install_kuberay(raw_kubeconfig: str, on_progress: ProgressCallback) -> None:
     _notify(on_progress, STEP_HELM_INSTALL, "in_progress")
-    # Helm runs inside a sibling container that shares k3s's network namespace,
-    # so it needs a kubeconfig file that's bind-mountable from the host.
     internal_kubeconfig = str(PRISM_DIR / "sandbox-kubeconfig-internal")
     Path(internal_kubeconfig).write_text(raw_kubeconfig)
+
+    chart_path = str(PRISM_DIR / f"kuberay-operator-{KUBERAY_CHART_VERSION}.tgz")
+    _run(["curl", "-fsSL", "-o", chart_path, KUBERAY_CHART_URL])
+
     try:
         _run([
             "docker", "run", "--rm",
             "--network", f"container:{SANDBOX_CONTAINER_NAME}",
             "-v", f"{internal_kubeconfig}:/root/.kube/config:ro",
+            "-v", f"{chart_path}:/tmp/chart.tgz:ro",
             HELM_IMAGE,
-            "install", "kuberay-operator", "kuberay-operator",
-            "--repo", KUBERAY_HELM_REPO,
+            "install", "kuberay-operator", "/tmp/chart.tgz",
             "--namespace", "default",
         ])
     finally:
         Path(internal_kubeconfig).unlink(missing_ok=True)
+        Path(chart_path).unlink(missing_ok=True)
     _notify(on_progress, STEP_HELM_INSTALL, "done")
 
 
@@ -247,7 +328,7 @@ def setup_sandbox(on_progress: ProgressCallback = None) -> str:
         kubeconfig_path = str(SANDBOX_KUBECONFIG)
 
         _wait_until(
-            lambda: _raycluster_crd_registered(kubeconfig_path),
+            _raycluster_crd_registered,
             STEP_CRD,
             timeout=120,
             on_progress=on_progress,
@@ -255,7 +336,7 @@ def setup_sandbox(on_progress: ProgressCallback = None) -> str:
         )
 
         _wait_until(
-            lambda: _deployment_available("kuberay-operator", kubeconfig_path, "default"),
+            lambda: _deployment_available("kuberay-operator", "default"),
             STEP_OPERATOR,
             timeout=180,
             on_progress=on_progress,
