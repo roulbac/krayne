@@ -100,6 +100,36 @@ On <https://github.com/roulbac/krayne/commits/main> each nightly commit picks up
 the routine session transcript (the status links there via `CLAUDE_SESSION_URL` if your
 environment sets it).
 
+## First run: verify before trusting it
+
+Don't wait for the first scheduled night. On the routine's detail page click **Run now**, then
+open that session and confirm the routine behaves end-to-end. A green entry in the run list only
+means the session didn't hit an infra error — it does **not** mean QA passed — so check the
+transcript itself:
+
+1. **Status posts landed.** The `claude-nightly-qa` check should appear on the HEAD commit of
+   `main` at <https://github.com/roulbac/krayne/commits/main> — yellow while running, then
+   green/red. If it never appears, the token or its scope is wrong; the transcript will show the
+   `claude_qa_status: failed (HTTP 4xx)` line and GitHub's error body. Common causes: token
+   lacks `repo:status`, or `GH_TOKEN` wasn't set as an environment variable on the routine.
+2. **Unit tests actually ran** (`uv run pytest tests/unit` output is in the transcript, not an
+   `uv: command not found` — if so, fix the setup script).
+3. **Integration tests: did the sandbox come up?** This is the one to watch on the first run.
+   Look for whether `dockerd` started and `krayne sandbox setup` succeeded. The two realistic
+   failure modes:
+   - `Cannot connect to the Docker daemon` — the daemon wasn't started; confirm the prompt's
+     `service docker start` / `dockerd &` step ran, or add daemon startup to the setup script.
+   - A `DockerNotFoundError`-style message about insufficient CPU/memory — the environment is
+     under the sandbox's resource minimum. If the cloud environment can't be sized up, decide
+     whether unit-only nightly QA is acceptable and adjust the prompt's expectation, or move
+     integration coverage back to GitHub Actions where the runner is sized for it.
+4. **The final status matches reality.** Cross-check the posted state against the transcript:
+   a passing run should be `success`, a real test failure `failure`, and a setup breakage
+   `error` (not `failure`). If the mapping is off, tighten the wording in prompt steps 5–6.
+
+Only after a clean **Run now** should you rely on the nightly schedule. Re-verify after any edit
+to the prompt, the setup script, or the environment's network/resources.
+
 ## Optional: make it a required check / open issues on failure
 
 - **Block merges on regressions**: add `claude-nightly-qa` as a required status check in the
