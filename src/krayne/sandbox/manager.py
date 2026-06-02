@@ -201,7 +201,7 @@ def _build_ca_bundle() -> str | None:
 
 _RUNC_WRAPPER = """\
 #!/bin/sh
-# Neutralise negative oomScoreAdj values that runc's nsexec cannot apply
+# Neutralise negative oomScoreAdj values that OCI runtimes cannot apply
 # inside nested pid-namespaces on cgroup-v1 hosts (kernel 6.x+).
 bundle=""
 is_create=0
@@ -221,10 +221,10 @@ exec /bin/runc.real "$@"
 def _install_runc_wrapper() -> None:
     """Swap runc with a wrapper that zeroes negative oomScoreAdj values.
 
-    On cgroup-v1 hosts with kernel >= 6.x, runc 1.4+ fails to set negative
-    oom_score_adj inside nested pid-namespaces (``nsexec: failed to update
-    /proc/self/oom_score_adj: Permission denied``).  The wrapper patches the
-    OCI config before delegating to the real binary.
+    On cgroup-v1 hosts with kernel >= 6.x, OCI runtimes (runc, crun) fail
+    to set negative oom_score_adj inside nested pid-namespaces — the kernel
+    denies the write.  The wrapper patches the OCI config before delegating
+    to the real binary.
     """
     result = subprocess.run(
         ["docker", "exec", SANDBOX_CONTAINER_NAME, "stat", "/sys/fs/cgroup/cgroup.controllers"],
