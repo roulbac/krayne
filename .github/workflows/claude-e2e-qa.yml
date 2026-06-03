@@ -1,0 +1,76 @@
+name: Claude E2E QA
+
+# Runs krayne's full end-to-end QA (unit + integration) on a GitHub-hosted
+# runner, driven by Claude Code. Claude reads its runtime playbook from
+# .github/claude/e2e-qa-instructions.md and executes it against this runner,
+# then posts a structured results summary.
+#
+# Why a hosted runner: GitHub-hosted runners have unrestricted egress and
+# Docker preinstalled, so the sandbox image pulls (quay.io, Docker Hub) and the
+# in-pod service bootstraps (PyPI, code-server from GitHub releases) all work
+# without the egress-proxy/allowlist friction seen in restricted environments.
+#
+# Authentication uses a Claude subscription (Pro/Max), not a pay-per-use API
+# key. Generate a long-lived OAuth token locally with `claude setup-token` and
+# store it as the repository secret CLAUDE_CODE_OAUTH_TOKEN (Settings → Secrets
+# and variables → Actions). The QA step fails if the secret is unset.
+
+on:
+  schedule:
+    # Nightly at 07:00 UTC.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (branch/SHA) to run QA against"
+        required: false
+        default: ""
+
+concurrency:
+  group: claude-e2e-qa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  e2e-qa:
+    name: Claude E2E QA
+    runs-on: ubuntu-latest
+    # Generous ceiling: integration run alone can take ~10 minutes.
+    timeout-minutes: 40
+    # Read-only QA: it reports results in the run log and does not need to
+    # write to the repo or PRs. No id-token: we authenticate with the OAuth
+    # token, not OIDC/cloud federation.
+    permissions:
+      contents: read
+    steps:
+      # Third-party actions are pinned to commit SHAs (not moving tags) so a
+      # hijacked/repointed tag can't run arbitrary code in the job that holds
+      # the Claude token. Update the SHA + trailing version comment together.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run E2E QA via Claude Code
+        uses: anthropics/claude-code-action@36a69b6a90b850823f86de06fdfd56264772ad98 # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Read .github/claude/e2e-qa-instructions.md and follow it exactly to
+            run krayne's end-to-end QA on this runner. Work through every step,
+            treat the unit suite as a hard gate, and finish with the structured
+            results summary the instructions describe. This is a read-only QA
+            run: do not push code or modify pull requests.
+          claude_args: |
+            --allowedTools "Bash,Read,Glob,Grep"
+            --max-turns 60
