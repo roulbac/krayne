@@ -36,11 +36,14 @@ jobs:
     runs-on: ubuntu-latest
     # Generous ceiling: integration run alone can take ~10 minutes.
     timeout-minutes: 40
-    # Read-only QA: it reports results in the run log and does not need to
-    # write to the repo or PRs. No id-token: we authenticate with the OAuth
-    # token, not OIDC/cloud federation.
+    # Read-only QA: it reports results in the run log and does not write to the
+    # repo or PRs, so contents stays read-only. id-token: write is REQUIRED by
+    # claude-code-action — the action mints a GitHub OIDC token to exchange for
+    # its app token, independent of cloud federation and of the Claude OAuth
+    # token used for model inference. Without it the action fails at startup.
     permissions:
       contents: read
+      id-token: write
     steps:
       # Third-party actions are pinned to commit SHAs (not moving tags) so a
       # hijacked/repointed tag can't run arbitrary code in the job that holds
