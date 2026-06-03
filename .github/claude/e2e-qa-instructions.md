@@ -85,14 +85,35 @@ seconds.
 
 ## 7. Report
 
-Post a structured summary as the final message:
+Produce a structured summary covering:
 
 - **SHA under test** (and short commit message)
 - **Unit:** N passed / M failed
 - **Integration:** N passed / M failed — or, if blocked, the blocking error
   with ~30 lines of the most relevant output
-- **Verdict:** PASS only if both suites are green; otherwise FAILURE with the
+- **Verdict:** PASS only if both suites are green; otherwise FAIL with the
   root cause called out
 
+Then, as the final action — **always, whether QA passed or failed** — write
+two files to the repository root (use Bash; the `Write` tool is not enabled):
+
+1. **`qa-report.md`** — the full structured summary above, in Markdown. This is
+   published to the GitHub Actions run summary.
+2. **`qa-verdict.txt`** — a single line containing exactly `PASS` (both suites
+   green) or `FAIL` (anything else), and nothing else. A later workflow step
+   reads this to set the job's success/failure state, so it must always be
+   written and must be one of those two exact tokens.
+
+Example:
+
+```bash
+cat > qa-report.md <<'EOF'
+# Krayne E2E QA — <short SHA>
+...
+EOF
+printf 'PASS\n' > qa-verdict.txt   # or FAIL
+```
+
 Do not push code, do not open or modify pull requests, and do not change repo
-state beyond running the suites. This is a read-only QA run.
+state beyond running the suites and writing these two report files. This is a
+read-only QA run.
