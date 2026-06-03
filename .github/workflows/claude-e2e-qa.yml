@@ -36,29 +36,33 @@ jobs:
     runs-on: ubuntu-latest
     # Generous ceiling: integration run alone can take ~10 minutes.
     timeout-minutes: 40
+    # Read-only QA: it reports results in the run log and does not need to
+    # write to the repo or PRs. No id-token: we authenticate with the OAuth
+    # token, not OIDC/cloud federation.
     permissions:
       contents: read
-      pull-requests: write
-      id-token: write
     steps:
-      - uses: actions/checkout@v4
+      # Third-party actions are pinned to commit SHAs (not moving tags) so a
+      # hijacked/repointed tag can't run arbitrary code in the job that holds
+      # the Claude token. Update the SHA + trailing version comment together.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
 
       - name: Set up Python 3.12
         run: uv python install 3.12
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
 
       - name: Install dependencies
         run: uv sync
 
       - name: Run E2E QA via Claude Code
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@36a69b6a90b850823f86de06fdfd56264772ad98 # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
@@ -68,5 +72,5 @@ jobs:
             results summary the instructions describe. This is a read-only QA
             run: do not push code or modify pull requests.
           claude_args: |
-            --allowedTools "Bash,Read,Glob,Grep,Write,Edit"
+            --allowedTools "Bash,Read,Glob,Grep"
             --max-turns 60
