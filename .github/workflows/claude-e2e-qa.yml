@@ -88,21 +88,42 @@ jobs:
             --model claude-opus-4-8
             --max-turns 60
 
-      - name: Publish QA report and gate on verdict
+      - name: Publish QA report
         if: always()
-        id: verdict
         run: |
           set -uo pipefail
 
-          # Surface the agent's report in the GitHub run summary.
+          # Surface the agent's report both in the run summary (rendered) and in
+          # the step log (so the failure reason is retrievable from the logs API,
+          # not only from the Summary page).
           if [ -f qa-report.md ]; then
             cat qa-report.md >> "$GITHUB_STEP_SUMMARY"
+            echo "::group::QA report (qa-report.md)"
+            cat qa-report.md
+            echo "::endgroup::"
           else
             {
               echo "## QA report missing"
               echo "The QA agent did not produce qa-report.md — treating as a failure."
-            } >> "$GITHUB_STEP_SUMMARY"
+            } | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Upload QA artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qa-results
+          path: |
+            qa-report.md
+            qa-verdict.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Gate on verdict
+        if: always()
+        id: verdict
+        run: |
+          set -uo pipefail
 
           # Fail-closed: any verdict other than an exact PASS fails the job,
           # which bubbles up to the overall workflow status.
@@ -114,4 +135,5 @@ jobs:
             echo "::error title=Krayne E2E QA::QA verdict is $verdict"
             exit 1
           fi
+
 
