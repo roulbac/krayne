@@ -1,0 +1,73 @@
+name: Claude E2E QA
+
+# Runs krayne's full end-to-end QA (unit + integration) on a GitHub-hosted
+# runner, driven by Claude Code. Claude reads its runtime playbook from
+# .github/claude/e2e-qa-instructions.md and executes it against this runner,
+# then posts a structured results summary.
+#
+# Why a hosted runner: GitHub-hosted runners have unrestricted egress and
+# Docker preinstalled, so the sandbox image pulls (quay.io, Docker Hub) and the
+# in-pod service bootstraps (PyPI, code-server from GitHub releases) all work
+# without the egress-proxy/allowlist friction seen in restricted environments.
+#
+# Prerequisite: set the repository secret ANTHROPIC_API_KEY (Settings →
+# Secrets and variables → Actions). Without it the job is skipped.
+
+on:
+  schedule:
+    # Nightly at 07:00 UTC.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (branch/SHA) to run QA against"
+        required: false
+        default: ""
+
+concurrency:
+  group: claude-e2e-qa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  e2e-qa:
+    name: Claude E2E QA
+    runs-on: ubuntu-latest
+    # Generous ceiling: integration run alone can take ~10 minutes.
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run E2E QA via Claude Code
+        if: ${{ env.ANTHROPIC_API_KEY != '' }}
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Read .github/claude/e2e-qa-instructions.md and follow it exactly to
+            run krayne's end-to-end QA on this runner. Work through every step,
+            treat the unit suite as a hard gate, and finish with the structured
+            results summary the instructions describe. This is a read-only QA
+            run: do not push code or modify pull requests.
+          claude_args: |
+            --allowedTools "Bash,Read,Glob,Grep,Write,Edit"
+            --max-turns 60
