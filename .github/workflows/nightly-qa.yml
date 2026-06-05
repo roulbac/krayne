@@ -1,0 +1,65 @@
+name: Nightly QA
+
+# Single nightly entry point that fans out to the Claude-driven QA suites:
+#   * Claude E2E QA  (.github/workflows/claude-e2e-qa.yml) — manual sandbox + CLI
+#     happy paths against a real KubeRay cluster.
+#   * Claude TUI QA  (.github/workflows/claude-tui-qa.yml) — TUI button/key flow
+#     plus visual screenshot review.
+#
+# Both are reusable workflows (they expose a `workflow_call` trigger). This
+# umbrella owns the nightly schedule and the manual "Run workflow" button: pick
+# a git ref and which suites to run. Each child also keeps its own
+# workflow_dispatch, so a single suite can still be run on its own.
+#
+# Manual runs require this file to exist on the repository's default branch
+# (a GitHub constraint for workflow_dispatch); until then it only fans out on
+# the schedule once merged.
+
+on:
+  schedule:
+    # Nightly at 07:00 UTC.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (branch/SHA) to run QA against"
+        required: false
+        default: ""
+      suites:
+        description: "Which suites to run"
+        type: choice
+        options:
+          - all
+          - e2e
+          - tui
+        default: all
+
+concurrency:
+  group: nightly-qa-${{ github.ref }}
+  cancel-in-progress: false
+
+# A reusable workflow can be granted no more than its caller, so the OIDC +
+# read permissions the children need are set here. id-token: write is required
+# by claude-code-action (it mints a GitHub OIDC token at startup).
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  e2e-qa:
+    name: E2E QA
+    # On a schedule there are no inputs, so run everything; on manual dispatch
+    # honour the `suites` choice.
+    if: ${{ github.event_name == 'schedule' || inputs.suites == 'all' || inputs.suites == 'e2e' }}
+    uses: ./.github/workflows/claude-e2e-qa.yml
+    with:
+      ref: ${{ inputs.ref || github.ref }}
+    secrets: inherit
+
+  tui-qa:
+    name: TUI QA
+    if: ${{ github.event_name == 'schedule' || inputs.suites == 'all' || inputs.suites == 'tui' }}
+    uses: ./.github/workflows/claude-tui-qa.yml
+    with:
+      ref: ${{ inputs.ref || github.ref }}
+    secrets: inherit

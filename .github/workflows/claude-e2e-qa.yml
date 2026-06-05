@@ -19,14 +19,21 @@ name: Claude E2E QA
 # and variables → Actions). The QA step fails if the secret is unset.
 
 on:
-  schedule:
-    # Nightly at 07:00 UTC.
-    - cron: "0 7 * * *"
+  # The nightly schedule lives in the `nightly-qa.yml` umbrella, which fans out
+  # to this suite via workflow_call. This file keeps its own workflow_dispatch
+  # so the E2E suite can still be run on its own.
   workflow_dispatch:
     inputs:
       ref:
         description: "Git ref (branch/SHA) to run QA against"
         required: false
+        default: ""
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref (branch/SHA) to run QA against"
+        required: false
+        type: string
         default: ""
 
 concurrency:
@@ -54,7 +61,9 @@ jobs:
       # the Claude token. Update the SHA + trailing version comment together.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ github.event.inputs.ref || github.ref }}
+          # `inputs.ref` is populated for both workflow_dispatch and
+          # workflow_call; falls back to the triggering ref.
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
