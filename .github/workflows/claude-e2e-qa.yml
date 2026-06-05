@@ -1,9 +1,12 @@
 name: Claude E2E QA
 
-# Runs krayne's full end-to-end QA (unit + integration) on a GitHub-hosted
-# runner, driven by Claude Code. Claude reads its runtime playbook from
-# .github/claude/e2e-qa-instructions.md and executes it against this runner,
-# then posts a structured results summary.
+# Runs krayne's end-to-end QA on a GitHub-hosted runner, driven by Claude Code
+# acting as a human QA engineer. Claude reads its runtime playbook from
+# .github/claude/e2e-qa-instructions.md and, instead of re-running the pytest
+# suites (those already run in ci.yml — re-running them here would be
+# redundant), it manually provisions a sandbox and drives the real `krayne` CLI
+# through five realistic user happy paths, then posts a structured results
+# summary.
 #
 # Why a hosted runner: GitHub-hosted runners have unrestricted egress and
 # Docker preinstalled, so the sandbox image pulls (quay.io, Docker Hub) and the
@@ -34,8 +37,9 @@ jobs:
   e2e-qa:
     name: Claude E2E QA
     runs-on: ubuntu-latest
-    # Generous ceiling: integration run alone can take ~10 minutes.
-    timeout-minutes: 40
+    # Generous ceiling: sandbox provisioning + five sequential create/inspect/
+    # delete happy paths (one cluster at a time) plus the cold Ray image pull.
+    timeout-minutes: 50
     # Read-only QA: it reports results in the run log and does not write to the
     # repo or PRs, so contents stays read-only. id-token: write is REQUIRED by
     # claude-code-action — the action mints a GitHub OIDC token to exchange for
@@ -69,24 +73,29 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            Read .github/claude/e2e-qa-instructions.md and follow it exactly to
-            run krayne's end-to-end QA on this runner. Work through every step
-            and treat the unit suite as a hard gate. This is a read-only QA run:
-            do not push code or modify pull requests.
+            Read .github/claude/e2e-qa-instructions.md and follow it exactly.
+            You are acting as a human QA engineer: do NOT run pytest. Instead,
+            manually provision the sandbox (Phase 0, a hard gate) and drive the
+            real `krayne` CLI through the five end-to-end happy paths, marking
+            every PASS/FAIL checkbox from what you actually observe. Run all
+            five scenarios even if an earlier one fails, so the report is
+            complete. This is a read-only QA run: do not push code or modify
+            pull requests.
 
             As the final action — always, whether QA passed or failed — write
             two files to the repository root using Bash:
               - qa-report.md: the full structured summary the instructions
-                describe (SHA, unit counts, integration counts or blocking
-                error, verdict + root cause).
-              - qa-verdict.txt: a single line containing exactly PASS (both
-                suites green) or FAIL (anything else). Nothing else.
+                describe (SHA, per-scenario checkboxes, summary table, verdict +
+                root cause, and diagnostics for any failures).
+              - qa-verdict.txt: a single line containing exactly PASS (Phase 0
+                and all five scenarios green) or FAIL (anything else). Nothing
+                else.
             A later workflow step reads these to publish the report and set the
             job's success/failure state, so they must always be written.
           claude_args: |
             --allowedTools "Bash,Read,Glob,Grep"
             --model claude-opus-4-8
-            --max-turns 60
+            --max-turns 100
 
       - name: Publish QA report
         if: always()
