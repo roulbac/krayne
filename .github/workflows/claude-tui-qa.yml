@@ -1,0 +1,163 @@
+name: Claude TUI QA
+
+# Manual QA of the `krayne tui` interactive terminal UI, driven by Claude Code
+# acting as a human UI reviewer. The TUI is the surface that resists automated
+# QA: backend logic is covered by ci.yml's unit/integration suites, but
+# button/key flow and — especially — *appearance* are not things a plain assert
+# catches.
+#
+# How it works: a committed harness (scripts/qa_tui_capture.py) drives the real
+# TUI headlessly with Textual's Pilot and mocked data, asserts the flows, and
+# renders one PNG per UI state (SVG -> headless Chromium -> PNG, the same
+# pipeline as scripts/capture_tui_demo.py). Claude then reads its runtime
+# playbook from .github/claude/tui-qa-instructions.md, runs the harness, reads
+# the flow results, OPENS each PNG with the Read tool to judge appearance, and
+# posts a structured PASS/FAIL summary. No Docker/sandbox/cluster needed.
+#
+# Authentication uses a Claude subscription (Pro/Max), not a pay-per-use API
+# key. Generate a long-lived OAuth token locally with `claude setup-token` and
+# store it as the repository secret CLAUDE_CODE_OAUTH_TOKEN (Settings -> Secrets
+# and variables -> Actions). The QA step fails if the secret is unset.
+
+on:
+  schedule:
+    # Nightly at 07:30 UTC (offset from the e2e QA at 07:00).
+    - cron: "30 7 * * *"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (branch/SHA) to run TUI QA against"
+        required: false
+        default: ""
+
+concurrency:
+  group: claude-tui-qa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tui-qa:
+    name: Claude TUI QA
+    runs-on: ubuntu-latest
+    # Headless and fast: no image pulls. Budget covers the Chromium install plus
+    # the agent reading ~23 screenshots and reasoning about them.
+    timeout-minutes: 30
+    # Read-only QA: it reports results and does not write to the repo or PRs, so
+    # contents stays read-only. id-token: write is REQUIRED by
+    # claude-code-action — the action mints a GitHub OIDC token to exchange for
+    # its app token. Without it the action fails at startup.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # Third-party actions are pinned to commit SHAs (not moving tags) so a
+      # hijacked/repointed tag can't run arbitrary code in the job that holds
+      # the Claude token. Update the SHA + trailing version comment together.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Install headless Chromium (for SVG->PNG screenshot rendering)
+        run: uv run playwright install --with-deps chromium
+
+      - name: Run TUI QA via Claude Code
+        uses: anthropics/claude-code-action@36a69b6a90b850823f86de06fdfd56264772ad98 # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Read .github/claude/tui-qa-instructions.md and follow it exactly.
+            You are acting as a human QA engineer reviewing the krayne TUI: do
+            NOT run pytest and do NOT create clusters. Run the capture harness
+            (scripts/qa_tui_capture.py), then for each of the five TUI scenarios
+            decide the FLOW checkboxes from qa-artifacts/tui/flow-results.json
+            and the APPEARANCE checkboxes by OPENING each rendered PNG in
+            qa-artifacts/tui/ with the Read tool and judging it against the
+            rubric. Actually look at every screenshot — do not infer appearance
+            from the flow JSON. This is a read-only QA run: do not push code or
+            modify pull requests.
+
+            As the final action — always, whether QA passed or failed — write
+            two files to the repository root using Bash:
+              - qa-tui-report.md: the full structured summary the instructions
+                describe (SHA, per-scenario flow + appearance checkboxes, a
+                summary table, the overall verdict + root cause, and a notes
+                section for any visual anomalies you spotted).
+              - qa-tui-verdict.txt: a single line containing exactly PASS (Phase
+                0 and all five scenarios green) or FAIL (anything else). Nothing
+                else.
+            A later workflow step reads these to publish the report and set the
+            job's success/failure state, so they must always be written.
+          claude_args: |
+            --allowedTools "Bash,Read,Glob,Grep"
+            --model claude-opus-4-8
+            --max-turns 100
+
+      - name: Ensure TUI artifacts exist
+        if: always()
+        # Belt-and-braces: if the agent didn't produce screenshots, render them
+        # here so the uploaded artifact still lets a human see the TUI state.
+        run: |
+          set -uo pipefail
+          if ! ls qa-artifacts/tui/*.png >/dev/null 2>&1; then
+            echo "No PNGs from the agent; running the capture harness directly."
+            uv run python scripts/qa_tui_capture.py --out-dir qa-artifacts/tui || true
+          fi
+
+      - name: Publish TUI QA report
+        if: always()
+        run: |
+          set -uo pipefail
+
+          # Surface the agent's report both in the run summary (rendered) and in
+          # the step log (so the failure reason is retrievable from the logs API,
+          # not only from the Summary page).
+          if [ -f qa-tui-report.md ]; then
+            cat qa-tui-report.md >> "$GITHUB_STEP_SUMMARY"
+            echo "::group::TUI QA report (qa-tui-report.md)"
+            cat qa-tui-report.md
+            echo "::endgroup::"
+          else
+            {
+              echo "## TUI QA report missing"
+              echo "The QA agent did not produce qa-tui-report.md — treating as a failure."
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload TUI QA artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tui-qa-results
+          # The PNGs are the point: a human can open the exact frames the agent
+          # reviewed and confirm its appearance judgments.
+          path: |
+            qa-tui-report.md
+            qa-tui-verdict.txt
+            qa-artifacts/tui/**
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Gate on verdict
+        if: always()
+        id: verdict
+        run: |
+          set -uo pipefail
+
+          # Fail-closed: any verdict other than an exact PASS fails the job,
+          # which bubbles up to the overall workflow status.
+          verdict="$(tr -d '[:space:]' < qa-tui-verdict.txt 2>/dev/null || true)"
+          [ -z "$verdict" ] && verdict="MISSING"
+          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+          echo "TUI QA verdict: $verdict"
+          if [ "$verdict" != "PASS" ]; then
+            echo "::error title=Krayne TUI QA::TUI QA verdict is $verdict"
+            exit 1
+          fi

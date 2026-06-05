@@ -9,3 +9,10 @@ build/
 .venv/
 site/
 .cache/
+
+# QA agent outputs (published as CI artifacts / step summaries, never committed)
+qa-artifacts/
+qa-report.md
+qa-verdict.txt
+qa-tui-report.md
+qa-tui-verdict.txt
