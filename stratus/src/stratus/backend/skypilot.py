@@ -91,8 +91,9 @@ class _SinkStream(io.TextIOBase):
         return len(s)
 
     def flush(self) -> None:
-        if self._stop.is_set():
-            raise _Stopped()
+        # Never raise here: IOBase's finalizer calls flush(); stopping is
+        # signalled from write(), which the SDK calls for every chunk.
+        return None
 
     def close_out(self) -> None:
         if self._buf.strip():
@@ -266,8 +267,8 @@ class SkyPilotBackend:
                         replica_id=int(info.get("replica_id", 0)),
                         status=_enum(info.get("status")),
                         version=info.get("version"),
-                        infra=_handle_infra(handle),
-                        resources=_handle_resources(handle),
+                        infra=info.get("infra") or _handle_infra(handle),
+                        resources=info.get("resources_str") or _handle_resources(handle),
                         endpoint=info.get("endpoint"),
                         launched_at=info.get("launched_at"),
                     )

@@ -414,7 +414,12 @@ class ServiceSpec(_TaskSpec):
                 "target_qps_per_replica": self.target_qps_per_replica,
             }
         service.update(self.service_extra)
-        out = self._task_dict(self.resources.to_yaml_dict())
+        # SkyServe needs the port in both places: `service.ports` tells the load
+        # balancer where to forward, `resources.ports` opens it on each replica.
+        ports = list(self.resources.ports)
+        if str(self.port) not in ports:
+            ports.insert(0, str(self.port))
+        out = self._task_dict(self.resources.model_copy(update={"ports": ports}).to_yaml_dict())
         # Put `service:` right after `name:` for readability.
         return {"name": out.pop("name"), "service": service, **out}
 
@@ -427,6 +432,9 @@ class ServiceSpec(_TaskSpec):
             kwargs["resources"].extra[k] = v
         if service.get("ports") is not None:
             kwargs["port"] = int(service.pop("ports"))
+            # The service port is re-added to resources.ports on render.
+            rest = [p for p in kwargs["resources"].ports if p != str(kwargs["port"])]
+            kwargs["resources"] = kwargs["resources"].model_copy(update={"ports": rest})
         elif len(kwargs["resources"].ports) == 1 and kwargs["resources"].ports[0].isdigit():
             # Older style: the single resources port is the service port.
             kwargs["port"] = int(kwargs["resources"].ports[0])

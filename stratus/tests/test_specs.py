@@ -104,8 +104,12 @@ def test_service_fixed_and_autoscaled():
     data = yaml.safe_load(fixed.to_yaml())
     assert list(data)[:2] == ["name", "service"]
     assert data["service"]["replicas"] == 2
-    assert data["service"]["ports"] == 8080  # SkyServe needs the main port here
-    assert "ports" not in data.get("resources", {})
+    # SkyServe needs the port as service.ports (LB target) *and* resources.ports (opened on replicas)
+    assert data["service"]["ports"] == 8080
+    assert data["resources"]["ports"] == [8080]
+    extra = ServiceSpec(name="s", run="x", port=8080, resources=Resources(ports=["9090"]))
+    assert yaml.safe_load(extra.to_yaml())["resources"]["ports"] == [8080, 9090]
+    assert roundtrip(extra) == extra
     assert roundtrip(fixed) == fixed
 
     auto = fixed.model_copy(update={"max_replicas": 5, "target_qps_per_replica": 2.5})

@@ -232,7 +232,7 @@ class FakeBackend:
                 out.append(
                     ServiceRow(
                         name=s["name"], status=s["status"], endpoint=f"http://34.1.2.3:30001" if ready else None,
-                        ready_replicas=ready, total_replicas=len(reps), versions="1", uptime=now - s["created"],
+                        ready_replicas=ready, total_replicas=len(reps), versions="1", uptime=s["created"] if ready else None,
                         replicas=reps, yaml=s["yaml"],
                     )
                 )

@@ -101,7 +101,7 @@ class ServiceRow:
     ready_replicas: int
     total_replicas: int
     versions: str
-    uptime: float | None
+    uptime: float | None  # unix time the service became ready
     replicas: tuple[ReplicaRow, ...] = ()
     yaml: str | None = None
 

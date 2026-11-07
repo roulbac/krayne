@@ -234,7 +234,7 @@ class ServicesView(View):
     def cells(self, r: Any, ctx: Ctx, extra: Any) -> list[Any]:
         return [
             Text(r.name, style="bold"), status_text(r.status), f"{r.ready_replicas}/{r.total_replicas}", r.versions,
-            r.endpoint or "-", duration(r.uptime) if r.uptime else "-", mark(bool(extra and r.name in extra)),
+            r.endpoint or "-", age(r.uptime), mark(bool(extra and r.name in extra)),
         ]
 
 

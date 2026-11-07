@@ -35,6 +35,8 @@ and removes the bookkeeping:
   `sky launch -c dev ~/.stratus/specs/clusters/dev.yaml`.
 - **Everything in one place, live.** Clusters, cluster job queues, managed jobs, services and their replicas, volumes,
   in-flight API requests and enabled infra — auto-refreshing, filterable, sortable.
+- **Knows SkyPilot's sharp edges.** e.g. Kubernetes clusters can only auto-*down*, never stop; a service's port has
+  to be both `service.ports` and an opened resource port. The forms encode this so launches don't fail late.
 - **Logs and shells one key away.** `l` streams logs (cluster jobs, managed jobs, controllers, load balancers,
   replicas, API requests); `s` drops you into an SSH shell on a cluster; `x` runs a command with `sky exec`.
 - **Safe by default.** Destructive actions are on `ctrl-d` and always confirm. stratus never auto-starts a local API
@@ -74,6 +76,8 @@ requests small (1 CPU / 1–2 GB), and note that Kubernetes clusters can be torn
 | API server | `http://127.0.0.1:46580` (also usable with the plain `sky` CLI via `SKYPILOT_API_SERVER_ENDPOINT`) |
 | kubeconfig | `~/.stratus/sandbox/kubeconfig` (`kubectl --kubeconfig ~/.stratus/sandbox/kubeconfig get pods`) |
 | server logs | `stratus sandbox logs` |
+| service endpoints | SkyServe load balancers listen on `http://localhost:30001`–`30020` (published from the sandbox) |
+| pod images | `stratus sandbox preload [IMAGE…]` side-loads images from your host's Docker into k3s |
 
 What `sandbox up` does: starts `rancher/k3s` (API on `127.0.0.1:16443`), starts `berkeleyskypilot/skypilot:0.14.2`
 with `sky api start --deploy` in the k3s container's network namespace, gives the server the k3s kubeconfig plus a

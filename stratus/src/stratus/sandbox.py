@@ -44,6 +44,7 @@ POD_IMAGES = tuple(
     os.environ.get("STRATUS_SANDBOX_POD_IMAGES", "us-docker.pkg.dev/sky-dev-465/skypilotk8s/skypilot:202607240748").split(",")
 )
 KUBE_PORT = 16443
+SERVE_PORTS = (30001, 30020)
 API_PORT = 46580
 
 Progress = Callable[[str, str], None]
@@ -207,6 +208,9 @@ def up(
             "--label", "app=stratus-sandbox",
             "-p", f"127.0.0.1:{kube_port}:6443",
             "-p", f"127.0.0.1:{api_port}:{API_PORT}",
+            # SkyServe load balancers run inside the API server (consolidation
+            # mode) on ports 30001+; publish a range so endpoints work from the host.
+            "-p", f"127.0.0.1:{SERVE_PORTS[0]}-{SERVE_PORTS[1]}:{SERVE_PORTS[0]}-{SERVE_PORTS[1]}",
             "-e", "K3S_KUBECONFIG_MODE=644",
         ]
         if cpus:
