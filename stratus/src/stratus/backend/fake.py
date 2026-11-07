@@ -16,6 +16,10 @@ from typing import Any
 
 from stratus.backend.base import (
     BackendError,
+    CostRow,
+    PoolRow,
+    StorageRow,
+    WorkspaceRow,
     ClusterJobRow,
     ClusterRow,
     InfraRow,
@@ -27,7 +31,11 @@ from stratus.backend.base import (
     ServiceRow,
     VolumeRow,
 )
-from stratus.specs.models import ClusterSpec, JobSpec, ServiceSpec, VolumeSpec
+from stratus.specs.models import ClusterSpec, JobSpec, PoolSpec, ServiceSpec, Spec, VolumeSpec
+
+# Demo price list ($/hr per node). Kubernetes is deliberately absent:
+# without `kubernetes.pricing` on the server, SkyPilot can't price it.
+_PRICES = {"AWS": 0.096, "GCP": 3.67}
 
 INFRA = ["k8s", "aws", "gcp"]
 
@@ -64,6 +72,9 @@ class _Cluster:
     autostop: int = -1
     to_down: bool = False
     jobs: list[ClusterJobRow] = field(default_factory=list)
+    owner: str | None = None  # None = the current user
+    gpus: float = 0.0
+    nodes: int = 1
 
 
 class FakeBackend:
@@ -77,6 +88,12 @@ class FakeBackend:
         self._mjobs: dict[int, dict[str, Any]] = {}
         self._services: dict[str, dict[str, Any]] = {}
         self._volumes: dict[str, VolumeRow] = {}
+        self._pools: dict[str, dict[str, Any]] = {}
+        self._storage: dict[str, StorageRow] = {}
+        self._history: list[CostRow] = []
+        self._workspaces = {"default": "", "research": "clouds: aws, gcp"}
+        self._workspace = "default"
+        self.all_users = False
         self._job_ids = itertools.count(1)
         self.healthy = True
         if seed:
@@ -172,6 +189,23 @@ class FakeBackend:
                 ReplicaRow("llm-api", 2, "READY", 1, "Kubernetes/default", "1x Kubernetes(L4:1)", "http://10.0.0.12:8080", now - 4900),
             ],
         }
+        self._clusters["dev-gpu"].gpus = 1
+        self._clusters["alice-train"] = _Cluster(
+            "alice-train", "resources:\n  infra: gcp\n  accelerators: A100:1\n", "GCP (us-central1)", "1x GCP(a2-highgpu-1g)",
+            now - 7 * 3600, status="UP", owner="alice", gpus=1,
+        )
+        self._history = [
+            CostRow("sweep-a100", "TERMINATED", "GCP (us-central1)", "2x GCP(a2-highgpu-8g)", 2, 16, now - 3 * 86400, 5 * 3600,
+                    2 * 29.39, 5 * 2 * 29.39, self.user),
+            CostRow("k8s-finetune", "TERMINATED", "Kubernetes (default)", "1x Kubernetes(8CPU--64GB--H100:4)", 1, 4, now - 86400,
+                    9 * 3600, None, None, self.user),
+        ]
+        self._storage["ckpt-bucket"] = StorageRow("ckpt-bucket", "S3", "READY", now - 86400 * 9, "sky launch -c sweep-a100 sweep.yaml")
+        self._storage["sky-tmp-3f2a"] = StorageRow("sky-tmp-3f2a", "GCS", "READY", now - 86400 * 40, "sky jobs launch train.yaml")
+        self._pools["eval-pool"] = {
+            "name": "eval-pool", "status": "READY", "resources": "1x[CPU:2]", "yaml": "pool:\n  workers: 2\n",
+            "workers": [ReplicaRow("eval-pool", i, "READY", 1, "Kubernetes/default", "1x Kubernetes(2CPU--4GB)", None, now - 3600) for i in (1, 2)],
+        }
         self._volumes["datasets"] = VolumeRow("datasets", "k8s-pvc", "kubernetes/default", "100Gi", "IN_USE", ("dev-gpu",), now - 86400 * 5, self.user)
 
     # ── Backend API ──────────────────────────────────────────
@@ -188,17 +222,86 @@ class FakeBackend:
             raise ServerUnavailableError("demo server is down")
         self._tick()
 
+    def _visible(self, c: _Cluster) -> bool:
+        return self.all_users or c.owner is None
+
     def list_clusters(self, refresh: bool = False) -> list[ClusterRow]:
         self._check()
         with self._lock:
             return [
                 ClusterRow(
                     name=c.name, status=c.status, infra=c.infra, resources=c.resources, launched_at=c.launched_at,
-                    autostop=c.autostop, to_down=c.to_down, user=self.user, creation_yaml=c.spec_yaml,
+                    autostop=c.autostop, to_down=c.to_down, user=c.owner or self.user, creation_yaml=c.spec_yaml,
                     last_event="Cluster is up." if c.status == "UP" else None,
                 )
                 for c in self._clusters.values()
+                if self._visible(c)
             ]
+
+    def list_costs(self, days: int | None = 30) -> list[CostRow]:
+        self._check()
+        now = self._now()
+        rows = []
+        with self._lock:
+            for c in self._clusters.values():
+                if not self._visible(c):
+                    continue
+                cloud = c.infra.split()[0].split("/")[0]
+                price = _PRICES.get(cloud)
+                up = (now - c.launched_at) if c.status in ("UP", "INIT") else 0.0
+                hourly = price * c.nodes if price is not None else None
+                rows.append(CostRow(
+                    c.name, c.status, c.infra, c.resources, c.nodes, c.gpus * c.nodes, c.launched_at, up,
+                    hourly, (hourly * up / 3600) if hourly is not None else None, c.owner or self.user,
+                ))
+            cutoff = now - days * 86400 if days else 0
+            rows += [h for h in self._history if (h.launched_at or 0) >= cutoff]
+        return sorted(rows, key=lambda r: -(r.launched_at or 0))
+
+    def list_pools(self) -> list[PoolRow]:
+        self._check()
+        with self._lock:
+            out = []
+            for p in self._pools.values():
+                workers = tuple(p["workers"])
+                out.append(PoolRow(p["name"], p["status"], sum(1 for w in workers if w.status == "READY"), len(workers),
+                                   p["resources"], workers, p["yaml"]))
+            return out
+
+    def list_storage(self) -> list[StorageRow]:
+        self._check()
+        with self._lock:
+            return sorted(self._storage.values(), key=lambda r: r.name)
+
+    def list_workspaces(self) -> list[WorkspaceRow]:
+        self._check()
+        return [WorkspaceRow(n, n == self._workspace, True, d) for n, d in self._workspaces.items()]
+
+    def set_workspace(self, name: str) -> None:
+        if name not in self._workspaces:
+            raise BackendError(f"workspace {name!r} does not exist")
+        self._workspace = name
+
+    def preview_launch(self, spec: Spec) -> str:
+        self._check()
+        if isinstance(spec, VolumeSpec):
+            raise BackendError("volumes have no launch preview")
+        res = spec.resources
+        n = spec.num_nodes
+        lines = [f"Considered resources ({n} node{'s' if n > 1 else ''}):", "-" * 78,
+                 " INFRA                  INSTANCE          vCPUs   Mem(GB)   GPUS     COST ($)   CHOSEN", "-" * 78]
+        gpu = res.accelerators or "-"
+        cands = [("Kubernetes (default)", "-", 0.0)]
+        if res.infra is None or res.infra.startswith(("aws", "gcp")):
+            cands += [("AWS (us-east-1)", "m6i.large" if gpu == "-" else "g6.xlarge", 0.096 if gpu == "-" else 0.805),
+                      ("GCP (us-central1)", "n2-standard-2" if gpu == "-" else "g2-standard-4", 0.097 if gpu == "-" else 0.71)]
+        if res.infra and res.infra.startswith("k8s"):
+            cands = cands[:1]
+        for i, (infra, inst, price) in enumerate(cands):
+            cost = f"{price * n:.2f}"
+            lines.append(f" {infra:<22} {inst:<17} {res.cpus or '-':<7} {res.memory or '-':<9} {gpu:<8} {cost:<10} {'✔' if i == 0 else ''}")
+        lines += ["-" * 78, "Dryrun finished."]
+        return self._submit("sky.launch (dryrun)", None, 1, lines)
 
     def list_cluster_jobs(self, cluster: str) -> list[ClusterJobRow]:
         self._check()
@@ -367,6 +470,8 @@ class FakeBackend:
 
     def launch_managed_job(self, spec: JobSpec) -> str:
         self._check()
+        if spec.pool and spec.pool not in self._pools:
+            raise BackendError(f"pool {spec.pool!r} does not exist")
         jid = next(self._job_ids)
         with self._lock:
             self._mjobs[jid] = {
@@ -423,6 +528,41 @@ class FakeBackend:
         return self._submit("serve.terminate_replica", None, 0.5, [f"Replica {replica_id} terminated."])
 
     # volumes
+
+    # pools & storage
+
+    def pool_apply(self, spec: PoolSpec) -> str:
+        self._check()
+        now = self._now()
+        with self._lock:
+            self._pools[spec.name] = {
+                "name": spec.name, "status": "READY", "resources": f"1x[{spec.resources.summary()}]", "yaml": spec.to_yaml(),
+                "workers": [ReplicaRow(spec.name, i + 1, "READY", 1, spec.resources.infra or "-", spec.resources.summary(), None, now)
+                            for i in range(spec.workers)],
+            }
+        return self._submit("jobs.pool_apply", None, 2, [f"Pool {spec.name!r} applied with {spec.workers} worker(s)."])
+
+    def pool_down(self, name: str) -> str:
+        self._check()
+        with self._lock:
+            if name not in self._pools:
+                raise BackendError(f"pool {name!r} does not exist")
+            self._pools[name]["status"] = "SHUTTING_DOWN"
+        return self._submit("jobs.pool_down", None, 1, [f"Tearing down pool {name}."], on_done=lambda: self._pools.pop(name, None))
+
+    def delete_storage(self, name: str) -> str:
+        self._check()
+        with self._lock:
+            if self._storage.pop(name, None) is None:
+                raise BackendError(f"storage {name!r} not found")
+        return self._submit("storage_delete", None, 0.5, [f"Deleted storage {name}."])
+
+    def stream_pool_logs(self, pool: str, target: str, worker_id: int | None, sink: LogSink, stop: threading.Event) -> None:
+        who = f"worker {worker_id}" if worker_id else target
+        for i in range(20):
+            if stop.wait(self._t(0.3)):
+                return
+            sink(f"[{pool}/{who}] heartbeat {i}: idle, waiting for jobs")
 
     def apply_volume(self, spec: VolumeSpec) -> str:
         self._check()

@@ -30,11 +30,18 @@ from stratus.tui.screens.editor import EditorResult, YamlEditorScreen
 from stratus.tui.screens.form import FormResult, FormScreen
 from stratus.tui.screens.help import HelpScreen
 from stratus.tui.screens.logs import LogScreen
+from stratus.tui.screens.preview import PreviewScreen
 from stratus.tui.views import (
     TOP_VIEWS,
     Action,
     ClusterJobsView,
     ClustersView,
+    CostView,
+    COST_WINDOWS,
+    PoolsView,
+    PoolWorkersView,
+    StorageView,
+    WorkspacesView,
     Ctx,
     ManagedJobsView,
     ReplicasView,
@@ -70,6 +77,7 @@ class MainScreen(Screen):
         Binding("q", "back_or_quit", "Back/Quit", show=False),
         Binding("less_than_sign", "sort(-1)", "Sort", show=False),
         Binding("greater_than_sign", "sort(1)", "Sort", show=False),
+        Binding("U", "toggle_users", "Mine/all users", show=False),
         *[Binding(v.hotkey, f"jump('{v.name}')", v.title, show=False) for v in TOP_VIEWS if v.hotkey],
     ]
 
@@ -109,6 +117,7 @@ class MainScreen(Screen):
     def on_mount(self) -> None:
         header = self.query_one(Header)
         header.set_context(source=self.app.endpoint_source, refresh=self.app.refresh_seconds)
+        header.set_scope(all_users=getattr(self.app.backend, "all_users", False), workspace=self.app.workspace)
         self.query_one("#prompt", Input).display = False
         self._apply_view()
         self.set_interval(self.app.refresh_seconds, self.refresh_data)
@@ -241,8 +250,10 @@ class MainScreen(Screen):
         v = self.view
         scope = f"({v.crumb})" if v.crumb != v.name else "(all)"
         filt = f" [b #f59e0b]</{_escape(self.filter)}>[/]" if self.filter else ""
+        summary = v.summary(self.rows) if self.rows else ""
+        summary = f"  {summary}" if summary else ""
         self.query_one("#title-bar", Static).update(
-            Text.from_markup(f" [b #38bdf8]{v.title}[/]{scope}[[b]{count}[/b]]{filt} ")
+            Text.from_markup(f" [b #38bdf8]{v.title}[/]{scope}[[b]{count}[/b]]{filt}{summary} ")
         )
 
     def _render_crumbs(self) -> None:
@@ -306,6 +317,13 @@ class MainScreen(Screen):
 
     def action_help(self) -> None:
         self.app.push_screen(HelpScreen(self.view))
+
+    def action_toggle_users(self) -> None:
+        backend = self.app.backend
+        backend.all_users = not backend.all_users
+        self.query_one(Header).set_scope(all_users=backend.all_users)
+        self.notify("Showing everyone's resources" if backend.all_users else "Showing only your resources", timeout=3)
+        self.refresh_data()
 
     def action_force_refresh(self) -> None:
         self.notify("Refreshing…" if not isinstance(self.view, ClustersView) else "Refreshing cluster status from the clouds…", timeout=2)
@@ -412,7 +430,7 @@ class MainScreen(Screen):
         if handler is None:
             self.notify(f"{action.label}: not available here", severity="warning")
             return
-        if action.name in ("create",):
+        if action.name in ("create", "window"):
             handler()
             return
         row = self.selected_row()
@@ -518,7 +536,8 @@ class MainScreen(Screen):
         return None, "none"
 
     def _form_context(self) -> dict[str, Any]:
-        return {"infra_suggestions": list(self.app.infra_cache), "volume_names": list(self.app.volume_cache)}
+        return {"infra_suggestions": list(self.app.infra_cache), "volume_names": list(self.app.volume_cache),
+                "pool_names": list(self.app.pool_cache)}
 
     def open_form(self, kind: SpecKind, spec: Spec | None = None, editing: bool = False) -> None:
         def cb(result: FormResult | None) -> None:
@@ -535,6 +554,10 @@ class MainScreen(Screen):
     def _handle_form(self, result: FormResult, editing: bool) -> None:
         spec = result.spec
         store = self.app.store
+
+        if result.preview:
+            self.preview_spec(spec, editing)
+            return
 
         def save_and_go() -> None:
             path = store.save(spec)
@@ -555,6 +578,26 @@ class MainScreen(Screen):
             )
         else:
             save_and_go()
+
+    def preview_spec(self, spec: Spec, editing: bool) -> None:
+        """Dry-run the spec, show SkyPilot's placement/cost table, then launch or go back."""
+        backend = self.app.backend
+        verb = {SpecKind.CLUSTER: "Launch", SpecKind.JOB: "Submit", SpecKind.SERVICE: "Deploy", SpecKind.POOL: "Apply"}.get(spec.kind, "Launch")
+
+        def decided(choice: str | None) -> None:
+            if choice == "launch":
+                self._handle_form(FormResult(spec, launch=True), editing)
+            elif choice == "edit":
+                self.open_form(spec.kind, spec, editing=editing)
+
+        def show(request_id: str) -> None:
+            self.app.push_screen(
+                PreviewScreen(f"{spec.kind.title.lower()} {spec.name}",
+                              lambda sink, stop: backend.stream_request_logs(request_id, sink, stop), verb=verb),
+                decided,
+            )
+
+        self.run_backend(f"preview {spec.name}", lambda: backend.preview_launch(spec), show)
 
     def apply_spec(self, spec: Spec) -> None:
         backend = self.app.backend
@@ -579,6 +622,9 @@ class MainScreen(Screen):
             self.submit(f"serve {spec.name}", up_or_update, follow=True, record=(kind, spec.name, "serve"))
         elif kind is SpecKind.VOLUME:
             self.submit(f"volume apply {spec.name}", lambda: backend.apply_volume(spec), follow=True,
+                        record=(kind, spec.name, "apply"))
+        elif kind is SpecKind.POOL:
+            self.submit(f"pool apply {spec.name}", lambda: backend.pool_apply(spec), follow=True,
                         record=(kind, spec.name, "apply"))
 
     def open_raw_editor(self, kind: SpecKind, name: str, seed: Spec | None = None) -> None:
@@ -655,7 +701,8 @@ class MainScreen(Screen):
         if spec is None:
             self.notify("No valid spec to relaunch from — press e to create one", severity="warning")
             return
-        verb = {SpecKind.CLUSTER: "Relaunch", SpecKind.JOB: "Resubmit", SpecKind.SERVICE: "Roll out", SpecKind.VOLUME: "Re-apply"}[spec.kind]
+        verb = {SpecKind.CLUSTER: "Relaunch", SpecKind.JOB: "Resubmit", SpecKind.SERVICE: "Roll out", SpecKind.VOLUME: "Re-apply",
+                SpecKind.POOL: "Re-apply"}[spec.kind]
         src = "the spec library" if origin == "library" else "the YAML the server recorded"
         self.confirm(f"{verb} {spec.name}?", f"{verb} [b]{spec.name}[/b] from {src}.", lambda: self.apply_spec(spec), label=verb, danger=False)
 
@@ -711,6 +758,8 @@ class MainScreen(Screen):
             self.push_view(ClusterJobsView(row.name))
         elif isinstance(self.view, ServicesView):
             self.push_view(ReplicasView(row.name))
+        elif isinstance(self.view, PoolsView):
+            self.push_view(PoolWorkersView(row.name))
 
     def act_logs(self, row: Any) -> None:
         backend = self.app.backend
@@ -725,6 +774,10 @@ class MainScreen(Screen):
                                            lambda s, e: backend.stream_managed_job_logs(row.job_id, s, e, follow=follow)))
         elif isinstance(v, ServicesView):
             self.app.push_screen(LogScreen(f"{row.name} load balancer", lambda s, e: backend.stream_service_logs(row.name, "load_balancer", None, s, e)))
+        elif isinstance(v, PoolsView):
+            self.app.push_screen(LogScreen(f"pool {row.name} controller", lambda s, e: backend.stream_pool_logs(row.name, "controller", None, s, e)))
+        elif isinstance(v, PoolWorkersView):
+            self.app.push_screen(LogScreen(f"pool {v.service} worker {row.replica_id}", lambda s, e: backend.stream_pool_logs(v.service, "replica", row.replica_id, s, e)))
         elif isinstance(v, ReplicasView):
             self.app.push_screen(LogScreen(f"{v.service} replica {row.replica_id}", lambda s, e: backend.stream_service_logs(v.service, "replica", row.replica_id, s, e)))
         elif isinstance(v, RequestsView):
@@ -807,6 +860,39 @@ class MainScreen(Screen):
         elif isinstance(v, VolumesView):
             self.confirm(f"Delete volume {row.name}?", f"Delete volume [b]{row.name}[/b] and [b]all data on it[/b].",
                          lambda: self.submit(f"delete volume {row.name}", lambda: backend.delete_volume(row.name)), label="Delete")
+        elif isinstance(v, PoolsView):
+            self.confirm(f"Tear down pool {row.name}?", f"Terminate pool [b]{row.name}[/b] and its {row.total_workers} worker(s).\n"
+                         "[dim]Jobs queued on it will fail to schedule.[/dim]",
+                         lambda: self.submit(f"pool down {row.name}", lambda: backend.pool_down(row.name)), label="Down")
+        elif isinstance(v, StorageView):
+            self.confirm(f"Delete bucket {row.name}?", f"Delete storage [b]{row.name}[/b] ({row.stores}) and [b]all objects in it[/b].",
+                         lambda: self.submit(f"delete storage {row.name}", lambda: backend.delete_storage(row.name)), label="Delete")
+
+    # ── actions: cost & workspaces ───────────────────────────
+
+    def act_window(self, row: Any = None) -> None:
+        v = self.view
+        if not isinstance(v, CostView):
+            return
+        idx = COST_WINDOWS.index(v.days) if v.days in COST_WINDOWS else 0
+        v.days = COST_WINDOWS[(idx + 1) % len(COST_WINDOWS)]
+        self.notify(f"Window: {'last ' + str(v.days) + ' day(s)' if v.days else 'all time'}", timeout=2)
+        self._render_crumbs()
+        self.refresh_data()
+
+    def act_switch_workspace(self, row: Any) -> None:
+        if row.active:
+            self.notify(f"Already in workspace {row.name}", timeout=2)
+            return
+
+        def done(_: Any) -> None:
+            self.app.workspace = row.name
+            self.app.save_workspace(row.name)
+            self.query_one(Header).set_scope(workspace=row.name)
+            self.notify(f"Workspace: {row.name} — new launches go here", timeout=4)
+            self.refresh_data()
+
+        self.run_backend(f"switch to {row.name}", lambda: self.app.backend.set_workspace(row.name), done)
 
     def act_cancel(self, row: Any) -> None:
         backend = self.app.backend
@@ -834,7 +920,8 @@ class MainScreen(Screen):
         if row.spec is None:
             self.notify(f"Invalid spec: {row.error} — press E to fix", severity="error")
             return
-        verb = {SpecKind.CLUSTER: "Launch cluster", SpecKind.JOB: "Submit job", SpecKind.SERVICE: "Deploy service", SpecKind.VOLUME: "Apply volume"}[row.kind]
+        verb = {SpecKind.CLUSTER: "Launch cluster", SpecKind.JOB: "Submit job", SpecKind.SERVICE: "Deploy service", SpecKind.VOLUME: "Apply volume",
+                SpecKind.POOL: "Apply pool"}[row.kind]
         self.confirm(f"{verb} {row.name}?", f"{verb} [b]{row.name}[/b] from {_tilde(row.path)}.", lambda: self.apply_spec(row.spec), label=verb.split()[0], danger=False)
 
     def act_duplicate(self, row: StoredSpec) -> None:

@@ -14,7 +14,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
-from stratus.specs.models import ClusterSpec, JobSpec, ServiceSpec, VolumeSpec
+from stratus.specs.models import ClusterSpec, JobSpec, PoolSpec, ServiceSpec, Spec, VolumeSpec
 
 LogSink = Callable[[str], None]
 
@@ -132,6 +132,60 @@ class RequestRow:
 
 
 @dataclass(frozen=True)
+class CostRow:
+    """Usage and cost of one cluster (live or terminated) over a time window."""
+
+    name: str
+    status: str  # live status, or "TERMINATED"
+    infra: str
+    resources: str
+    num_nodes: int
+    gpus: float  # total accelerators across nodes
+    launched_at: float | None
+    duration: float  # seconds the cluster was up within the window
+    hourly: float | None  # $/hr for the whole cluster; None = unpriced
+    total: float | None  # $ within the window; None = unpriced
+    user: str = "-"
+    workspace: str = "default"
+
+    @property
+    def gpu_hours(self) -> float:
+        return self.gpus * self.duration / 3600.0
+
+    @property
+    def priced(self) -> bool:
+        return self.hourly is not None
+
+
+@dataclass(frozen=True)
+class PoolRow:
+    name: str
+    status: str
+    ready_workers: int
+    total_workers: int
+    resources: str
+    workers: tuple["ReplicaRow", ...] = ()
+    yaml: str | None = None
+
+
+@dataclass(frozen=True)
+class StorageRow:
+    name: str
+    stores: str  # e.g. "S3, GCS"
+    status: str
+    launched_at: float | None
+    last_use: str
+
+
+@dataclass(frozen=True)
+class WorkspaceRow:
+    name: str
+    active: bool
+    writable: bool = True
+    detail: str = ""
+
+
+@dataclass(frozen=True)
 class InfraRow:
     name: str
     enabled: bool
@@ -145,10 +199,18 @@ class Backend(Protocol):
 
     def server_info(self) -> ServerInfo: ...
 
+    # Whose resources the list_* calls return: only the caller's (False) or
+    # every user's (True). Toggled from the TUI.
+    all_users: bool
+
     # listing
     def list_clusters(self, refresh: bool = False) -> list[ClusterRow]: ...
     def list_cluster_jobs(self, cluster: str) -> list[ClusterJobRow]: ...
     def list_managed_jobs(self) -> list[ManagedJobRow]: ...
+    def list_costs(self, days: int | None = 30) -> list[CostRow]: ...
+    def list_pools(self) -> list[PoolRow]: ...
+    def list_storage(self) -> list[StorageRow]: ...
+    def list_workspaces(self) -> list[WorkspaceRow]: ...
     def list_services(self) -> list[ServiceRow]: ...
     def list_volumes(self) -> list[VolumeRow]: ...
     def list_requests(self, limit: int = 100) -> list[RequestRow]: ...
@@ -164,7 +226,14 @@ class Backend(Protocol):
     def cancel_cluster_job(self, cluster: str, job_id: int) -> str: ...
     def ssh_argv(self, cluster: str) -> list[str]: ...
 
-    # managed jobs
+    # cost preview: a dry-run launch whose request log shows SkyPilot's
+    # optimizer table (candidates, $/hr, chosen) without provisioning
+    def preview_launch(self, spec: Spec) -> str: ...
+
+    # workspaces
+    def set_workspace(self, name: str) -> None: ...
+
+    # managed jobs (spec.pool, if set, submits the job to that pool)
     def launch_managed_job(self, spec: JobSpec) -> str: ...
     def cancel_managed_job(self, job_id: int) -> str: ...
 
@@ -173,6 +242,13 @@ class Backend(Protocol):
     def serve_update(self, spec: ServiceSpec) -> str: ...
     def serve_down(self, name: str) -> str: ...
     def terminate_replica(self, service: str, replica_id: int) -> str: ...
+
+    # pools
+    def pool_apply(self, spec: PoolSpec) -> str: ...
+    def pool_down(self, name: str) -> str: ...
+
+    # storage buckets
+    def delete_storage(self, name: str) -> str: ...
 
     # volumes
     def apply_volume(self, spec: VolumeSpec) -> str: ...
@@ -186,3 +262,4 @@ class Backend(Protocol):
     def stream_cluster_job_logs(self, cluster: str, job_id: int | None, sink: LogSink, stop: threading.Event) -> None: ...
     def stream_managed_job_logs(self, job_id: int, sink: LogSink, stop: threading.Event, controller: bool = False, follow: bool = True) -> None: ...
     def stream_service_logs(self, service: str, target: str, replica_id: int | None, sink: LogSink, stop: threading.Event) -> None: ...
+    def stream_pool_logs(self, pool: str, target: str, worker_id: int | None, sink: LogSink, stop: threading.Event) -> None: ...

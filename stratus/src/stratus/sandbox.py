@@ -185,7 +185,10 @@ def up(
 
     if _container_state(K3S_CONTAINER) or _container_state(SKY_CONTAINER):
         notify("Images", "failed")
-        raise SandboxError("a sandbox already exists — run `stratus sandbox down` first (or `status`)")
+        raise SandboxError(
+            "a sandbox already exists — `stratus sandbox start` restarts a stopped one, "
+            "`stratus sandbox down` removes it"
+        )
 
     def pull() -> None:
         for image in (K3S_IMAGE, SKY_IMAGE):
@@ -383,6 +386,8 @@ def server_config(trust_ca: bool = False) -> str:
         # instead of extra controller pods: lighter and faster in a sandbox.
         "jobs": {"controller": {"consolidation_mode": True}},
         "serve": {"controller": {"consolidation_mode": True}},
+        # Two workspaces so workspace switching can be tried in the sandbox.
+        "workspaces": {"default": {}, "experiments": {}},
     }
     header = (
         "# SkyPilot API server config for the stratus sandbox.\n"
@@ -411,6 +416,22 @@ def _apply_oom_workaround() -> None:
     )
     _run(["docker", "exec", K3S_CONTAINER, "sh", "-c", script])
     _run(["docker", "restart", K3S_CONTAINER])
+
+
+def start(api_port: int = API_PORT) -> str:
+    """Restart a stopped sandbox (e.g. after a reboot or Docker restart)."""
+    if not _container_state(K3S_CONTAINER) or not _container_state(SKY_CONTAINER):
+        raise SandboxError("no sandbox to start — create one with `stratus sandbox up`")
+    if _container_state(K3S_CONTAINER) != "running":
+        _run(["docker", "start", K3S_CONTAINER])
+    _wait("k3s node", lambda: " Ready" in _kubectl("get", "nodes", "--no-headers").stdout, 180)
+    if _container_state(SKY_CONTAINER) != "running":
+        # It shares the k3s container's network namespace, so it has to be
+        # restarted after k3s even if Docker thinks it is still running.
+        _run(["docker", "start", SKY_CONTAINER])
+    url = endpoint(api_port)
+    _wait("SkyPilot API server", lambda: bool((_health(url) or {}).get("status") == "healthy"), 300)
+    return url
 
 
 def _remove_containers() -> None:

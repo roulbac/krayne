@@ -7,6 +7,7 @@ Layout::
       jobs/<name>.yaml       # sky jobs launch <file>
       services/<name>.yaml   # sky serve up -n <name> <file>
       volumes/<name>.yaml    # sky volumes apply <file>
+      pools/<name>.yaml      # sky jobs pool apply -p <name> <file>
       history.jsonl          # what stratus launched, when, and the request id
 
 Files are the source of truth: stratus re-reads them every time, so editing
@@ -21,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from stratus.settings import specs_dir
-from stratus.specs.models import Spec, SpecKind, spec_from_yaml
+from stratus.specs.models import JobSpec, Spec, SpecKind, spec_from_yaml, write_meta
 
 _HEADER = (
     "# Managed by stratus — edit freely, stratus re-reads this file.\n"
@@ -33,6 +34,7 @@ _USAGE = {
     SpecKind.JOB: "sky jobs launch -n {name} {path}",
     SpecKind.SERVICE: "sky serve up -n {name} {path}",
     SpecKind.VOLUME: "sky volumes apply {path}",
+    SpecKind.POOL: "sky jobs pool apply -p {name} {path}",
 }
 
 
@@ -69,7 +71,9 @@ class SpecStore:
     def render(self, spec: Spec) -> str:
         path = self.path_for(spec.kind, spec.name)
         usage = _USAGE[spec.kind].format(name=spec.name, path=_tilde(path))
-        return _HEADER.format(usage=usage) + spec.to_yaml()
+        if isinstance(spec, JobSpec) and spec.pool:
+            usage = f"sky jobs launch --pool {spec.pool} -n {spec.name} {_tilde(path)}"
+        return _HEADER.format(usage=usage) + write_meta(spec) + spec.to_yaml()
 
     def save(self, spec: Spec) -> Path:
         path = self.path_for(spec.kind, spec.name)

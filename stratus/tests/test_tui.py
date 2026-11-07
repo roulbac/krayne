@@ -116,7 +116,7 @@ async def test_save_only_then_launch_from_spec_library(backend, store):
         assert isinstance(app.screen, MainScreen)
         assert store.exists(SpecKind.CLUSTER, "later")
         assert "later" not in table_names(app)
-        await pilot.press("5")
+        await pilot.press("8")
         await settle(pilot)
         await select_row(pilot, app, "later")
         await pilot.press("enter")
@@ -356,7 +356,7 @@ async def test_server_down_shows_error_not_crash(backend, store):
         assert empty.display
         assert "unavailable" in str(empty.render()).lower()
         # the spec library still works offline
-        await pilot.press("5")
+        await pilot.press("8")
         await settle(pilot)
         assert not app.screen.error
 
@@ -383,3 +383,120 @@ async def test_narrow_terminal_hides_columns(backend, store):
         table = app.screen.query_one(DataTable)
         labels = [str(c.label) for c in table.columns.values()]
         assert "INFRA" not in labels and "NAME" in labels
+
+
+async def test_cost_view_summary_and_window(backend, store):
+    app = make_app(backend, store, view="cost")
+    async with app.run_test(size=SIZE) as pilot:
+        await settle(pilot)
+        names = table_names(app)
+        assert "sweep-a100" in names and "dev-gpu" in names
+        title = str(app.screen.query_one("#title-bar").render())
+        assert "GPU-hrs" in title and "unpriced" in title
+        await pilot.press("t")  # 30d → all time
+        await pilot.press("t")  # all → 1d
+        await settle(pilot)
+        assert app.screen.view.days == 1
+        assert "sweep-a100" not in table_names(app)
+
+
+async def test_clusters_show_usage_and_scope_toggle(backend, store):
+    app = make_app(backend, store)
+    async with app.run_test(size=(200, 48)) as pilot:
+        await settle(pilot, 0.6)
+        table = app.screen.query_one(DataTable)
+        labels = [str(c.label) for c in table.columns.values()]
+        assert "GPU-HRS" in labels and "$/HR" in labels
+        row = [str(c) for c in table.get_row_at(table.get_row_index("dev-gpu"))]
+        assert "unpriced" in row
+        assert "alice-train" not in table_names(app)
+        await pilot.press("U")
+        await settle(pilot, 0.6)
+        assert "alice-train" in table_names(app)
+
+
+async def test_preview_then_launch(backend, store):
+    app = make_app(backend, store)
+    async with app.run_test(size=SIZE) as pilot:
+        await settle(pilot)
+        await pilot.press("c")
+        await settle(pilot, 0.2)
+        await type_text(pilot, "pv")
+        await pilot.press("ctrl+p")
+        await settle(pilot, 0.6)
+        from stratus.tui.screens.preview import PreviewScreen
+
+        assert isinstance(app.screen, PreviewScreen)
+        assert not store.exists(SpecKind.CLUSTER, "pv")  # nothing saved by a preview
+        await settle(pilot, 0.6)
+        assert any("CHOSEN" in l for l in app.screen._lines)
+        await pilot.press("e")  # back to the form, values kept
+        await settle(pilot, 0.3)
+        assert isinstance(app.screen, FormScreen)
+        assert app.screen.query_one("#f-name", Input).value == "pv"
+        await pilot.press("ctrl+p")
+        await settle(pilot, 0.6)
+        await pilot.press("y")
+        await settle(pilot, 0.5)
+        assert isinstance(app.screen, LogScreen) and not isinstance(app.screen, PreviewScreen)
+    assert store.exists(SpecKind.CLUSTER, "pv")
+    assert "pv" in [c.name for c in backend.list_clusters()]
+
+
+async def test_pools_create_drill_and_job_in_pool(backend, store):
+    app = make_app(backend, store, view="pools")
+    async with app.run_test(size=SIZE) as pilot:
+        await settle(pilot)
+        assert table_names(app) == ["eval-pool"]
+        await pilot.press("enter")
+        await settle(pilot)
+        assert app.screen.view.crumb == "workers@eval-pool" and len(table_names(app)) == 2
+        await pilot.press("l")
+        await settle(pilot, 0.3)
+        assert isinstance(app.screen, LogScreen)
+        await pilot.press("escape")
+        await pilot.press("escape")
+        await settle(pilot)
+        await pilot.press("c")
+        await settle(pilot, 0.2)
+        await type_text(pilot, "batch")
+        app.screen.query_one("#f-workers", Input).value = "3"
+        await pilot.press("ctrl+s")
+        await settle(pilot, 0.5)
+        await pilot.press("escape")
+        await pilot.press("2")
+        await settle(pilot)
+        await pilot.press("c")
+        await settle(pilot, 0.2)
+        await type_text(pilot, "pooled")
+        app.screen.query_one("#f-pool", Input).value = "batch"
+        await pilot.press("ctrl+s")
+        await settle(pilot, 0.5)
+    assert {p.name: p.total_workers for p in backend.list_pools()}["batch"] == 3
+    assert store.get(SpecKind.JOB, "pooled").pool == "batch"
+    assert "pooled" in [j.name for j in backend.list_managed_jobs()]
+
+
+async def test_storage_delete_and_workspace_switch(backend, store, tmp_path, monkeypatch):
+    monkeypatch.setenv("STRATUS_HOME", str(tmp_path / "home"))
+    app = make_app(backend, store, view="storage")
+    async with app.run_test(size=SIZE) as pilot:
+        await settle(pilot)
+        await select_row(pilot, app, "sky-tmp-3f2a")
+        await pilot.press("ctrl+d")
+        await settle(pilot, 0.2)
+        assert isinstance(app.screen, ConfirmScreen)
+        await pilot.press("y")
+        await settle(pilot, 0.6)
+        assert "sky-tmp-3f2a" not in table_names(app)
+        await pilot.press("colon")
+        await type_text(pilot, "ws")
+        await pilot.press("enter")
+        await settle(pilot)
+        await select_row(pilot, app, "research")
+        await pilot.press("enter")
+        await settle(pilot, 0.6)
+    assert [w.name for w in backend.list_workspaces() if w.active] == ["research"]
+    from stratus.settings import load_settings
+
+    assert load_settings().workspace == "research"

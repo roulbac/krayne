@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from stratus.specs.models import (
     ClusterSpec,
     JobSpec,
+    PoolSpec,
     Resources,
     ServiceSpec,
     Spec,
@@ -80,14 +81,17 @@ def _resource_fields(section: str = "Resources", ports_help: str = "") -> tuple[
     )
 
 
-def _task_fields(run_required: bool) -> tuple[FormField, ...]:
+def _task_fields(run_required: bool, with_run: bool = True) -> tuple[FormField, ...]:
+    run = (
+        FormField("run", "Run command", "area", section="Workload", required=run_required,
+                  help="the main command" + ("" if run_required else " (optional for clusters)")),
+    ) if with_run else ()
     return (
         FormField("num_nodes", "Nodes", "int", section="Workload", placeholder="1"),
         FormField("workdir", "Workdir", section="Workload", placeholder="none",
                   help="local directory synced to ~/sky_workdir (absolute path or ~/…)"),
         FormField("setup", "Setup commands", "area", section="Workload", help="runs once when nodes are provisioned"),
-        FormField("run", "Run command", "area", section="Workload", required=run_required,
-                  help="the main command" + ("" if run_required else " (optional for clusters)")),
+        *run,
         FormField("envs", "Environment", "area", section="Environment & storage", help="KEY=value, one per line"),
         FormField("volumes", "Volume mounts", "area", section="Environment & storage",
                   help="/mount/path=volume-name, one per line (see :volumes)"),
@@ -115,6 +119,8 @@ SCHEMAS: dict[SpecKind, FormSchema] = {
                       options=(("Default (FAILOVER)", ""), ("FAILOVER", "FAILOVER"), ("EAGER_NEXT_REGION", "EAGER_NEXT_REGION"))),
             FormField("max_restarts_on_errors", "Restarts on user errors", "int", section="Recovery", placeholder="0",
                       help="re-run the job this many times if it exits non-zero (preemptions are always recovered)"),
+            FormField("pool", "Run in pool", section="Recovery", placeholder="none (dedicated cluster)",
+                      help="submit to a pool's warm workers instead of provisioning (see :pools)"),
             *_task_fields(run_required=True),
         ),
     ),
@@ -133,6 +139,16 @@ SCHEMAS: dict[SpecKind, FormSchema] = {
             FormField("target_qps_per_replica", "Target QPS / replica", section="Service", placeholder="-",
                       help="autoscaling target, required with max replicas"),
             *_task_fields(run_required=True),
+        ),
+    ),
+    SpecKind.POOL: FormSchema(
+        SpecKind.POOL,
+        (
+            FormField("name", "Pool name", required=True, placeholder="eval-pool"),
+            FormField("workers", "Workers", "int", section="Pool", required=True, placeholder="1",
+                      help="worker clusters kept warm; managed jobs submitted with this pool run on them"),
+            *_resource_fields(),
+            *_task_fields(run_required=False, with_run=False),
         ),
     ),
     SpecKind.VOLUME: FormSchema(
@@ -163,6 +179,7 @@ DEFAULTS: dict[SpecKind, dict[str, Any]] = {
                        "initial_delay_seconds": "300", "min_replicas": "1",
                        "run": "python3 -m http.server 8080"},
     SpecKind.VOLUME: {"type": "k8s-pvc", "infra": "k8s", "size": "1Gi"},
+    SpecKind.POOL: {"cpus": "1", "memory": "2", "workers": "1", "setup": 'echo "worker ready"'},
 }
 
 
@@ -194,7 +211,10 @@ def spec_to_form(spec: Spec) -> dict[str, Any]:
     if isinstance(spec, ClusterSpec):
         out["autostop_minutes"] = _s(spec.autostop_minutes)
         out["autostop_down"] = spec.autostop_down
+    elif isinstance(spec, PoolSpec):
+        out["workers"] = str(spec.workers)
     elif isinstance(spec, JobSpec):
+        out["pool"] = _s(spec.pool)
         out["recovery_strategy"] = _s(spec.recovery_strategy)
         out["max_restarts_on_errors"] = "" if not spec.max_restarts_on_errors else str(spec.max_restarts_on_errors)
     elif isinstance(spec, ServiceSpec):
@@ -299,7 +319,7 @@ def form_to_spec(kind: SpecKind, values: dict[str, Any], base: Spec | None = Non
         num_nodes = _opt_int(values, "num_nodes", errors) or 1
         task = dict(
             name=name, resources=resources, num_nodes=num_nodes, workdir=values.get("workdir") or None,
-            setup=values.get("setup") or None, run=values.get("run") or None,
+            setup=values.get("setup") or None, run=(values.get("run") or None) if kind is not SpecKind.POOL else None,
             envs=_lines(values, "envs", parse_kv_lines, errors),
             volumes=_lines(values, "volumes", parse_mount_lines, errors),
         )
@@ -313,9 +333,14 @@ def form_to_spec(kind: SpecKind, values: dict[str, Any], base: Spec | None = Non
                 errors["autostop_down"] = "Kubernetes can't stop clusters, only tear them down — turn this on"
             spec_kwargs = dict(task, autostop_minutes=autostop, autostop_down=down)
             cls = ClusterSpec
+        elif kind is SpecKind.POOL:
+            spec_kwargs = dict(task, workers=_opt_int(values, "workers", errors) or 1)
+            if isinstance(base, PoolSpec):
+                spec_kwargs["pool_extra"] = dict(base.pool_extra)
+            cls = PoolSpec
         elif kind is SpecKind.JOB:
             spec_kwargs = dict(
-                task, recovery_strategy=values.get("recovery_strategy") or None,
+                task, pool=values.get("pool") or None, recovery_strategy=values.get("recovery_strategy") or None,
                 max_restarts_on_errors=_opt_int(values, "max_restarts_on_errors", errors) or 0,
             )
             cls = JobSpec

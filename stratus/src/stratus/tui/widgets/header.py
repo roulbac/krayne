@@ -27,6 +27,8 @@ class Header(Static):
         self._src = ""
         self._every = 0.0
         self._busy = False
+        self._all_users = False
+        self._workspace: str | None = None
 
     def set_context(self, info: ServerInfo | None = None, source: str | None = None, refresh: float | None = None) -> None:
         if info is not None:
@@ -35,6 +37,13 @@ class Header(Static):
             self._src = source
         if refresh is not None:
             self._every = refresh
+        self._render_all()
+
+    def set_scope(self, all_users: bool | None = None, workspace: str | None = None) -> None:
+        if all_users is not None:
+            self._all_users = all_users
+        if workspace is not None:
+            self._workspace = workspace
         self._render_all()
 
     def set_actions(self, actions: tuple[Action, ...]) -> None:
@@ -68,8 +77,10 @@ class Header(Static):
         t.add_row("Server:", server)
         t.add_row("Source:", Text(self._src or "-", style="dim"))
         t.add_row("User:", (info.user if info and info.user else "-"))
-        t.add_row("SkyPilot:", (info.version if info and info.version else "-") + (f" (api {info.api_version})" if info and info.api_version else ""))
-        t.add_row("stratus:", __version__)
+        scope = Text("all users", style="bold yellow") if self._all_users else Text("mine")
+        t.add_row("Scope:", scope + Text(f"  ws: {self._workspace or '-'}", style="dim") + Text("  (U)", style="dim"))
+        version = (info.version if info and info.version else "-") + (f" (api {info.api_version})" if info and info.api_version else "")
+        t.add_row("SkyPilot:", Text(version) + Text(f"  · stratus {__version__}", style="dim"))
         refresh = f"{self._every:g}s" if self._every else "-"
         t.add_row("Refresh:", Text(refresh) + (Text("  ⟳", style="yellow") if self._busy else Text("")))
         return t

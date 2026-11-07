@@ -34,6 +34,8 @@ class Settings:
     endpoint: str | None = None
     refresh_seconds: float = 3.0
     editor: str | None = None
+    workspace: str | None = None  # SkyPilot workspace selected in stratus
+    all_users: bool = False  # default scope: everyone's resources vs only mine
 
 
 def load_settings() -> Settings:
@@ -50,13 +52,15 @@ def load_settings() -> Settings:
         endpoint=data.get("endpoint"),
         refresh_seconds=float(data.get("refresh_seconds", 3.0)),
         editor=data.get("editor"),
+        workspace=data.get("workspace"),
+        all_users=bool(data.get("all_users", False)),
     )
 
 
 def save_settings(settings: Settings) -> None:
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = {k: v for k, v in vars(settings).items() if v is not None}
+    data = {k: v for k, v in vars(settings).items() if v is not None and not (k == "all_users" and v is False)}
     path.write_text(yaml.safe_dump(data, sort_keys=False))
 
 

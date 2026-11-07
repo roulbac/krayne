@@ -121,3 +121,19 @@ def test_k8s_autostop_requires_down():
     assert spec.autostop_minutes == 30 and spec.autostop_down
     # other clouds can stop
     assert form_to_spec(SpecKind.CLUSTER, values | {"infra": "aws"}).autostop_minutes == 30
+
+
+def test_pool_and_job_pool_form():
+    pool = form_to_spec(SpecKind.POOL, default_form(SpecKind.POOL) | {"name": "p", "workers": "3"})
+    assert pool.workers == 3 and pool.run is None
+    job = form_to_spec(SpecKind.JOB, default_form(SpecKind.JOB) | {"name": "j", "pool": "p"})
+    assert job.pool == "p"
+    assert form_to_spec(SpecKind.JOB, spec_to_form(job)) == job
+
+
+def test_store_keeps_job_pool(store):
+    job = JobSpec(name="j", run="echo", pool="eval-pool")
+    store.save(job)
+    text = store.path_for(SpecKind.JOB, "j").read_text()
+    assert "sky jobs launch --pool eval-pool" in text
+    assert store.get(SpecKind.JOB, "j") == job

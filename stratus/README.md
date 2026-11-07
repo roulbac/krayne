@@ -33,8 +33,16 @@ and removes the bookkeeping:
   built-in editor), `R` to relaunch from it. Fields the form doesn't know about (e.g. `file_mounts`,
   `instance_type`, `config:`) are preserved across form edits. The files work with the plain CLI too:
   `sky launch -c dev ~/.stratus/specs/clusters/dev.yaml`.
-- **Everything in one place, live.** Clusters, cluster job queues, managed jobs, services and their replicas, volumes,
-  in-flight API requests and enabled infra — auto-refreshing, filterable, sortable.
+- **Everything in one place, live.** Clusters, cluster job queues, managed jobs, services and their replicas, job
+  pools and their workers, volumes, storage buckets, usage & cost, in-flight API requests, enabled infra and
+  workspaces — auto-refreshing, filterable, sortable.
+- **Usage you can see before it bills you.** GPU-hours and $/hr next to every cluster, a `:cost` view with history
+  and totals (1d/7d/30d/all), and `ctrl-p` in any form to dry-run SkyPilot's optimizer and see where it would land
+  and what it would cost before anything is provisioned. Kubernetes has no price unless your API server sets
+  [`kubernetes.pricing`](https://docs.skypilot.co), so it shows as *unpriced* — GPU-hours still count.
+- **Mine vs. everyone, and workspaces.** `U` toggles between your resources and every user's (default: yours, so
+  `ctrl-d` isn't one key from a teammate's cluster). `:ws` lists workspaces; `enter` switches the one new launches go
+  to (via a SkyPilot project-config overlay — your `~/.sky/config.yaml` is never edited).
 - **Knows SkyPilot's sharp edges.** e.g. Kubernetes clusters can only auto-*down*, never stop; a service's port has
   to be both `service.ports` and an opened resource port. The forms encode this so launches don't fail late.
 - **Logs and shells one key away.** `l` streams logs (cluster jobs, managed jobs, controllers, load balancers,
@@ -65,6 +73,7 @@ server wired to it, both in Docker. Nothing touches your real clouds.
 uv run stratus sandbox up       # ~3–5 min the first time (pulls k3s, SkyPilot and the SkyPilot pod image)
 uv run stratus                  # the sandbox is now stratus's default endpoint
 uv run stratus sandbox status
+uv run stratus sandbox start    # after a reboot / Docker restart
 uv run stratus sandbox down     # removes everything
 ```
 
@@ -78,6 +87,7 @@ requests small (1 CPU / 1–2 GB), and note that Kubernetes clusters can be torn
 | server logs | `stratus sandbox logs` |
 | service endpoints | SkyServe load balancers listen on `http://localhost:30001`–`30020` (published from the sandbox) |
 | pod images | `stratus sandbox preload [IMAGE…]` side-loads images from your host's Docker into k3s |
+| workspaces | `default` and `experiments`, to try workspace switching (`:ws`) |
 
 What `sandbox up` does: starts `rancher/k3s` (API on `127.0.0.1:16443`), starts `berkeleyskypilot/skypilot:0.14.2`
 with `sky api start --deploy` in the k3s container's network namespace, gives the server the k3s kubeconfig plus a
@@ -97,8 +107,9 @@ downloads) and every SkyPilot pod (pip/uv/curl during runtime setup).
 
 | Global | |
 |---|---|
-| `:` | command mode: `:clusters` `:jobs` `:services` `:volumes` `:specs` `:requests` `:infra` `:q` (aliases: `cl`, `mj`, `svc`, `vol`, `sp`, `req`, …) |
-| `1`–`7` | jump to a view |
+| `:` | command mode: `:clusters` `:jobs` `:services` `:pools` `:volumes` `:storage` `:cost` `:specs` `:requests` `:infra` `:ws` `:q` (aliases: `cl`, `mj`, `svc`, `pl`, `vol`, `st`, `usage`, `sp`, `req`, …) |
+| `1`–`9`, `0` | jump to a view: clusters, jobs, services, pools, volumes, storage, cost, specs, requests, infra |
+| `U` | scope: only my resources ⇄ every user's |
 | `/` | filter rows, `esc` clears |
 | `<` `>` | sort by previous/next column (again to reverse) |
 | `ctrl-r` | refresh now (on clusters: ask the clouds for fresh status) |
@@ -126,7 +137,21 @@ downloads) and every SkyPilot pod (pip/uv/curl during runtime setup).
 | `D` | duplicate | | |
 | `ctrl-d` | delete the file | **Forms** | |
 | `o` | show (and copy) the path | `ctrl-s` | save spec + launch/apply |
+| | | `ctrl-p` | preview placement & cost (dry run) |
 | | | `ctrl-o` / `ctrl-e` | save only / continue as YAML |
+
+| Pools (`4`) | | Cost (`7`) | |
+|---|---|---|---|
+| `c` | create (form) | `t` | cycle window: 1d / 7d / 30d / all |
+| `enter` | workers (`l` worker logs) | `d` | describe |
+| `l` | controller logs | **Storage (`6`)** | |
+| `ctrl-d` | tear down | `ctrl-d` | delete bucket (and its objects) |
+| `e` / `R` | edit / re-apply (rolling) | **Workspaces (`:ws`)** | |
+| | | `enter` | switch the active workspace |
+
+Managed jobs have a **Run in pool** field: set it to submit the job to a pool's warm workers instead of
+provisioning a cluster (`sky jobs launch --pool`). Since the pool isn't part of SkyPilot's task YAML, the spec file
+records it in a `# stratus: pool=<name>` header comment.
 
 Log views: `f` toggle follow, `w` toggle wrap, `s` save to `~/.stratus/logs/`, `esc` detach (the work keeps running).
 

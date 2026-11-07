@@ -34,7 +34,8 @@ def main(
     endpoint: Optional[str] = typer.Option(None, "--endpoint", "-e", help="SkyPilot API server URL (default: from config)."),
     demo: bool = typer.Option(False, "--demo", help="Run against an in-memory simulation; no server needed."),
     refresh: Optional[float] = typer.Option(None, "--refresh", help="Seconds between auto-refreshes."),
-    view: str = typer.Option("clusters", "--view", "-v", help="Initial view: clusters, jobs, services, volumes, specs, requests, infra."),
+    view: str = typer.Option("clusters", "--view", "-v", help="Initial view: clusters, jobs, services, pools, volumes, storage, cost, specs, requests, infra, workspaces."),
+    all_users: Optional[bool] = typer.Option(None, "--all-users/--mine", help="Show everyone's resources, or only yours (default: config, else mine)."),
     version: bool = typer.Option(False, "--version", help="Print the version and exit."),
 ) -> None:
     """Launch the TUI (default when no sub-command is given)."""
@@ -52,12 +53,15 @@ def main(
         from stratus.backend.fake import FakeBackend
 
         backend = FakeBackend()
+        backend.all_users = settings.all_users if all_users is None else all_users
         source = "demo"
     else:
         from stratus.backend.skypilot import SkyPilotBackend
 
         url, source = resolve_endpoint(endpoint)
-        backend = SkyPilotBackend(url)
+        backend = SkyPilotBackend(
+            url, all_users=settings.all_users if all_users is None else all_users, workspace=settings.workspace
+        )
     StratusApp(
         backend=backend,
         store=SpecStore(),
@@ -112,6 +116,20 @@ def sandbox_up(
     console.print("  pods use [bold]infra: k8s[/bold]; keep requests small (e.g. 1 CPU / 1-2 GB).")
 
 
+@sandbox_app.command("start")
+def sandbox_start() -> None:
+    """Restart a stopped sandbox (after a reboot or Docker restart)."""
+    from stratus import sandbox
+
+    with console.status("Starting k3s and the SkyPilot API server…"):
+        try:
+            url = sandbox.start()
+        except sandbox.SandboxError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(1)
+    console.print(f"[green]Sandbox running.[/green] SkyPilot API server: [cyan]{url}[/cyan]")
+
+
 @sandbox_app.command("down")
 def sandbox_down() -> None:
     """Delete the sandbox containers (all clusters in it go away)."""
@@ -132,6 +150,8 @@ def sandbox_status() -> None:
     if not st.exists:
         console.print("[dim]No sandbox. Create one with[/dim] [bold]stratus sandbox up[/bold]")
         raise typer.Exit(1)
+    if st.k3s != "running" or st.skypilot != "running":
+        console.print("[yellow]Sandbox is stopped.[/yellow] Restart it with [bold]stratus sandbox start[/bold]")
     t = Table(show_header=False, box=None)
     t.add_row("k3s", st.k3s or "-")
     t.add_row("skypilot", st.skypilot or "-")

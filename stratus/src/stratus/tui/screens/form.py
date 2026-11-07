@@ -27,6 +27,7 @@ class FormResult:
     spec: Spec
     launch: bool
     raw: bool = False  # user asked to continue in the raw YAML editor
+    preview: bool = False  # user asked for a cost/placement preview first
 
 
 class FormScreen(Screen[FormResult | None]):
@@ -34,6 +35,7 @@ class FormScreen(Screen[FormResult | None]):
         Binding("ctrl+s", "submit(True)", "Save & launch", priority=True),
         Binding("ctrl+o", "submit(False)", "Save only", priority=True),
         Binding("ctrl+e", "raw", "Edit as YAML", priority=True),
+        Binding("ctrl+p", "preview", "Preview cost", priority=True),
         Binding("escape", "cancel", "Cancel", priority=True),
     ]
 
@@ -46,6 +48,7 @@ class FormScreen(Screen[FormResult | None]):
         launch_label: str | None = None,
         infra_suggestions: list[str] | None = None,
         volume_names: list[str] | None = None,
+        pool_names: list[str] | None = None,
     ) -> None:
         super().__init__()
         self.kind = kind
@@ -55,9 +58,11 @@ class FormScreen(Screen[FormResult | None]):
         self.values: dict[str, Any] = spec_to_form(spec) if spec is not None else default_form(kind)
         self.launch_label = launch_label or {
             SpecKind.CLUSTER: "Launch", SpecKind.JOB: "Submit", SpecKind.SERVICE: "Deploy", SpecKind.VOLUME: "Apply",
+            SpecKind.POOL: "Apply",
         }[kind]
         self.infra_suggestions = infra_suggestions or []
         self.volume_names = volume_names or []
+        self.pool_names = pool_names or []
         # After the first submit attempt, keep showing errors live as the user fixes them.
         self._show_errors = False
 
@@ -83,6 +88,8 @@ class FormScreen(Screen[FormResult | None]):
                     yield Static("", id="preview")
         with Horizontal(id="form-buttons"):
             yield Button(f"{self.launch_label} (ctrl+s)", id="launch", variant="primary")
+            if self.kind is not SpecKind.VOLUME:
+                yield Button("Preview cost (ctrl+p)", id="preview-cost")
             yield Button("Save only (ctrl+o)", id="save")
             yield Button("Edit as YAML (ctrl+e)", id="raw")
             yield Button("Cancel (esc)", id="cancel")
@@ -95,6 +102,8 @@ class FormScreen(Screen[FormResult | None]):
         help_text = f.help
         if f.key == "volumes" and self.volume_names:
             help_text += f" · existing: {', '.join(self.volume_names[:6])}"
+        if f.key == "pool" and self.pool_names:
+            help_text += f" · existing: {', '.join(self.pool_names[:6])}"
         if f.type == "area":
             yield Label(label + (f"  [dim]{help_text}[/dim]" if help_text else ""), classes="field-label")
             area = TextArea(str(value or ""), id=wid, classes="field-area", soft_wrap=True, show_line_numbers=False)
@@ -116,6 +125,8 @@ class FormScreen(Screen[FormResult | None]):
                     suggestions = list(f.suggestions)
                     if f.key == "infra":
                         suggestions = self.infra_suggestions + [s for s in suggestions if s not in self.infra_suggestions]
+                    elif f.key == "pool":
+                        suggestions = list(self.pool_names)
                     yield Input(
                         str(value or ""), placeholder=f.placeholder, id=wid, compact=True, valid_empty=True,
                         type="integer" if f.type == "int" else "text",
@@ -190,6 +201,15 @@ class FormScreen(Screen[FormResult | None]):
             return
         self.dismiss(FormResult(spec, launch=launch))
 
+    def action_preview(self) -> None:
+        if self.kind is SpecKind.VOLUME:
+            return
+        spec = self._refresh_preview(show_errors=True)
+        if spec is None:
+            self.notify("Fix the highlighted fields first", severity="error")
+            return
+        self.dismiss(FormResult(spec, launch=False, preview=True))
+
     def action_raw(self) -> None:
         spec = self._refresh_preview(show_errors=True)
         if spec is None:
@@ -208,5 +228,7 @@ class FormScreen(Screen[FormResult | None]):
             self.action_submit(False)
         elif bid == "raw":
             self.action_raw()
+        elif bid == "preview-cost":
+            self.action_preview()
         else:
             self.action_cancel()

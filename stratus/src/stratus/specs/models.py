@@ -27,14 +27,15 @@ class SpecKind(str, Enum):
     JOB = "job"
     SERVICE = "service"
     VOLUME = "volume"
+    POOL = "pool"
 
     @property
     def folder(self) -> str:
-        return {"cluster": "clusters", "job": "jobs", "service": "services", "volume": "volumes"}[self.value]
+        return self.value + "s"
 
     @property
     def title(self) -> str:
-        return {"cluster": "Cluster", "job": "Managed job", "service": "Service", "volume": "Volume"}[self.value]
+        return {"cluster": "Cluster", "job": "Managed job", "service": "Service", "volume": "Volume", "pool": "Pool"}[self.value]
 
 
 def _validate_name(value: str) -> str:
@@ -328,12 +329,21 @@ class JobSpec(_TaskSpec):
 
     max_restarts_on_errors: int = Field(default=0, ge=0, le=100)
     recovery_strategy: str | None = None
+    # Target pool (`sky jobs launch --pool`). Not part of the task YAML;
+    # the spec store keeps it in a `# stratus: pool=<name>` header comment.
+    pool: str | None = None
 
     @model_validator(mode="after")
     def _needs_run(self) -> "JobSpec":
         if not self.run:
             raise ValueError("run: a managed job needs a command to run")
         return self
+
+    @field_validator("pool", mode="before")
+    @classmethod
+    def _pool(cls, v: Any) -> str | None:
+        v = _clean_str(v)
+        return _validate_name(v) if v else None
 
     @field_validator("recovery_strategy", mode="before")
     @classmethod
@@ -458,6 +468,42 @@ class ServiceSpec(_TaskSpec):
         return cls(**kwargs, service_extra=service, extra=leftovers["rest"])
 
 
+class PoolSpec(_TaskSpec):
+    """A pool of pre-provisioned workers for managed jobs (``sky jobs pool apply``).
+
+    Pools have setup but no ``run``: jobs submitted with ``--pool`` run on
+    the workers.
+    """
+
+    kind: ClassVar[SpecKind] = SpecKind.POOL
+
+    workers: int = Field(default=1, ge=1, le=1000)
+    pool_extra: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _no_run(self) -> "PoolSpec":
+        if self.run:
+            raise ValueError("run: pools don't run commands; submit managed jobs to the pool instead")
+        return self
+
+    def to_yaml_dict(self) -> dict[str, Any]:
+        out = self._task_dict(self.resources.to_yaml_dict())
+        pool = {"workers": self.workers, **self.pool_extra}
+        return {"name": out.pop("name"), "pool": pool, **out}
+
+    @classmethod
+    def from_yaml_dict(cls, name: str, data: dict[str, Any]) -> "PoolSpec":
+        data = dict(data or {})
+        pool = data.pop("pool", None)
+        pool = dict(pool) if isinstance(pool, dict) else {}
+        kwargs, leftovers = cls._task_kwargs(name, data)
+        for k, v in leftovers["special"].items():
+            kwargs["resources"].extra[k] = v
+        if "workers" in pool:
+            kwargs["workers"] = int(pool.pop("workers"))
+        return cls(**kwargs, pool_extra=pool, extra=leftovers["rest"])
+
+
 class VolumeSpec(BaseModel):
     """A SkyPilot volume (``sky volumes apply``)."""
 
@@ -538,14 +584,35 @@ class VolumeSpec(BaseModel):
         return cls(**kwargs, config_extra=config, extra=data)
 
 
-Spec = ClusterSpec | JobSpec | ServiceSpec | VolumeSpec
+Spec = ClusterSpec | JobSpec | ServiceSpec | VolumeSpec | PoolSpec
 
 SPEC_TYPES: dict[SpecKind, type] = {
     SpecKind.CLUSTER: ClusterSpec,
     SpecKind.JOB: JobSpec,
     SpecKind.SERVICE: ServiceSpec,
     SpecKind.VOLUME: VolumeSpec,
+    SpecKind.POOL: PoolSpec,
 }
+
+_META_RE = re.compile(r"^#\s*stratus:\s*(.+)$", re.MULTILINE)
+
+
+def read_meta(text: str) -> dict[str, str]:
+    """Parse ``# stratus: key=value ...`` header comments."""
+    meta: dict[str, str] = {}
+    for m in _META_RE.finditer(text):
+        for part in m.group(1).split():
+            if "=" in part:
+                k, v = part.split("=", 1)
+                meta[k.strip()] = v.strip()
+    return meta
+
+
+def write_meta(spec: "Spec") -> str:
+    """Header comment lines carrying stratus-only settings ('' if none)."""
+    if isinstance(spec, JobSpec) and spec.pool:
+        return f"# stratus: pool={spec.pool}\n"
+    return ""
 
 
 def spec_from_yaml(kind: SpecKind, name: str, text: str) -> Spec:
@@ -554,7 +621,12 @@ def spec_from_yaml(kind: SpecKind, name: str, text: str) -> Spec:
         data = {}
     if not isinstance(data, dict):
         raise ValueError("top level of the YAML must be a mapping")
-    return SPEC_TYPES[kind].from_yaml_dict(name, data)
+    spec = SPEC_TYPES[kind].from_yaml_dict(name, data)
+    if kind is SpecKind.JOB:
+        pool = read_meta(text).get("pool")
+        if pool:
+            spec = JobSpec.model_validate({**spec.model_dump(), "pool": pool})
+    return spec
 
 
 # ── YAML rendering ──────────────────────────────────────────────

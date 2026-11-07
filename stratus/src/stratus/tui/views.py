@@ -78,6 +78,10 @@ class View:
         """Cheap local data fetched alongside rows (e.g. which specs exist)."""
         return None
 
+    def summary(self, rows: list[Any]) -> str:
+        """Extra markup shown in the title bar (e.g. totals)."""
+        return ""
+
     @property
     def crumb(self) -> str:
         return self.name
@@ -97,6 +101,7 @@ class ClustersView(View):
     spec_kind = SpecKind.CLUSTER
     columns = (
         Column("NAME"), Column("STATUS"), Column("INFRA", narrow=False), Column("RESOURCES"),
+        Column("GPU-HRS", narrow=False), Column("$/HR", narrow=False),
         Column("AUTOSTOP", narrow=False), Column("USER", narrow=False), Column("AGE"), Column("SPEC", narrow=False),
     )
     actions = (
@@ -120,13 +125,28 @@ class ClustersView(View):
     def fetch(self, ctx: Ctx) -> list[Any]:
         return sorted(ctx.backend.list_clusters(), key=lambda r: r.name)
 
+    COST_TTL = 30.0  # seconds; cost data changes slowly, don't fetch it every tick
+
+    def __init__(self) -> None:
+        self._costs: dict[str, Any] = {}
+        self._costs_at = 0.0
+
     def fetch_extra(self, ctx: Ctx) -> Any:
-        return ctx.store.names(SpecKind.CLUSTER)
+        if time.monotonic() - self._costs_at > self.COST_TTL:
+            try:
+                self._costs = {c.name: c for c in ctx.backend.list_costs(days=None) if c.status != "TERMINATED"}
+            except Exception:  # noqa: BLE001 - cost columns are best-effort
+                self._costs = {}
+            self._costs_at = time.monotonic()
+        return {"specs": ctx.store.names(SpecKind.CLUSTER), "costs": self._costs}
 
     def cells(self, r: Any, ctx: Ctx, extra: Any) -> list[Any]:
+        extra = extra or {}
+        cost = extra.get("costs", {}).get(r.name)
         return [
             Text(r.name, style="bold"), status_text(r.status), r.infra, r.resources,
-            autostop_text(r.autostop, r.to_down), r.user, age(r.launched_at), mark(bool(extra and r.name in extra)),
+            gpu_hours_text(cost), hourly_text(cost),
+            autostop_text(r.autostop, r.to_down), r.user, age(r.launched_at), mark(r.name in extra.get("specs", ())),
         ]
 
 
@@ -277,7 +297,7 @@ class VolumesView(View):
     name = "volumes"
     title = "Volumes"
     aliases = ("vol", "volume", "volumes", "pvc")
-    hotkey = "4"
+    hotkey = "5"
     spec_kind = SpecKind.VOLUME
     columns = (
         Column("NAME"), Column("TYPE"), Column("INFRA", narrow=False), Column("SIZE"), Column("STATUS"),
@@ -311,7 +331,7 @@ class SpecsView(View):
     name = "specs"
     title = "Spec library"
     aliases = ("sp", "spec", "specs", "yaml", "lib", "library")
-    hotkey = "5"
+    hotkey = "8"
     columns = (Column("KIND"), Column("NAME"), Column("VALID"), Column("SUMMARY", narrow=False), Column("MODIFIED"), Column("PATH", narrow=False))
     actions = (
         Action("enter", "Launch/apply", "launch_spec"),
@@ -339,6 +359,10 @@ class SpecsView(View):
         if r.spec is not None:
             res = getattr(r.spec, "resources", None)
             summary = res.summary() if res is not None else f"{r.spec.type} {r.spec.size}"
+            if getattr(r.spec, "pool", None):
+                summary += f" → pool {r.spec.pool}"
+            if getattr(r.spec, "workers", None):
+                summary += f", {r.spec.workers} worker(s)"
         try:
             path = "~/" + str(r.path.relative_to(Path.home()))
         except ValueError:
@@ -350,7 +374,7 @@ class RequestsView(View):
     name = "requests"
     title = "API requests"
     aliases = ("req", "request", "requests", "api")
-    hotkey = "6"
+    hotkey = "9"
     columns = (Column("ID"), Column("NAME"), Column("STATUS"), Column("CLUSTER"), Column("USER", narrow=False), Column("CREATED"), Column("TOOK", narrow=False))
     actions = (
         Action("enter", "Follow logs", "logs"),
@@ -375,7 +399,7 @@ class InfraView(View):
     name = "infra"
     title = "Enabled infra"
     aliases = ("inf", "infra", "clouds", "check")
-    hotkey = "7"
+    hotkey = "0"
     columns = (Column("INFRA"), Column("ENABLED"), Column("DETAIL"))
     actions = ()
     empty_hint = "No infra enabled on the API server. Run `sky check` on the server."
@@ -387,7 +411,166 @@ class InfraView(View):
         return [Text(r.name, style="bold"), mark(r.enabled), r.detail]
 
 
-TOP_VIEWS: list[type[View]] = [ClustersView, ManagedJobsView, ServicesView, VolumesView, SpecsView, RequestsView, InfraView]
+class PoolsView(View):
+    name = "pools"
+    title = "Job pools"
+    aliases = ("pool", "pools", "pl")
+    hotkey = "4"
+    spec_kind = SpecKind.POOL
+    columns = (Column("NAME"), Column("STATUS"), Column("WORKERS"), Column("RESOURCES", narrow=False), Column("SPEC", narrow=False))
+    actions = (
+        Action("c", "Create", "create"),
+        Action("enter", "Workers", "drill"),
+        Action("l", "Controller logs", "logs"),
+        Action("ctrl+d", "Down", "down", danger=True),
+        *_COMMON_TAIL,
+        Action("e", "Edit+apply", "edit"),
+        Action("E", "Edit YAML", "edit_raw"),
+        Action("R", "Re-apply", "relaunch"),
+        Action("i", "Import spec", "import_spec", hint=False),
+    )
+    empty_hint = "No pools. A pool keeps workers warm so managed jobs start instantly — press [b]c[/b] to create one."
+
+    def fetch(self, ctx: Ctx) -> list[Any]:
+        return sorted(ctx.backend.list_pools(), key=lambda r: r.name)
+
+    def fetch_extra(self, ctx: Ctx) -> Any:
+        return ctx.store.names(SpecKind.POOL)
+
+    def cells(self, r: Any, ctx: Ctx, extra: Any) -> list[Any]:
+        return [Text(r.name, style="bold"), status_text(r.status), f"{r.ready_workers}/{r.total_workers}", r.resources,
+                mark(bool(extra and r.name in extra))]
+
+
+class PoolWorkersView(ReplicasView):
+    name = "workers"
+    title = "Pool workers"
+    actions = (
+        Action("l", "Logs", "logs"),
+        Action("enter", "Logs", "logs", hint=False),
+        Action("d", "Describe", "describe"),
+    )
+    empty_hint = "No workers yet."
+
+    @property
+    def crumb(self) -> str:
+        return f"workers@{self.service}"
+
+    def fetch(self, ctx: Ctx) -> list[Any]:
+        for p in ctx.backend.list_pools():
+            if p.name == self.service:
+                return list(p.workers)
+        return []
+
+
+class StorageView(View):
+    name = "storage"
+    title = "Storage buckets"
+    aliases = ("st", "storage", "bucket", "buckets")
+    hotkey = "6"
+    columns = (Column("NAME"), Column("STORES"), Column("STATUS"), Column("AGE"), Column("LAST USE", narrow=False))
+    actions = (
+        Action("ctrl+d", "Delete bucket", "down", danger=True),
+        Action("d", "Describe", "describe"),
+    )
+    empty_hint = "No SkyPilot-managed buckets. (Buckets appear here when a task's file_mounts creates one.)"
+
+    def fetch(self, ctx: Ctx) -> list[Any]:
+        return ctx.backend.list_storage()
+
+    def cells(self, r: Any, ctx: Ctx, extra: Any) -> list[Any]:
+        return [Text(r.name, style="bold"), r.stores, status_text(r.status), age(r.launched_at), r.last_use]
+
+
+COST_WINDOWS: tuple[int | None, ...] = (1, 7, 30, None)
+
+
+class CostView(View):
+    name = "cost"
+    title = "Usage & cost"
+    aliases = ("cost", "costs", "usage", "$", "spend")
+    hotkey = "7"
+    columns = (
+        Column("NAME"), Column("STATUS"), Column("INFRA", narrow=False), Column("RESOURCES", narrow=False),
+        Column("UP"), Column("GPU-HRS"), Column("$/HR"), Column("TOTAL $"), Column("USER", narrow=False),
+    )
+    actions = (
+        Action("t", "Time window", "window"),
+        Action("d", "Describe", "describe"),
+    )
+    empty_hint = "No cluster usage recorded in this window. Press [b]t[/b] to widen it."
+
+    def __init__(self) -> None:
+        self.days: int | None = 30
+
+    @property
+    def crumb(self) -> str:
+        return f"cost@{self.days}d" if self.days else "cost@all"
+
+    def fetch(self, ctx: Ctx) -> list[Any]:
+        return ctx.backend.list_costs(days=self.days)
+
+    def key(self, row: Any) -> str:
+        return f"{row.name}@{row.launched_at}"
+
+    def cells(self, r: Any, ctx: Ctx, extra: Any) -> list[Any]:
+        return [
+            Text(r.name, style="bold"), status_text(r.status), r.infra, r.resources, duration(r.duration),
+            gpu_hours_text(r), hourly_text(r), total_text(r), r.user,
+        ]
+
+    def summary(self, rows: list[Any]) -> str:
+        window = f"last {self.days}d" if self.days else "all time"
+        gpu = sum(r.gpu_hours for r in rows)
+        priced = [r for r in rows if r.priced]
+        unpriced = [r for r in rows if not r.priced]
+        spent = sum(r.total or 0 for r in priced)
+        parts = [f"{window}", f"[b]{gpu:,.1f}[/b] GPU-hrs", f"[b]${spent:,.2f}[/b] priced"]
+        if unpriced:
+            parts.append(f"[yellow]{len(unpriced)} unpriced[/yellow] [dim](Kubernetes without kubernetes.pricing)[/dim]")
+        return " · ".join(parts)
+
+
+class WorkspacesView(View):
+    name = "workspaces"
+    title = "Workspaces"
+    aliases = ("ws", "workspace", "workspaces")
+    columns = (Column("NAME"), Column("ACTIVE"), Column("WRITABLE"), Column("DETAIL"))
+    actions = (Action("enter", "Switch to", "switch_workspace"),)
+    empty_hint = "No workspaces visible."
+
+    def fetch(self, ctx: Ctx) -> list[Any]:
+        return ctx.backend.list_workspaces()
+
+    def cells(self, r: Any, ctx: Ctx, extra: Any) -> list[Any]:
+        return [Text(r.name, style="bold"), mark(r.active), mark(r.writable), r.detail]
+
+
+def gpu_hours_text(cost: Any) -> Text:
+    if cost is None or not cost.gpus:
+        return Text("-", style="dim")
+    return Text(f"{cost.gpu_hours:,.1f}")
+
+
+def hourly_text(cost: Any) -> Text:
+    if cost is None:
+        return Text("-", style="dim")
+    if not cost.priced:
+        return Text("unpriced", style="dim yellow")
+    return Text(f"{cost.hourly:,.2f}")
+
+
+def total_text(cost: Any) -> Text:
+    if not cost.priced:
+        return Text("unpriced", style="dim yellow")
+    style = "bold red" if cost.total >= 100 else ("yellow" if cost.total >= 10 else "")
+    return Text(f"{cost.total:,.2f}", style=style)
+
+
+TOP_VIEWS: list[type[View]] = [
+    ClustersView, ManagedJobsView, ServicesView, PoolsView, VolumesView, StorageView, CostView, SpecsView,
+    RequestsView, InfraView, WorkspacesView,
+]
 
 
 def view_for_command(command: str) -> type[View] | None:

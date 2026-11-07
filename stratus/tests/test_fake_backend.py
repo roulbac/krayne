@@ -75,3 +75,43 @@ def test_stop_event_interrupts_streams():
     stop.set()
     t.join(2)
     assert not t.is_alive()
+
+
+def test_scope_toggle_hides_other_users():
+    b = FakeBackend()
+    mine = {c.name for c in b.list_clusters()}
+    b.all_users = True
+    everyone = {c.name for c in b.list_clusters()}
+    assert "alice-train" in everyone - mine
+
+
+def test_costs_mark_kubernetes_unpriced_and_filter_by_window():
+    b = FakeBackend()
+    rows = {r.name: r for r in b.list_costs(days=None)}
+    assert not rows["dev-gpu"].priced and rows["dev-gpu"].total is None
+    assert rows["dev-gpu"].gpu_hours > 0  # usage still counted
+    assert rows["sweep-a100"].priced and rows["sweep-a100"].total > 100
+    assert "sweep-a100" not in {r.name for r in b.list_costs(days=1)}
+
+
+def test_pools_storage_workspaces_preview():
+    b = FakeBackend(speed=50, seed=False)
+    from stratus.specs.models import PoolSpec
+
+    b.pool_apply(PoolSpec(name="p", workers=2))
+    assert b.list_pools()[0].total_workers == 2
+    with pytest.raises(BackendError):
+        b.launch_managed_job(JobSpec(name="j", run="x", pool="nope"))
+    b.launch_managed_job(JobSpec(name="j", run="x", pool="p"))
+    b.pool_down("p")
+    assert wait_for(lambda: b.list_pools() == [])
+    b2 = FakeBackend()
+    b2.delete_storage("ckpt-bucket")
+    assert "ckpt-bucket" not in [s.name for s in b2.list_storage()]
+    b2.set_workspace("research")
+    assert [w.name for w in b2.list_workspaces() if w.active] == ["research"]
+    with pytest.raises(BackendError):
+        b2.set_workspace("nope")
+    lines = []
+    b2.stream_request_logs(b2.preview_launch(ClusterSpec(name="x", resources=Resources(cpus="1"))), lines.append, threading.Event())
+    assert any("CHOSEN" in l for l in lines)

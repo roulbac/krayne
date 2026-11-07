@@ -1,6 +1,7 @@
 from stratus.specs.models import (
     ClusterSpec,
     JobSpec,
+    PoolSpec,
     Resources,
     ServiceSpec,
     Spec,
@@ -13,6 +14,7 @@ from stratus.specs.store import SpecStore, StoredSpec
 __all__ = [
     "ClusterSpec",
     "JobSpec",
+    "PoolSpec",
     "Resources",
     "ServiceSpec",
     "Spec",

@@ -24,6 +24,10 @@ from stratus.backend.base import (
     BackendError,
     ClusterJobRow,
     ClusterRow,
+    CostRow,
+    PoolRow,
+    StorageRow,
+    WorkspaceRow,
     InfraRow,
     LogSink,
     ManagedJobRow,
@@ -35,7 +39,7 @@ from stratus.backend.base import (
     VolumeRow,
 )
 from stratus.settings import ENDPOINT_ENV
-from stratus.specs.models import ClusterSpec, JobSpec, ServiceSpec, VolumeSpec
+from stratus.specs.models import ClusterSpec, JobSpec, PoolSpec, ServiceSpec, Spec, VolumeSpec
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 # Requests SkyPilot runs for itself; hidden from the Requests view.
@@ -102,12 +106,15 @@ class _SinkStream(io.TextIOBase):
 
 
 class SkyPilotBackend:
-    def __init__(self, endpoint: str) -> None:
+    def __init__(self, endpoint: str, all_users: bool = False, workspace: str | None = None) -> None:
         self.endpoint = endpoint.rstrip("/")
         os.environ[ENDPOINT_ENV] = self.endpoint
+        self.all_users = all_users
         self._sky: Any = None
         self._health: tuple[float, ServerInfo] | None = None
         self._lock = threading.Lock()
+        if workspace:
+            _write_workspace_overlay(workspace)
 
     # ── plumbing ─────────────────────────────────────────────
 
@@ -180,7 +187,7 @@ class SkyPilotBackend:
     def list_clusters(self, refresh: bool = False) -> list[ClusterRow]:
         sky = self.sky
         mode = sky.StatusRefreshMode.FORCE if refresh else sky.StatusRefreshMode.NONE
-        records = self._get(sky.status, refresh=mode, all_users=True)
+        records = self._get(sky.status, refresh=mode, all_users=self.all_users)
         rows = []
         for r in records or []:
             rows.append(
@@ -208,7 +215,7 @@ class SkyPilotBackend:
         return rows
 
     def list_cluster_jobs(self, cluster: str) -> list[ClusterJobRow]:
-        records = self._get(self.sky.queue, cluster, skip_finished=False, all_users=True)
+        records = self._get(self.sky.queue, cluster, skip_finished=False, all_users=self.all_users)
         return [
             ClusterJobRow(
                 cluster=cluster,
@@ -229,9 +236,9 @@ class SkyPilotBackend:
 
         queue = getattr(sky.jobs, "queue_v2", None)
         if queue is not None:
-            result = self._get(queue, refresh=False, skip_finished=False, all_users=True, fields=None)
+            result = self._get(queue, refresh=False, skip_finished=False, all_users=self.all_users, fields=None)
         else:  # older SkyPilot
-            result = self._get(sky.jobs.queue, refresh=False, skip_finished=False, all_users=True)
+            result = self._get(sky.jobs.queue, refresh=False, skip_finished=False, all_users=self.all_users)
         records = result[0] if isinstance(result, tuple) else result
         rows = []
         for r in records or []:
@@ -258,21 +265,7 @@ class SkyPilotBackend:
         records = self._get(sky.serve.status, None)
         rows = []
         for r in records or []:
-            replicas = []
-            for info in r.get("replica_info") or []:
-                handle = info.get("handle")
-                replicas.append(
-                    ReplicaRow(
-                        service=r["name"],
-                        replica_id=int(info.get("replica_id", 0)),
-                        status=_enum(info.get("status")),
-                        version=info.get("version"),
-                        infra=info.get("infra") or _handle_infra(handle),
-                        resources=info.get("resources_str") or _handle_resources(handle),
-                        endpoint=info.get("endpoint"),
-                        launched_at=info.get("launched_at"),
-                    )
-                )
+            replicas = _replicas(r)
             ready = sum(1 for rep in replicas if rep.status == "READY")
             versions = ",".join(str(v) for v in r.get("active_versions") or []) or "-"
             rows.append(
@@ -289,6 +282,120 @@ class SkyPilotBackend:
                 )
             )
         return rows
+
+    def list_pools(self) -> list[PoolRow]:
+        import sky.jobs  # noqa: PLC0415
+
+        records = self._get(sky.jobs.pool_status, None)
+        rows = []
+        for r in records or []:
+            workers = _replicas(r)
+            rows.append(
+                PoolRow(
+                    name=r["name"],
+                    status=_enum(r.get("status")),
+                    ready_workers=sum(1 for w in workers if w.status == "READY"),
+                    total_workers=len(workers),
+                    resources=r.get("requested_resources_str") or "-",
+                    workers=tuple(workers),
+                    yaml=r.get("yaml_content"),
+                )
+            )
+        return rows
+
+    def list_costs(self, days: int | None = 30) -> list[CostRow]:
+        from sky.client import sdk  # noqa: PLC0415
+
+        records = self._get(sdk.cost_report, days=days)
+        rows = []
+        for r in records or []:
+            user = r.get("user_name") or "-"
+            nodes = int(r.get("num_nodes") or 1)
+            res = r.get("resources")
+            cloud = str(r.get("cloud") or getattr(res, "cloud", "") or "-")
+            region = r.get("region")
+            accel = r.get("accelerators") or getattr(res, "accelerators", None) or {}
+            gpus = float(sum(accel.values())) * nodes if isinstance(accel, dict) else 0.0
+            duration = float(r.get("duration") or 0)
+            try:
+                hourly: float | None = float(res.get_cost(3600)) * nodes if res is not None else None
+            except Exception:  # noqa: BLE001
+                hourly = None
+            total: float | None = float(r.get("total_cost") or 0.0)
+            # Kubernetes is $0 unless the server configures `kubernetes.pricing`;
+            # report that as unpriced rather than free.
+            if cloud.lower().startswith("kubernetes") and not hourly:
+                hourly, total = None, None
+            rows.append(
+                CostRow(
+                    name=r.get("name") or "-",
+                    status=_enum(r.get("status")) if r.get("status") else "TERMINATED",
+                    infra=f"{cloud} ({region})" if region else cloud,
+                    resources=r.get("resources_str") or "-",
+                    num_nodes=nodes,
+                    gpus=gpus,
+                    launched_at=r.get("launched_at"),
+                    duration=duration,
+                    hourly=hourly,
+                    total=total,
+                    user=user,
+                    workspace=r.get("workspace") or "default",
+                )
+            )
+        rows.sort(key=lambda c: -(c.launched_at or 0))
+        return rows
+
+    def list_storage(self) -> list[StorageRow]:
+        from sky.client import sdk  # noqa: PLC0415
+
+        records = self._get(sdk.storage_ls)
+        rows = []
+        for r in records or []:
+            stores = _g(r, "store", []) or []
+            rows.append(
+                StorageRow(
+                    name=_g(r, "name"),
+                    stores=", ".join(_enum(x) for x in stores) or "-",
+                    status=_enum(_g(r, "status")),
+                    launched_at=_g(r, "launched_at"),
+                    last_use=_g(r, "last_use") or "-",
+                )
+            )
+        return rows
+
+    def list_workspaces(self) -> list[WorkspaceRow]:
+        from sky import skypilot_config  # noqa: PLC0415
+        from sky.client import sdk  # noqa: PLC0415
+
+        workspaces = self._get(sdk.workspaces) or {}
+        active = skypilot_config.get_active_workspace()
+        rows = []
+        for name, cfg in workspaces.items():
+            cfg = cfg if isinstance(cfg, dict) else {}
+            bits = []
+            if cfg.get("private"):
+                bits.append("private")
+            if cfg.get("read_only"):
+                bits.append("read-only")
+            clouds = [k for k in cfg if k not in ("private", "allowed_users", "writable", "read_only")]
+            if clouds:
+                bits.append("clouds: " + ", ".join(clouds))
+            rows.append(WorkspaceRow(name=name, active=name == active, writable=bool(cfg.get("writable", True)), detail="; ".join(bits)))
+        return rows
+
+    def set_workspace(self, name: str) -> None:
+        """Make ``name`` the active workspace for this stratus session.
+
+        Uses a SkyPilot *project* config overlay (``active_workspace``), so
+        the user's ~/.sky/config.yaml is never modified.
+        """
+        _write_workspace_overlay(name)
+        try:
+            from sky.client import sdk  # noqa: PLC0415
+
+            sdk.reload_config()
+        except Exception as exc:  # noqa: BLE001
+            raise BackendError(f"could not switch workspace: {_clean(str(exc))}") from exc
 
     def list_volumes(self) -> list[VolumeRow]:
         import sky.volumes  # noqa: PLC0415
@@ -397,7 +504,19 @@ class SkyPilotBackend:
         import sky.jobs  # noqa: PLC0415
 
         task = self._task(spec.to_yaml_dict())
+        if spec.pool:
+            return self._call(sky.jobs.launch, task, name=spec.name, pool=spec.pool)
         return self._call(sky.jobs.launch, task, name=spec.name)
+
+    def preview_launch(self, spec: Spec) -> str:
+        if isinstance(spec, VolumeSpec):
+            raise BackendError("volumes have no launch preview")
+        data = spec.to_yaml_dict()
+        # The optimizer only needs the task's resources; drop serve/pool sections.
+        data.pop("service", None)
+        data.pop("pool", None)
+        task = self._task(data)
+        return self._call(self.sky.launch, task, dryrun=True)
 
     def cancel_managed_job(self, job_id: int) -> str:
         import sky.jobs  # noqa: PLC0415
@@ -429,6 +548,23 @@ class SkyPilotBackend:
         return self._call(sky.serve.terminate_replica, service, replica_id, False)
 
     # ── volumes ──────────────────────────────────────────────
+
+    def pool_apply(self, spec: PoolSpec) -> str:
+        import sky.jobs  # noqa: PLC0415
+        import sky.serve  # noqa: PLC0415
+
+        task = self._task(spec.to_yaml_dict())
+        return self._call(sky.jobs.pool_apply, task, spec.name, mode=sky.serve.UpdateMode.ROLLING)
+
+    def pool_down(self, name: str) -> str:
+        import sky.jobs  # noqa: PLC0415
+
+        return self._call(sky.jobs.pool_down, name)
+
+    def delete_storage(self, name: str) -> str:
+        from sky.client import sdk  # noqa: PLC0415
+
+        return self._call(sdk.storage_delete, name)
 
     def apply_volume(self, spec: VolumeSpec) -> str:
         import sky.volumes  # noqa: PLC0415
@@ -476,6 +612,11 @@ class SkyPilotBackend:
 
         # Following a finished job only prints "already in terminal state".
         self._stream(sink, stop, sky.jobs.tail_logs, job_id=job_id, follow=follow, controller=controller)
+
+    def stream_pool_logs(self, pool: str, target: str, worker_id: int | None, sink: LogSink, stop: threading.Event) -> None:
+        import sky.jobs  # noqa: PLC0415
+
+        self._stream(sink, stop, sky.jobs.pool_tail_logs, pool, target=target, worker_id=worker_id, follow=True)
 
     def stream_service_logs(self, service: str, target: str, replica_id: int | None, sink: LogSink, stop: threading.Event) -> None:
         import sky.serve  # noqa: PLC0415
@@ -535,3 +676,57 @@ def _volume_size(size: Any) -> str:
 def _volume_infra(record: Any) -> str:
     parts = [str(_g(record, k)) for k in ("cloud", "region", "zone") if _g(record, k)]
     return "/".join(parts) or "-"
+
+
+def _replicas(record: dict) -> list[ReplicaRow]:
+    """Replica (service) or worker (pool) rows from a serve/pool status record."""
+    out = []
+    for info in record.get("replica_info") or []:
+        handle = info.get("handle")
+        out.append(
+            ReplicaRow(
+                service=record["name"],
+                replica_id=int(info.get("replica_id", 0)),
+                status=_enum(info.get("status")),
+                version=info.get("version"),
+                infra=info.get("infra") or _handle_infra(handle),
+                resources=info.get("resources_str") or _handle_resources(handle),
+                endpoint=info.get("endpoint"),
+                launched_at=info.get("launched_at"),
+            )
+        )
+    return out
+
+
+def workspace_overlay_path():
+    from stratus.settings import stratus_home  # noqa: PLC0415
+
+    return stratus_home() / "skypilot-workspace.yaml"
+
+
+def _write_workspace_overlay(workspace: str) -> None:
+    """Point SkyPilot's project-config layer at a file setting active_workspace.
+
+    If the user already has a project config (env var or ./.sky.yaml), its
+    content is carried over so nothing they configured is lost.
+    """
+    import yaml  # noqa: PLC0415
+
+    from pathlib import Path  # noqa: PLC0415
+
+    target = workspace_overlay_path()
+    base: dict = {}
+    existing = os.environ.get("SKYPILOT_PROJECT_CONFIG")
+    candidates = [Path(existing)] if existing and Path(existing) != target else [Path.cwd() / ".sky.yaml"]
+    for path in candidates:
+        if path.is_file():
+            try:
+                loaded = yaml.safe_load(path.read_text()) or {}
+                if isinstance(loaded, dict):
+                    base = loaded
+            except yaml.YAMLError:
+                pass
+    base["active_workspace"] = workspace
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# Written by stratus to select the SkyPilot workspace.\n" + yaml.safe_dump(base, sort_keys=False))
+    os.environ["SKYPILOT_PROJECT_CONFIG"] = str(target)

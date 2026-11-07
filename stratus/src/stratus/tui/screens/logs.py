@@ -18,6 +18,7 @@ StreamFn = Callable[[LogSink, threading.Event], None]
 
 
 class LogScreen(Screen):
+    LABEL = "Logs"
     BINDINGS = [
         Binding("escape", "close", "Back"),
         Binding("q", "close", "Back", show=False),
@@ -89,7 +90,7 @@ class LogScreen(Screen):
         if self._done:
             flags.append("[dim]ended[/dim]")
         sub = f"  [dim]{self._subtitle}[/dim]" if self._subtitle else ""
-        self.query_one("#log-title", Static).update(f"[b #f59e0b] Logs[/] [b]{self._title}[/b]{sub}   " + " · ".join(flags))
+        self.query_one("#log-title", Static).update(f"[b #f59e0b] {self.LABEL}[/] [b]{self._title}[/b]{sub}   " + " · ".join(flags))
 
     def action_close(self) -> None:
         self._stop.set()

@@ -179,3 +179,30 @@ def test_specs_load_into_skypilot_task():
     import sky.volumes
 
     sky.volumes.Volume.from_yaml_config(VolumeSpec(name="v", size="1Gi").to_yaml_dict())
+
+
+def test_pool_spec_roundtrip_and_sky_accepts_it():
+    from stratus.specs.models import PoolSpec
+
+    pool = PoolSpec(name="eval-pool", resources=Resources(infra="k8s", cpus="2"), setup="pip install vllm", workers=3)
+    data = yaml.safe_load(pool.to_yaml())
+    assert list(data)[:2] == ["name", "pool"] and data["pool"] == {"workers": 3}
+    assert "run" not in data
+    assert roundtrip(pool) == pool
+    with pytest.raises(ValidationError, match="run"):
+        PoolSpec(name="p", run="echo")
+    sky = pytest.importorskip("sky")
+    task = sky.Task.from_yaml_config(pool.to_yaml_dict())
+    assert task.service is not None
+
+
+def test_job_pool_lives_in_header_comment():
+    from stratus.specs.models import read_meta, write_meta
+
+    job = JobSpec(name="j", run="echo hi", pool="eval-pool")
+    assert "pool" not in yaml.safe_load(job.to_yaml())  # YAML stays plain SkyPilot
+    text = write_meta(job) + job.to_yaml()
+    assert read_meta(text) == {"pool": "eval-pool"}
+    assert spec_from_yaml(SpecKind.JOB, "j", text).pool == "eval-pool"
+    with pytest.raises(ValidationError):
+        JobSpec(name="j", run="x", pool="Bad Pool")

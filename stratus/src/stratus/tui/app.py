@@ -38,6 +38,8 @@ class StratusApp(App):
         # Cached for form suggestions; refreshed in the background.
         self.infra_cache: list[str] = []
         self.volume_cache: list[str] = []
+        self.pool_cache: list[str] = []
+        self.workspace: str | None = None
 
     def on_mount(self) -> None:
         from stratus.tui.screens.main import MainScreen
@@ -57,8 +59,35 @@ class StratusApp(App):
                 return
             self.infra_cache = sorted(set(i for i in infra if i))
             self.volume_cache = vols
+            for fetch, attr in ((self.backend.list_pools, "pool_cache"),):
+                try:
+                    setattr(self, attr, [p.name for p in fetch()])
+                except Exception:  # noqa: BLE001
+                    pass
+            try:
+                active = next((w.name for w in self.backend.list_workspaces() if w.active), None)
+            except Exception:  # noqa: BLE001
+                active = None
+            if active:
+                self.workspace = active
+                self.call_from_thread(self._show_workspace, active)
 
         threading.Thread(target=work, name="warm-caches", daemon=True).start()
+
+    def _show_workspace(self, name: str) -> None:
+        from stratus.tui.widgets.header import Header
+
+        for screen in self.screen_stack:
+            for header in screen.query(Header):
+                header.set_scope(workspace=name)
+
+    def save_workspace(self, name: str) -> None:
+        """Remember the workspace for the next stratus session."""
+        from stratus.settings import load_settings, save_settings
+
+        settings = load_settings()
+        settings.workspace = name
+        save_settings(settings)
 
 
 def _infra_hint(name: str) -> str:
