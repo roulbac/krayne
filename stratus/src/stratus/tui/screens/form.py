@@ -27,7 +27,6 @@ class FormResult:
     spec: Spec
     launch: bool
     raw: bool = False  # user asked to continue in the raw YAML editor
-    preview: bool = False  # user asked for a cost/placement preview first
 
 
 class FormScreen(Screen[FormResult | None]):
@@ -35,7 +34,6 @@ class FormScreen(Screen[FormResult | None]):
         Binding("ctrl+s", "submit(True)", "Save & launch", priority=True),
         Binding("ctrl+o", "submit(False)", "Save only", priority=True),
         Binding("ctrl+e", "raw", "Edit as YAML", priority=True),
-        Binding("ctrl+p", "preview", "Preview cost", priority=True),
         Binding("escape", "cancel", "Cancel", priority=True),
     ]
 
@@ -88,8 +86,6 @@ class FormScreen(Screen[FormResult | None]):
                     yield Static("", id="preview")
         with Horizontal(id="form-buttons"):
             yield Button(f"{self.launch_label} (ctrl+s)", id="launch", variant="primary")
-            if self.kind is not SpecKind.VOLUME:
-                yield Button("Preview cost (ctrl+p)", id="preview-cost")
             yield Button("Save only (ctrl+o)", id="save")
             yield Button("Edit as YAML (ctrl+e)", id="raw")
             yield Button("Cancel (esc)", id="cancel")
@@ -201,15 +197,6 @@ class FormScreen(Screen[FormResult | None]):
             return
         self.dismiss(FormResult(spec, launch=launch))
 
-    def action_preview(self) -> None:
-        if self.kind is SpecKind.VOLUME:
-            return
-        spec = self._refresh_preview(show_errors=True)
-        if spec is None:
-            self.notify("Fix the highlighted fields first", severity="error")
-            return
-        self.dismiss(FormResult(spec, launch=False, preview=True))
-
     def action_raw(self) -> None:
         spec = self._refresh_preview(show_errors=True)
         if spec is None:
@@ -228,7 +215,5 @@ class FormScreen(Screen[FormResult | None]):
             self.action_submit(False)
         elif bid == "raw":
             self.action_raw()
-        elif bid == "preview-cost":
-            self.action_preview()
         else:
             self.action_cancel()

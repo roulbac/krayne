@@ -34,12 +34,14 @@ and removes the bookkeeping:
   `instance_type`, `config:`) are preserved across form edits. The files work with the plain CLI too:
   `sky launch -c dev ~/.stratus/specs/clusters/dev.yaml`.
 - **Everything in one place, live.** Clusters, cluster job queues, managed jobs, services and their replicas, job
-  pools and their workers, volumes, storage buckets, usage & cost, in-flight API requests, enabled infra and
+  pools and their workers, volumes, storage buckets, GPU usage, in-flight API requests, enabled infra and
   workspaces — auto-refreshing, filterable, sortable.
-- **Usage you can see before it bills you.** GPU-hours and $/hr next to every cluster, a `:cost` view with history
-  and totals (1d/7d/30d/all), and `ctrl-p` in any form to dry-run SkyPilot's optimizer and see where it would land
-  and what it would cost before anything is provisioned. Kubernetes has no price unless your API server sets
-  [`kubernetes.pricing`](https://docs.skypilot.co), so it shows as *unpriced* — GPU-hours still count.
+- **GPU-hours and idle time, not dollars.** Every cluster shows its GPU count, GPU-hours so far and how long it has
+  been idle (busy while jobs run; otherwise idle since its last job ended, the same notion SkyPilot's autostop uses).
+  GPU clusters idle for an hour or more are flagged red, and the title bar counts GPUs up vs. GPUs sitting idle.
+  `:usage` lists GPU-hours per cluster — including torn-down ones — over 1d/7d/30d/all. No prices are shown:
+  Kubernetes has none unless an admin configures them. (Interactive SSH sessions aren't visible to stratus, so a
+  cluster someone is using only over SSH reads as idle.)
 - **Mine vs. everyone, and workspaces.** `U` toggles between your resources and every user's (default: yours, so
   `ctrl-d` isn't one key from a teammate's cluster). `:ws` lists workspaces; `enter` switches the one new launches go
   to (via a SkyPilot project-config overlay — your `~/.sky/config.yaml` is never edited).
@@ -107,8 +109,8 @@ downloads) and every SkyPilot pod (pip/uv/curl during runtime setup).
 
 | Global | |
 |---|---|
-| `:` | command mode: `:clusters` `:jobs` `:services` `:pools` `:volumes` `:storage` `:cost` `:specs` `:requests` `:infra` `:ws` `:q` (aliases: `cl`, `mj`, `svc`, `pl`, `vol`, `st`, `usage`, `sp`, `req`, …) |
-| `1`–`9`, `0` | jump to a view: clusters, jobs, services, pools, volumes, storage, cost, specs, requests, infra |
+| `:` | command mode: `:clusters` `:jobs` `:services` `:pools` `:volumes` `:storage` `:usage` `:specs` `:requests` `:infra` `:ws` `:q` (aliases: `cl`, `mj`, `svc`, `pl`, `vol`, `st`, `gpu`, `sp`, `req`, …) |
+| `1`–`9`, `0` | jump to a view: clusters, jobs, services, pools, volumes, storage, usage, specs, requests, infra |
 | `U` | scope: only my resources ⇄ every user's |
 | `/` | filter rows, `esc` clears |
 | `<` `>` | sort by previous/next column (again to reverse) |
@@ -137,10 +139,9 @@ downloads) and every SkyPilot pod (pip/uv/curl during runtime setup).
 | `D` | duplicate | | |
 | `ctrl-d` | delete the file | **Forms** | |
 | `o` | show (and copy) the path | `ctrl-s` | save spec + launch/apply |
-| | | `ctrl-p` | preview placement & cost (dry run) |
 | | | `ctrl-o` / `ctrl-e` | save only / continue as YAML |
 
-| Pools (`4`) | | Cost (`7`) | |
+| Pools (`4`) | | GPU usage (`7`) | |
 |---|---|---|---|
 | `c` | create (form) | `t` | cycle window: 1d / 7d / 30d / all |
 | `enter` | workers (`l` worker logs) | `d` | describe |

@@ -3,7 +3,7 @@ from stratus.backend.base import (
     BackendError,
     ClusterJobRow,
     ClusterRow,
-    CostRow,
+    ClusterActivity,
     InfraRow,
     ManagedJobRow,
     PoolRow,
@@ -13,6 +13,7 @@ from stratus.backend.base import (
     ServerUnavailableError,
     ServiceRow,
     StorageRow,
+    UsageRow,
     VolumeRow,
     WorkspaceRow,
 )
@@ -22,7 +23,7 @@ __all__ = [
     "BackendError",
     "ClusterJobRow",
     "ClusterRow",
-    "CostRow",
+    "ClusterActivity",
     "InfraRow",
     "ManagedJobRow",
     "PoolRow",
@@ -32,6 +33,7 @@ __all__ = [
     "ServerUnavailableError",
     "ServiceRow",
     "StorageRow",
+    "UsageRow",
     "VolumeRow",
     "WorkspaceRow",
 ]

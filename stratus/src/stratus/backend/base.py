@@ -14,7 +14,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
-from stratus.specs.models import ClusterSpec, JobSpec, PoolSpec, ServiceSpec, Spec, VolumeSpec
+from stratus.specs.models import ClusterSpec, JobSpec, PoolSpec, ServiceSpec, VolumeSpec
 
 LogSink = Callable[[str], None]
 
@@ -132,19 +132,17 @@ class RequestRow:
 
 
 @dataclass(frozen=True)
-class CostRow:
-    """Usage and cost of one cluster (live or terminated) over a time window."""
+class UsageRow:
+    """GPU usage of one cluster (live or terminated) within a time window."""
 
     name: str
     status: str  # live status, or "TERMINATED"
     infra: str
     resources: str
     num_nodes: int
-    gpus: float  # total accelerators across nodes
+    gpus: float  # accelerators across all nodes
     launched_at: float | None
     duration: float  # seconds the cluster was up within the window
-    hourly: float | None  # $/hr for the whole cluster; None = unpriced
-    total: float | None  # $ within the window; None = unpriced
     user: str = "-"
     workspace: str = "default"
 
@@ -152,9 +150,33 @@ class CostRow:
     def gpu_hours(self) -> float:
         return self.gpus * self.duration / 3600.0
 
-    @property
-    def priced(self) -> bool:
-        return self.hourly is not None
+
+# Cluster-job statuses that mean the cluster is doing work.
+ACTIVE_JOB_STATUSES = frozenset({"INIT", "PENDING", "SETTING_UP", "RUNNING", "STARTING"})
+
+
+@dataclass(frozen=True)
+class ClusterActivity:
+    """Whether an UP cluster is working, and if not, since when it's idle.
+
+    Mirrors SkyPilot's autostop notion of idleness: a cluster is busy while
+    any job is pending/running; otherwise it has been idle since its last
+    job ended (or since it was launched, if it never ran one). Interactive
+    SSH sessions are not visible to stratus and don't count.
+    """
+
+    busy: bool
+    running_jobs: int
+    idle_since: float | None
+
+
+def activity_from_jobs(launched_at: float | None, jobs: list["ClusterJobRow"]) -> ClusterActivity:
+    running = [j for j in jobs if j.status.upper() in ACTIVE_JOB_STATUSES]
+    if running:
+        return ClusterActivity(True, len(running), None)
+    ends = [j.end_at for j in jobs if j.end_at]
+    candidates = [t for t in (*ends, launched_at) if t]
+    return ClusterActivity(False, 0, max(candidates) if candidates else None)
 
 
 @dataclass(frozen=True)
@@ -207,7 +229,8 @@ class Backend(Protocol):
     def list_clusters(self, refresh: bool = False) -> list[ClusterRow]: ...
     def list_cluster_jobs(self, cluster: str) -> list[ClusterJobRow]: ...
     def list_managed_jobs(self) -> list[ManagedJobRow]: ...
-    def list_costs(self, days: int | None = 30) -> list[CostRow]: ...
+    def list_usage(self, days: int | None = 30) -> list[UsageRow]: ...
+    def cluster_activity(self, clusters: list[ClusterRow]) -> dict[str, ClusterActivity]: ...
     def list_pools(self) -> list[PoolRow]: ...
     def list_storage(self) -> list[StorageRow]: ...
     def list_workspaces(self) -> list[WorkspaceRow]: ...
@@ -225,10 +248,6 @@ class Backend(Protocol):
     def set_autostop(self, cluster: str, minutes: int, down: bool) -> str: ...
     def cancel_cluster_job(self, cluster: str, job_id: int) -> str: ...
     def ssh_argv(self, cluster: str) -> list[str]: ...
-
-    # cost preview: a dry-run launch whose request log shows SkyPilot's
-    # optimizer table (candidates, $/hr, chosen) without provisioning
-    def preview_launch(self, spec: Spec) -> str: ...
 
     # workspaces
     def set_workspace(self, name: str) -> None: ...

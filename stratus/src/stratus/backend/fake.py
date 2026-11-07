@@ -16,7 +16,9 @@ from typing import Any
 
 from stratus.backend.base import (
     BackendError,
-    CostRow,
+    ClusterActivity,
+    UsageRow,
+    activity_from_jobs,
     PoolRow,
     StorageRow,
     WorkspaceRow,
@@ -31,11 +33,7 @@ from stratus.backend.base import (
     ServiceRow,
     VolumeRow,
 )
-from stratus.specs.models import ClusterSpec, JobSpec, PoolSpec, ServiceSpec, Spec, VolumeSpec
-
-# Demo price list ($/hr per node). Kubernetes is deliberately absent:
-# without `kubernetes.pricing` on the server, SkyPilot can't price it.
-_PRICES = {"AWS": 0.096, "GCP": 3.67}
+from stratus.specs.models import ClusterSpec, JobSpec, PoolSpec, ServiceSpec, VolumeSpec
 
 INFRA = ["k8s", "aws", "gcp"]
 
@@ -90,7 +88,7 @@ class FakeBackend:
         self._volumes: dict[str, VolumeRow] = {}
         self._pools: dict[str, dict[str, Any]] = {}
         self._storage: dict[str, StorageRow] = {}
-        self._history: list[CostRow] = []
+        self._history: list[UsageRow] = []
         self._workspaces = {"default": "", "research": "clouds: aws, gcp"}
         self._workspace = "default"
         self.all_users = False
@@ -125,7 +123,10 @@ class FakeBackend:
                 for i, job in enumerate(c.jobs):
                     if job.status == "PENDING" and now - (job.submitted_at or now) > self._t(1):
                         c.jobs[i] = replace(job, status="RUNNING", start_at=now)
-                    elif job.status == "RUNNING" and job.start_at and now - job.start_at > self._t(8):
+                    # Jobs submitted through the demo finish quickly; the seeded
+                    # long-running job keeps going so the cluster stays busy.
+                    elif job.status == "RUNNING" and job.start_at and now - job.start_at > self._t(8) \
+                            and now - (job.submitted_at or now) < 600:
                         c.jobs[i] = replace(job, status="SUCCEEDED", end_at=now)
             for j in self._mjobs.values():
                 age = now - j["submitted_at"]
@@ -190,15 +191,23 @@ class FakeBackend:
             ],
         }
         self._clusters["dev-gpu"].gpus = 1
+        self._clusters["idle-h100"] = _Cluster(
+            "idle-h100", "resources:\n  infra: k8s\n  accelerators: H100:8\n", "Kubernetes/default",
+            "1x Kubernetes(32CPU--256GB--H100:8)", now - 6 * 3600, status="UP", gpus=8,
+            jobs=[ClusterJobRow("idle-h100", 1, "eval-sweep", "SUCCEEDED", now - 6 * 3600, now - 6 * 3600 + 60,
+                                now - 5 * 3600, "1x[H100:8]", self.user)],
+        )
         self._clusters["alice-train"] = _Cluster(
-            "alice-train", "resources:\n  infra: gcp\n  accelerators: A100:1\n", "GCP (us-central1)", "1x GCP(a2-highgpu-1g)",
-            now - 7 * 3600, status="UP", owner="alice", gpus=1,
+            "alice-train", "resources:\n  infra: k8s\n  accelerators: A100:1\n", "Kubernetes/default",
+            "1x Kubernetes(8CPU--64GB--A100:1)", now - 7 * 3600, status="UP", owner="alice", gpus=1,
+            jobs=[ClusterJobRow("alice-train", 1, "train", "SUCCEEDED", now - 7 * 3600, now - 7 * 3600, now - 3 * 3600,
+                                "1x[A100:1]", "alice")],
         )
         self._history = [
-            CostRow("sweep-a100", "TERMINATED", "GCP (us-central1)", "2x GCP(a2-highgpu-8g)", 2, 16, now - 3 * 86400, 5 * 3600,
-                    2 * 29.39, 5 * 2 * 29.39, self.user),
-            CostRow("k8s-finetune", "TERMINATED", "Kubernetes (default)", "1x Kubernetes(8CPU--64GB--H100:4)", 1, 4, now - 86400,
-                    9 * 3600, None, None, self.user),
+            UsageRow("sweep-a100", "TERMINATED", "Kubernetes (default)", "2x Kubernetes(A100:8)", 2, 16, now - 3 * 86400,
+                     5 * 3600, self.user),
+            UsageRow("k8s-finetune", "TERMINATED", "Kubernetes (default)", "1x Kubernetes(8CPU--64GB--H100:4)", 1, 4,
+                     now - 86400, 9 * 3600, self.user),
         ]
         self._storage["ckpt-bucket"] = StorageRow("ckpt-bucket", "S3", "READY", now - 86400 * 9, "sky launch -c sweep-a100 sweep.yaml")
         self._storage["sky-tmp-3f2a"] = StorageRow("sky-tmp-3f2a", "GCS", "READY", now - 86400 * 40, "sky jobs launch train.yaml")
@@ -238,7 +247,7 @@ class FakeBackend:
                 if self._visible(c)
             ]
 
-    def list_costs(self, days: int | None = 30) -> list[CostRow]:
+    def list_usage(self, days: int | None = 30) -> list[UsageRow]:
         self._check()
         now = self._now()
         rows = []
@@ -246,17 +255,21 @@ class FakeBackend:
             for c in self._clusters.values():
                 if not self._visible(c):
                     continue
-                cloud = c.infra.split()[0].split("/")[0]
-                price = _PRICES.get(cloud)
                 up = (now - c.launched_at) if c.status in ("UP", "INIT") else 0.0
-                hourly = price * c.nodes if price is not None else None
-                rows.append(CostRow(
-                    c.name, c.status, c.infra, c.resources, c.nodes, c.gpus * c.nodes, c.launched_at, up,
-                    hourly, (hourly * up / 3600) if hourly is not None else None, c.owner or self.user,
-                ))
+                rows.append(UsageRow(c.name, c.status, c.infra, c.resources, c.nodes, c.gpus * c.nodes, c.launched_at, up,
+                                     c.owner or self.user))
             cutoff = now - days * 86400 if days else 0
             rows += [h for h in self._history if (h.launched_at or 0) >= cutoff]
-        return sorted(rows, key=lambda r: -(r.launched_at or 0))
+        return rows
+
+    def cluster_activity(self, clusters: list[ClusterRow]) -> dict[str, ClusterActivity]:
+        self._check()
+        with self._lock:
+            return {
+                c.name: activity_from_jobs(c.launched_at, list(self._clusters[c.name].jobs))
+                for c in clusters
+                if c.status == "UP" and c.name in self._clusters
+            }
 
     def list_pools(self) -> list[PoolRow]:
         self._check()
@@ -281,27 +294,6 @@ class FakeBackend:
         if name not in self._workspaces:
             raise BackendError(f"workspace {name!r} does not exist")
         self._workspace = name
-
-    def preview_launch(self, spec: Spec) -> str:
-        self._check()
-        if isinstance(spec, VolumeSpec):
-            raise BackendError("volumes have no launch preview")
-        res = spec.resources
-        n = spec.num_nodes
-        lines = [f"Considered resources ({n} node{'s' if n > 1 else ''}):", "-" * 78,
-                 " INFRA                  INSTANCE          vCPUs   Mem(GB)   GPUS     COST ($)   CHOSEN", "-" * 78]
-        gpu = res.accelerators or "-"
-        cands = [("Kubernetes (default)", "-", 0.0)]
-        if res.infra is None or res.infra.startswith(("aws", "gcp")):
-            cands += [("AWS (us-east-1)", "m6i.large" if gpu == "-" else "g6.xlarge", 0.096 if gpu == "-" else 0.805),
-                      ("GCP (us-central1)", "n2-standard-2" if gpu == "-" else "g2-standard-4", 0.097 if gpu == "-" else 0.71)]
-        if res.infra and res.infra.startswith("k8s"):
-            cands = cands[:1]
-        for i, (infra, inst, price) in enumerate(cands):
-            cost = f"{price * n:.2f}"
-            lines.append(f" {infra:<22} {inst:<17} {res.cpus or '-':<7} {res.memory or '-':<9} {gpu:<8} {cost:<10} {'✔' if i == 0 else ''}")
-        lines += ["-" * 78, "Dryrun finished."]
-        return self._submit("sky.launch (dryrun)", None, 1, lines)
 
     def list_cluster_jobs(self, cluster: str) -> list[ClusterJobRow]:
         self._check()

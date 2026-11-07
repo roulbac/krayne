@@ -85,16 +85,30 @@ def test_scope_toggle_hides_other_users():
     assert "alice-train" in everyone - mine
 
 
-def test_costs_mark_kubernetes_unpriced_and_filter_by_window():
+def test_usage_counts_gpu_hours_and_filters_by_window():
     b = FakeBackend()
-    rows = {r.name: r for r in b.list_costs(days=None)}
-    assert not rows["dev-gpu"].priced and rows["dev-gpu"].total is None
-    assert rows["dev-gpu"].gpu_hours > 0  # usage still counted
-    assert rows["sweep-a100"].priced and rows["sweep-a100"].total > 100
-    assert "sweep-a100" not in {r.name for r in b.list_costs(days=1)}
+    rows = {r.name: r for r in b.list_usage(days=None)}
+    assert rows["idle-h100"].gpus == 8 and rows["idle-h100"].gpu_hours > 40
+    assert rows["sweep-a100"].gpu_hours == 80
+    assert not hasattr(rows["sweep-a100"], "total")  # no $ anywhere
+    assert "sweep-a100" not in {r.name for r in b.list_usage(days=1)}
 
 
-def test_pools_storage_workspaces_preview():
+def test_activity_busy_vs_idle():
+    from stratus.backend.base import activity_from_jobs, ClusterJobRow
+
+    b = FakeBackend()
+    act = b.cluster_activity(b.list_clusters())
+    assert act["dev-gpu"].busy and act["dev-gpu"].running_jobs == 1
+    assert not act["idle-h100"].busy and time.time() - act["idle-h100"].idle_since > 4 * 3600
+    assert "cpu-box" not in act  # stopped clusters have no idle state
+    # never ran a job → idle since launch
+    assert activity_from_jobs(100.0, []).idle_since == 100.0
+    done = ClusterJobRow("c", 1, "x", "SUCCEEDED", 100, 110, 500, "-", "u")
+    assert activity_from_jobs(100.0, [done]).idle_since == 500
+
+
+def test_pools_storage_workspaces():
     b = FakeBackend(speed=50, seed=False)
     from stratus.specs.models import PoolSpec
 
@@ -112,6 +126,3 @@ def test_pools_storage_workspaces_preview():
     assert [w.name for w in b2.list_workspaces() if w.active] == ["research"]
     with pytest.raises(BackendError):
         b2.set_workspace("nope")
-    lines = []
-    b2.stream_request_logs(b2.preview_launch(ClusterSpec(name="x", resources=Resources(cpus="1"))), lines.append, threading.Event())
-    assert any("CHOSEN" in l for l in lines)

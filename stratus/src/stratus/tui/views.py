@@ -74,11 +74,11 @@ class View:
     def search_text(self, row: Any) -> str:
         return " ".join(str(c) for c in self.cells(row, None, None))  # type: ignore[arg-type]
 
-    def fetch_extra(self, ctx: Ctx) -> Any:
-        """Cheap local data fetched alongside rows (e.g. which specs exist)."""
+    def fetch_extra(self, ctx: Ctx, rows: list[Any] | None = None) -> Any:
+        """Data fetched after the rows (e.g. which specs exist), passed to cells()."""
         return None
 
-    def summary(self, rows: list[Any]) -> str:
+    def summary(self, rows: list[Any], extra: Any = None) -> str:
         """Extra markup shown in the title bar (e.g. totals)."""
         return ""
 
@@ -101,7 +101,7 @@ class ClustersView(View):
     spec_kind = SpecKind.CLUSTER
     columns = (
         Column("NAME"), Column("STATUS"), Column("INFRA", narrow=False), Column("RESOURCES"),
-        Column("GPU-HRS", narrow=False), Column("$/HR", narrow=False),
+        Column("GPUS"), Column("GPU-HRS", narrow=False), Column("IDLE"),
         Column("AUTOSTOP", narrow=False), Column("USER", narrow=False), Column("AGE"), Column("SPEC", narrow=False),
     )
     actions = (
@@ -125,29 +125,63 @@ class ClustersView(View):
     def fetch(self, ctx: Ctx) -> list[Any]:
         return sorted(ctx.backend.list_clusters(), key=lambda r: r.name)
 
-    COST_TTL = 30.0  # seconds; cost data changes slowly, don't fetch it every tick
+    # Usage and idle state come from extra API calls (cost ledger, one job
+    # queue per UP cluster), so refresh them less often than the table.
+    USAGE_TTL = 60.0
+    ACTIVITY_TTL = 20.0
 
     def __init__(self) -> None:
-        self._costs: dict[str, Any] = {}
-        self._costs_at = 0.0
+        self._usage: dict[str, Any] = {}
+        self._usage_at = 0.0
+        self._activity: dict[str, Any] = {}
+        self._activity_at = 0.0
+        self._names: set[str] = set()
 
-    def fetch_extra(self, ctx: Ctx) -> Any:
-        if time.monotonic() - self._costs_at > self.COST_TTL:
+    def fetch_extra(self, ctx: Ctx, rows: list[Any] | None = None) -> Any:
+        now = time.monotonic()
+        rows = rows or []
+        names = {r.name for r in rows}
+        new_cluster = bool(names - self._names)
+        self._names = names
+        if new_cluster or now - self._usage_at > self.USAGE_TTL:
             try:
-                self._costs = {c.name: c for c in ctx.backend.list_costs(days=None) if c.status != "TERMINATED"}
-            except Exception:  # noqa: BLE001 - cost columns are best-effort
-                self._costs = {}
-            self._costs_at = time.monotonic()
-        return {"specs": ctx.store.names(SpecKind.CLUSTER), "costs": self._costs}
+                self._usage = {u.name: u for u in ctx.backend.list_usage(days=None) if u.status != "TERMINATED"}
+            except Exception:  # noqa: BLE001 - usage columns are best-effort
+                self._usage = {}
+            self._usage_at = now
+        if new_cluster or now - self._activity_at > self.ACTIVITY_TTL:
+            try:
+                self._activity = ctx.backend.cluster_activity(rows)
+            except Exception:  # noqa: BLE001
+                self._activity = {}
+            self._activity_at = now
+        return {"specs": ctx.store.names(SpecKind.CLUSTER), "usage": self._usage, "activity": self._activity}
 
     def cells(self, r: Any, ctx: Ctx, extra: Any) -> list[Any]:
         extra = extra or {}
-        cost = extra.get("costs", {}).get(r.name)
+        usage = extra.get("usage", {}).get(r.name)
+        gpus = usage.gpus if usage else 0
         return [
             Text(r.name, style="bold"), status_text(r.status), r.infra, r.resources,
-            gpu_hours_text(cost), hourly_text(cost),
+            gpus_text(gpus), gpu_hours_text(usage), idle_text(r.status, extra.get("activity", {}).get(r.name), gpus),
             autostop_text(r.autostop, r.to_down), r.user, age(r.launched_at), mark(r.name in extra.get("specs", ())),
         ]
+
+    def summary(self, rows: list[Any], extra: Any = None) -> str:
+        extra = extra or {}
+        usage, activity = extra.get("usage", {}), extra.get("activity", {})
+        up = [r for r in rows if r.status == "UP"]
+        gpus_up = sum(usage[r.name].gpus for r in up if r.name in usage)
+        idle = sum(
+            usage[r.name].gpus for r in up
+            if r.name in usage and (a := activity.get(r.name)) and idle_seconds(a) >= IDLE_WARN_SECONDS
+        )
+        if not gpus_up:
+            return ""
+        text = f"[b]{gpus_up:g}[/b] GPUs up"
+        if idle:
+            text += f" · [bold red]{idle:g} idle ≥{IDLE_WARN_SECONDS // 3600}h[/bold red]"
+        return text
 
 
 class ClusterJobsView(View):
@@ -248,7 +282,7 @@ class ServicesView(View):
     def fetch(self, ctx: Ctx) -> list[Any]:
         return sorted(ctx.backend.list_services(), key=lambda r: r.name)
 
-    def fetch_extra(self, ctx: Ctx) -> Any:
+    def fetch_extra(self, ctx: Ctx, rows: list[Any] | None = None) -> Any:
         return ctx.store.names(SpecKind.SERVICE)
 
     def cells(self, r: Any, ctx: Ctx, extra: Any) -> list[Any]:
@@ -317,7 +351,7 @@ class VolumesView(View):
     def fetch(self, ctx: Ctx) -> list[Any]:
         return sorted(ctx.backend.list_volumes(), key=lambda r: r.name)
 
-    def fetch_extra(self, ctx: Ctx) -> Any:
+    def fetch_extra(self, ctx: Ctx, rows: list[Any] | None = None) -> Any:
         return ctx.store.names(SpecKind.VOLUME)
 
     def cells(self, r: Any, ctx: Ctx, extra: Any) -> list[Any]:
@@ -434,7 +468,7 @@ class PoolsView(View):
     def fetch(self, ctx: Ctx) -> list[Any]:
         return sorted(ctx.backend.list_pools(), key=lambda r: r.name)
 
-    def fetch_extra(self, ctx: Ctx) -> Any:
+    def fetch_extra(self, ctx: Ctx, rows: list[Any] | None = None) -> Any:
         return ctx.store.names(SpecKind.POOL)
 
     def cells(self, r: Any, ctx: Ctx, extra: Any) -> list[Any]:
@@ -482,17 +516,17 @@ class StorageView(View):
         return [Text(r.name, style="bold"), r.stores, status_text(r.status), age(r.launched_at), r.last_use]
 
 
-COST_WINDOWS: tuple[int | None, ...] = (1, 7, 30, None)
+USAGE_WINDOWS: tuple[int | None, ...] = (1, 7, 30, None)
 
 
-class CostView(View):
-    name = "cost"
-    title = "Usage & cost"
-    aliases = ("cost", "costs", "usage", "$", "spend")
+class UsageView(View):
+    name = "usage"
+    title = "GPU usage"
+    aliases = ("usage", "gpu", "gpus", "gpu-hours", "cost")
     hotkey = "7"
     columns = (
         Column("NAME"), Column("STATUS"), Column("INFRA", narrow=False), Column("RESOURCES", narrow=False),
-        Column("UP"), Column("GPU-HRS"), Column("$/HR"), Column("TOTAL $"), Column("USER", narrow=False),
+        Column("GPUS"), Column("UP"), Column("GPU-HRS"), Column("IDLE"), Column("USER", narrow=False),
     )
     actions = (
         Action("t", "Time window", "window"),
@@ -505,29 +539,41 @@ class CostView(View):
 
     @property
     def crumb(self) -> str:
-        return f"cost@{self.days}d" if self.days else "cost@all"
+        return f"usage@{self.days}d" if self.days else "usage@all"
 
     def fetch(self, ctx: Ctx) -> list[Any]:
-        return ctx.backend.list_costs(days=self.days)
+        rows = ctx.backend.list_usage(days=self.days)
+        return sorted(rows, key=lambda u: (-u.gpu_hours, -(u.launched_at or 0)))
+
+    def fetch_extra(self, ctx: Ctx, rows: list[Any] | None = None) -> Any:
+        live = [r for r in rows or [] if r.status == "UP"]
+        if not live:
+            return {}
+        try:
+            # cluster_activity only needs name/status/launched_at.
+            return ctx.backend.cluster_activity(live)
+        except Exception:  # noqa: BLE001
+            return {}
 
     def key(self, row: Any) -> str:
         return f"{row.name}@{row.launched_at}"
 
     def cells(self, r: Any, ctx: Ctx, extra: Any) -> list[Any]:
         return [
-            Text(r.name, style="bold"), status_text(r.status), r.infra, r.resources, duration(r.duration),
-            gpu_hours_text(r), hourly_text(r), total_text(r), r.user,
+            Text(r.name, style="bold"), status_text(r.status), r.infra, r.resources, gpus_text(r.gpus),
+            SortText(duration(r.duration), sort_value=r.duration), gpu_hours_text(r),
+            idle_text(r.status, (extra or {}).get(r.name), r.gpus), r.user,
         ]
 
-    def summary(self, rows: list[Any]) -> str:
+    def summary(self, rows: list[Any], extra: Any = None) -> str:
         window = f"last {self.days}d" if self.days else "all time"
-        gpu = sum(r.gpu_hours for r in rows)
-        priced = [r for r in rows if r.priced]
-        unpriced = [r for r in rows if not r.priced]
-        spent = sum(r.total or 0 for r in priced)
-        parts = [f"{window}", f"[b]{gpu:,.1f}[/b] GPU-hrs", f"[b]${spent:,.2f}[/b] priced"]
-        if unpriced:
-            parts.append(f"[yellow]{len(unpriced)} unpriced[/yellow] [dim](Kubernetes without kubernetes.pricing)[/dim]")
+        gpu_hours = sum(r.gpu_hours for r in rows)
+        live = [r for r in rows if r.status == "UP"]
+        gpus_up = sum(r.gpus for r in live)
+        idle = sum(r.gpus for r in live if (a := (extra or {}).get(r.name)) and idle_seconds(a) >= IDLE_WARN_SECONDS)
+        parts = [window, f"[b]{gpu_hours:,.1f}[/b] GPU-hrs", f"[b]{gpus_up:g}[/b] GPUs up now"]
+        if idle:
+            parts.append(f"[bold red]{idle:g} idle ≥{IDLE_WARN_SECONDS // 3600}h[/bold red]")
         return " · ".join(parts)
 
 
@@ -546,29 +592,50 @@ class WorkspacesView(View):
         return [Text(r.name, style="bold"), mark(r.active), mark(r.writable), r.detail]
 
 
-def gpu_hours_text(cost: Any) -> Text:
-    if cost is None or not cost.gpus:
-        return Text("-", style="dim")
-    return Text(f"{cost.gpu_hours:,.1f}")
+IDLE_WARN_SECONDS = 3600  # idle GPUs this long are flagged
 
 
-def hourly_text(cost: Any) -> Text:
-    if cost is None:
-        return Text("-", style="dim")
-    if not cost.priced:
-        return Text("unpriced", style="dim yellow")
-    return Text(f"{cost.hourly:,.2f}")
+class SortText(Text):
+    """Text cell that sorts by a numeric value rather than its label."""
+
+    def __init__(self, text: str = "", style: str = "", sort_value: float = 0.0) -> None:
+        super().__init__(text, style=style)
+        self.sort_value = sort_value
 
 
-def total_text(cost: Any) -> Text:
-    if not cost.priced:
-        return Text("unpriced", style="dim yellow")
-    style = "bold red" if cost.total >= 100 else ("yellow" if cost.total >= 10 else "")
-    return Text(f"{cost.total:,.2f}", style=style)
+def idle_seconds(activity: Any) -> float:
+    if activity is None or activity.busy or not activity.idle_since:
+        return 0.0
+    return max(0.0, time.time() - activity.idle_since)
+
+
+def gpus_text(gpus: float) -> Text:
+    return SortText(f"{gpus:g}", style="bold", sort_value=gpus) if gpus else SortText("-", style="dim", sort_value=0)
+
+
+def gpu_hours_text(usage: Any) -> Text:
+    if usage is None or not usage.gpus:
+        return SortText("-", style="dim", sort_value=0)
+    return SortText(f"{usage.gpu_hours:,.1f}", sort_value=usage.gpu_hours)
+
+
+def idle_text(status: str, activity: Any, gpus: float = 0) -> Text:
+    """busy (N jobs) / idle duration; GPU clusters idle ≥1h are flagged red."""
+    if status != "UP" or activity is None:
+        return SortText("-", style="dim", sort_value=-1)
+    if activity.busy:
+        n = activity.running_jobs
+        return SortText(f"busy ({n} job{'s' if n != 1 else ''})", style="green", sort_value=-0.5)
+    secs = idle_seconds(activity)
+    if secs >= IDLE_WARN_SECONDS:
+        style = "bold red" if gpus else "yellow"
+    else:
+        style = "dim"
+    return SortText(duration(secs), style=style, sort_value=secs)
 
 
 TOP_VIEWS: list[type[View]] = [
-    ClustersView, ManagedJobsView, ServicesView, PoolsView, VolumesView, StorageView, CostView, SpecsView,
+    ClustersView, ManagedJobsView, ServicesView, PoolsView, VolumesView, StorageView, UsageView, SpecsView,
     RequestsView, InfraView, WorkspacesView,
 ]
 

@@ -24,7 +24,9 @@ from stratus.backend.base import (
     BackendError,
     ClusterJobRow,
     ClusterRow,
-    CostRow,
+    ClusterActivity,
+    UsageRow,
+    activity_from_jobs,
     PoolRow,
     StorageRow,
     WorkspaceRow,
@@ -39,7 +41,7 @@ from stratus.backend.base import (
     VolumeRow,
 )
 from stratus.settings import ENDPOINT_ENV
-from stratus.specs.models import ClusterSpec, JobSpec, PoolSpec, ServiceSpec, Spec, VolumeSpec
+from stratus.specs.models import ClusterSpec, JobSpec, PoolSpec, ServiceSpec, VolumeSpec
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 # Requests SkyPilot runs for itself; hidden from the Requests view.
@@ -303,31 +305,22 @@ class SkyPilotBackend:
             )
         return rows
 
-    def list_costs(self, days: int | None = 30) -> list[CostRow]:
+    def list_usage(self, days: int | None = 30) -> list[UsageRow]:
         from sky.client import sdk  # noqa: PLC0415
 
+        # cost_report is SkyPilot's usage ledger: per-cluster uptime and
+        # resources, including terminated clusters. We ignore its $ figures.
         records = self._get(sdk.cost_report, days=days)
         rows = []
         for r in records or []:
-            user = r.get("user_name") or "-"
             nodes = int(r.get("num_nodes") or 1)
             res = r.get("resources")
             cloud = str(r.get("cloud") or getattr(res, "cloud", "") or "-")
             region = r.get("region")
             accel = r.get("accelerators") or getattr(res, "accelerators", None) or {}
             gpus = float(sum(accel.values())) * nodes if isinstance(accel, dict) else 0.0
-            duration = float(r.get("duration") or 0)
-            try:
-                hourly: float | None = float(res.get_cost(3600)) * nodes if res is not None else None
-            except Exception:  # noqa: BLE001
-                hourly = None
-            total: float | None = float(r.get("total_cost") or 0.0)
-            # Kubernetes is $0 unless the server configures `kubernetes.pricing`;
-            # report that as unpriced rather than free.
-            if cloud.lower().startswith("kubernetes") and not hourly:
-                hourly, total = None, None
             rows.append(
-                CostRow(
+                UsageRow(
                     name=r.get("name") or "-",
                     status=_enum(r.get("status")) if r.get("status") else "TERMINATED",
                     infra=f"{cloud} ({region})" if region else cloud,
@@ -335,15 +328,29 @@ class SkyPilotBackend:
                     num_nodes=nodes,
                     gpus=gpus,
                     launched_at=r.get("launched_at"),
-                    duration=duration,
-                    hourly=hourly,
-                    total=total,
-                    user=user,
+                    duration=float(r.get("duration") or 0),
+                    user=r.get("user_name") or "-",
                     workspace=r.get("workspace") or "default",
                 )
             )
-        rows.sort(key=lambda c: -(c.launched_at or 0))
         return rows
+
+    def cluster_activity(self, clusters: list[ClusterRow]) -> dict[str, ClusterActivity]:
+        """Busy/idle state of UP clusters, from their job queues (in parallel)."""
+        from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+
+        up = [c for c in clusters if c.status == "UP"]
+        if not up:
+            return {}
+
+        def one(c: ClusterRow) -> tuple[str, ClusterActivity | None]:
+            try:
+                return c.name, activity_from_jobs(c.launched_at, self.list_cluster_jobs(c.name))
+            except BackendError:
+                return c.name, None
+
+        with ThreadPoolExecutor(max_workers=min(8, len(up))) as pool:
+            return {name: act for name, act in pool.map(one, up) if act is not None}
 
     def list_storage(self) -> list[StorageRow]:
         from sky.client import sdk  # noqa: PLC0415
@@ -507,16 +514,6 @@ class SkyPilotBackend:
         if spec.pool:
             return self._call(sky.jobs.launch, task, name=spec.name, pool=spec.pool)
         return self._call(sky.jobs.launch, task, name=spec.name)
-
-    def preview_launch(self, spec: Spec) -> str:
-        if isinstance(spec, VolumeSpec):
-            raise BackendError("volumes have no launch preview")
-        data = spec.to_yaml_dict()
-        # The optimizer only needs the task's resources; drop serve/pool sections.
-        data.pop("service", None)
-        data.pop("pool", None)
-        task = self._task(data)
-        return self._call(self.sky.launch, task, dryrun=True)
 
     def cancel_managed_job(self, job_id: int) -> str:
         import sky.jobs  # noqa: PLC0415

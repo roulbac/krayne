@@ -30,17 +30,16 @@ from stratus.tui.screens.editor import EditorResult, YamlEditorScreen
 from stratus.tui.screens.form import FormResult, FormScreen
 from stratus.tui.screens.help import HelpScreen
 from stratus.tui.screens.logs import LogScreen
-from stratus.tui.screens.preview import PreviewScreen
 from stratus.tui.views import (
     TOP_VIEWS,
     Action,
     ClusterJobsView,
     ClustersView,
-    CostView,
-    COST_WINDOWS,
     PoolsView,
     PoolWorkersView,
     StorageView,
+    USAGE_WINDOWS,
+    UsageView,
     WorkspacesView,
     Ctx,
     ManagedJobsView,
@@ -61,6 +60,8 @@ _NUM = re.compile(r"^-?\d+(\.\d+)?$")
 
 
 def _sort_key(value: Any) -> tuple:
+    if hasattr(value, "sort_value"):
+        return (0, float(value.sort_value), "")
     text = value.plain if isinstance(value, Text) else str(value)
     if _NUM.match(text):
         return (0, float(text), "")
@@ -145,13 +146,13 @@ class MainScreen(Screen):
         ctx = self.ctx
         extra = None
         try:
-            extra = view.fetch_extra(ctx)
             if isinstance(view, SpecsView) or info.healthy:
                 if force and isinstance(view, ClustersView):
                     rows = backend.list_clusters(refresh=True)
                     rows = sorted(rows, key=lambda r: r.name)
                 else:
                     rows = view.fetch(ctx)
+                extra = view.fetch_extra(ctx, rows)
                 return view, rows, extra, info, None
             return view, [], extra, info, f"SkyPilot API server unavailable: {info.error}"
         except BackendError as exc:
@@ -250,7 +251,7 @@ class MainScreen(Screen):
         v = self.view
         scope = f"({v.crumb})" if v.crumb != v.name else "(all)"
         filt = f" [b #f59e0b]</{_escape(self.filter)}>[/]" if self.filter else ""
-        summary = v.summary(self.rows) if self.rows else ""
+        summary = v.summary(self.rows, self.extra) if self.rows else ""
         summary = f"  {summary}" if summary else ""
         self.query_one("#title-bar", Static).update(
             Text.from_markup(f" [b #38bdf8]{v.title}[/]{scope}[[b]{count}[/b]]{filt}{summary} ")
@@ -555,10 +556,6 @@ class MainScreen(Screen):
         spec = result.spec
         store = self.app.store
 
-        if result.preview:
-            self.preview_spec(spec, editing)
-            return
-
         def save_and_go() -> None:
             path = store.save(spec)
             if result.raw:
@@ -578,26 +575,6 @@ class MainScreen(Screen):
             )
         else:
             save_and_go()
-
-    def preview_spec(self, spec: Spec, editing: bool) -> None:
-        """Dry-run the spec, show SkyPilot's placement/cost table, then launch or go back."""
-        backend = self.app.backend
-        verb = {SpecKind.CLUSTER: "Launch", SpecKind.JOB: "Submit", SpecKind.SERVICE: "Deploy", SpecKind.POOL: "Apply"}.get(spec.kind, "Launch")
-
-        def decided(choice: str | None) -> None:
-            if choice == "launch":
-                self._handle_form(FormResult(spec, launch=True), editing)
-            elif choice == "edit":
-                self.open_form(spec.kind, spec, editing=editing)
-
-        def show(request_id: str) -> None:
-            self.app.push_screen(
-                PreviewScreen(f"{spec.kind.title.lower()} {spec.name}",
-                              lambda sink, stop: backend.stream_request_logs(request_id, sink, stop), verb=verb),
-                decided,
-            )
-
-        self.run_backend(f"preview {spec.name}", lambda: backend.preview_launch(spec), show)
 
     def apply_spec(self, spec: Spec) -> None:
         backend = self.app.backend
@@ -868,14 +845,14 @@ class MainScreen(Screen):
             self.confirm(f"Delete bucket {row.name}?", f"Delete storage [b]{row.name}[/b] ({row.stores}) and [b]all objects in it[/b].",
                          lambda: self.submit(f"delete storage {row.name}", lambda: backend.delete_storage(row.name)), label="Delete")
 
-    # ── actions: cost & workspaces ───────────────────────────
+    # ── actions: usage & workspaces ──────────────────────────
 
     def act_window(self, row: Any = None) -> None:
         v = self.view
-        if not isinstance(v, CostView):
+        if not isinstance(v, UsageView):
             return
-        idx = COST_WINDOWS.index(v.days) if v.days in COST_WINDOWS else 0
-        v.days = COST_WINDOWS[(idx + 1) % len(COST_WINDOWS)]
+        idx = USAGE_WINDOWS.index(v.days) if v.days in USAGE_WINDOWS else 0
+        v.days = USAGE_WINDOWS[(idx + 1) % len(USAGE_WINDOWS)]
         self.notify(f"Window: {'last ' + str(v.days) + ' day(s)' if v.days else 'all time'}", timeout=2)
         self._render_crumbs()
         self.refresh_data()

@@ -62,7 +62,7 @@ async def test_initial_clusters_view(backend, store):
     async with app.run_test(size=SIZE) as pilot:
         await settle(pilot)
         assert isinstance(app.screen, MainScreen)
-        assert set(table_names(app)) == {"cpu-box", "dev-gpu"}
+        assert set(table_names(app)) == {"cpu-box", "dev-gpu", "idle-h100"}
 
 
 async def test_create_cluster_via_form_saves_spec_and_launches(backend, store):
@@ -148,7 +148,7 @@ async def test_command_mode_and_filter(backend, store):
         assert table_names(app) == ["dev-gpu"]
         await pilot.press("escape")
         await settle(pilot, 0.2)
-        assert len(table_names(app)) == 2
+        assert len(table_names(app)) == 3
         await pilot.press("colon")
         await type_text(pilot, "nonsense")
         await pilot.press("enter")
@@ -385,14 +385,15 @@ async def test_narrow_terminal_hides_columns(backend, store):
         assert "INFRA" not in labels and "NAME" in labels
 
 
-async def test_cost_view_summary_and_window(backend, store):
-    app = make_app(backend, store, view="cost")
+async def test_usage_view_summary_and_window(backend, store):
+    app = make_app(backend, store, view="usage")
     async with app.run_test(size=SIZE) as pilot:
         await settle(pilot)
         names = table_names(app)
-        assert "sweep-a100" in names and "dev-gpu" in names
+        assert names[0] == "sweep-a100"  # sorted by GPU-hours
         title = str(app.screen.query_one("#title-bar").render())
-        assert "GPU-hrs" in title and "unpriced" in title
+        assert "GPU-hrs" in title and "GPUs up now" in title and "idle ≥1h" in title
+        assert "$" not in title
         await pilot.press("t")  # 30d → all time
         await pilot.press("t")  # all → 1d
         await settle(pilot)
@@ -400,47 +401,29 @@ async def test_cost_view_summary_and_window(backend, store):
         assert "sweep-a100" not in table_names(app)
 
 
-async def test_clusters_show_usage_and_scope_toggle(backend, store):
+async def test_clusters_show_gpus_idle_and_scope_toggle(backend, store):
     app = make_app(backend, store)
     async with app.run_test(size=(200, 48)) as pilot:
         await settle(pilot, 0.6)
         table = app.screen.query_one(DataTable)
         labels = [str(c.label) for c in table.columns.values()]
-        assert "GPU-HRS" in labels and "$/HR" in labels
-        row = [str(c) for c in table.get_row_at(table.get_row_index("dev-gpu"))]
-        assert "unpriced" in row
+        assert {"GPUS", "GPU-HRS", "IDLE"} <= set(labels) and not any("$" in l for l in labels)
+        idle_col = labels.index("IDLE")
+        row = lambda name: [str(c) for c in table.get_row_at(table.get_row_index(name))]
+        assert row("dev-gpu")[idle_col].startswith("busy")
+        assert row("idle-h100")[idle_col].startswith("5h")
+        assert row("cpu-box")[idle_col] == "-"
+        title = str(app.screen.query_one("#title-bar").render())
+        assert "9 GPUs up" in title and "8 idle" in title
+        # sort by IDLE puts the longest-idle cluster last (ascending)
+        while app.screen.sort_col != app.screen.view.columns.index(next(c for c in app.screen.view.columns if c.label == "IDLE")):
+            await pilot.press("greater_than_sign")
+        await settle(pilot, 0.2)
+        assert table_names(app)[-1] == "idle-h100"
         assert "alice-train" not in table_names(app)
         await pilot.press("U")
         await settle(pilot, 0.6)
         assert "alice-train" in table_names(app)
-
-
-async def test_preview_then_launch(backend, store):
-    app = make_app(backend, store)
-    async with app.run_test(size=SIZE) as pilot:
-        await settle(pilot)
-        await pilot.press("c")
-        await settle(pilot, 0.2)
-        await type_text(pilot, "pv")
-        await pilot.press("ctrl+p")
-        await settle(pilot, 0.6)
-        from stratus.tui.screens.preview import PreviewScreen
-
-        assert isinstance(app.screen, PreviewScreen)
-        assert not store.exists(SpecKind.CLUSTER, "pv")  # nothing saved by a preview
-        await settle(pilot, 0.6)
-        assert any("CHOSEN" in l for l in app.screen._lines)
-        await pilot.press("e")  # back to the form, values kept
-        await settle(pilot, 0.3)
-        assert isinstance(app.screen, FormScreen)
-        assert app.screen.query_one("#f-name", Input).value == "pv"
-        await pilot.press("ctrl+p")
-        await settle(pilot, 0.6)
-        await pilot.press("y")
-        await settle(pilot, 0.5)
-        assert isinstance(app.screen, LogScreen) and not isinstance(app.screen, PreviewScreen)
-    assert store.exists(SpecKind.CLUSTER, "pv")
-    assert "pv" in [c.name for c in backend.list_clusters()]
 
 
 async def test_pools_create_drill_and_job_in_pool(backend, store):
