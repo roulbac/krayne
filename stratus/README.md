@@ -86,6 +86,9 @@ pre-loads SkyPilot's pod image into k3s from your host's Docker cache (so recrea
 it), runs `sky check kubernetes`, and points stratus at it. It detects cgroup-v1 hosts and nested-container hosts that
 forbid lowering `oom_score_adj` and adjusts k3s accordingly.
 
+The sandbox is one k3s node with whatever CPUs Docker gives it. If a launch sits in INIT or fails with
+"Failed to acquire resources", the node is full: tear down clusters/services you no longer need (`ctrl-d`).
+
 Behind a TLS-intercepting corporate proxy, pass a CA bundle that includes your proxy's CA:
 `stratus sandbox up --ca-bundle /path/to/ca-bundle.crt`. It is trusted by k3s (image pulls), the API server (catalog
 downloads) and every SkyPilot pod (pip/uv/curl during runtime setup).

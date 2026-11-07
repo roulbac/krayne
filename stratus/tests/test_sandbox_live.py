@@ -1,7 +1,8 @@
 """Live checks against a running `stratus sandbox` (or any API server with k8s).
 
 Run with:  uv run pytest -m sandbox
-Uses $STRATUS_TEST_ENDPOINT (default http://127.0.0.1:46580).
+Uses $STRATUS_TEST_ENDPOINT (default http://127.0.0.1:46580). Needs ~2 free CPUs on the
+sandbox node; tear down other clusters first. Takes ~2-3 minutes.
 """
 
 from __future__ import annotations
