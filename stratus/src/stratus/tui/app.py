@@ -1,0 +1,70 @@
+"""Root Textual application."""
+
+from __future__ import annotations
+
+import os
+import threading
+from pathlib import Path
+
+from textual.app import App
+from textual.binding import Binding
+
+from stratus.backend.base import Backend
+from stratus.specs.store import SpecStore
+
+
+class StratusApp(App):
+    TITLE = "stratus"
+    CSS_PATH = Path(__file__).parent / "stratus.tcss"
+    ENABLE_COMMAND_PALETTE = False
+    BINDINGS = [Binding("ctrl+c", "quit", "Quit", show=False, priority=True)]
+
+    def __init__(
+        self,
+        backend: Backend,
+        store: SpecStore | None = None,
+        refresh_seconds: float = 3.0,
+        initial_view: str = "clusters",
+        endpoint_source: str = "",
+        editor: str | None = None,
+    ) -> None:
+        super().__init__()
+        self.backend = backend
+        self.store = store or SpecStore()
+        self.refresh_seconds = max(0.5, float(refresh_seconds))
+        self.initial_view = initial_view
+        self.endpoint_source = endpoint_source
+        self.external_editor = editor if editor is not None else (os.environ.get("VISUAL") or os.environ.get("EDITOR"))
+        # Cached for form suggestions; refreshed in the background.
+        self.infra_cache: list[str] = []
+        self.volume_cache: list[str] = []
+
+    def on_mount(self) -> None:
+        from stratus.tui.screens.main import MainScreen
+
+        self.push_screen(MainScreen(self.initial_view))
+        self._warm_caches()
+        self.set_interval(60, self._warm_caches)
+
+    def _warm_caches(self) -> None:
+        def work() -> None:
+            try:
+                if not self.backend.server_info().healthy:
+                    return
+                infra = [_infra_hint(r.name) for r in self.backend.list_infra()]
+                vols = [v.name for v in self.backend.list_volumes()]
+            except Exception:  # noqa: BLE001 - suggestions are best-effort
+                return
+            self.infra_cache = sorted(set(i for i in infra if i))
+            self.volume_cache = vols
+
+        threading.Thread(target=work, name="warm-caches", daemon=True).start()
+
+
+def _infra_hint(name: str) -> str:
+    """'Kubernetes/my-ctx' → 'k8s/my-ctx', 'AWS' → 'aws'."""
+    lowered = name.strip()
+    if lowered.lower().startswith("kubernetes"):
+        rest = lowered[len("kubernetes"):].lstrip("/")
+        return "k8s" + (f"/{rest}" if rest else "")
+    return lowered.lower()
